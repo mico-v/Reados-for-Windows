@@ -1,8 +1,8 @@
-# Environment Setup
+# Compile And Debug Environment
 
-This project targets WinUI 3 with the Windows App SDK. The development environment should be installed before scaffolding the actual app project.
+This project targets WinUI 3 with the Windows App SDK. You only need the environment required to pull, build, run, and debug the app. Codex will handle project scaffolding and source changes.
 
-## Recommended Setup
+## Recommended Install
 
 Microsoft's WinUI quick start currently recommends setting up the environment with WinGet Configuration:
 
@@ -14,37 +14,31 @@ That configuration is intended to install Visual Studio with the required WinUI 
 
 Use this route if you are comfortable letting WinGet modify the Visual Studio installation for you.
 
-## Manual Setup
+## Manual Install
 
 Use this route if you prefer to control the Visual Studio installation yourself.
 
-1. Install the latest Visual Studio.
+1. Install the latest Visual Studio version that supports WinUI 3 and the Windows App SDK.
 2. Open Visual Studio Installer.
 3. Select `Modify` for the installed Visual Studio instance.
 4. Enable the `WinUI application development` workload.
-5. Enable Developer Mode in Windows Settings.
+5. Install any recommended Windows SDK and .NET components selected by that workload.
+6. Enable Developer Mode in Windows Settings.
    - Open Settings.
    - Go to `System`.
    - Open the advanced/developer settings area.
    - Turn on `Developer Mode`.
-6. Restart Visual Studio.
+7. Restart Visual Studio.
 
 After this, Visual Studio should show the `WinUI Blank App (Packaged)` C# project template.
 
-## Optional Template Studio
+## Optional Tools
 
-Template Studio can generate a fuller starting shell with navigation, MVVM Toolkit, settings pages, and tests. Use it only if we decide we want generated structure instead of a minimal Blank App.
+These are useful but not required just to build and debug:
 
-Install the Visual Studio extension:
-
-- Template Studio for WinUI (C#)
-
-Recommended Template Studio choices for ReadOS, if used:
-
-- Project type: `Navigation Pane` or `Blank`
-- Pattern: `MVVM Toolkit`
-- Pages: shell/home, settings, library, reader placeholder, chat placeholder
-- Tests: unit test project if available
+- Template Studio for WinUI, if we later decide to generate reference shell code.
+- GitHub CLI, if you want to create PRs or inspect GitHub from the terminal.
+- Windows Terminal, if you prefer it over the default PowerShell host.
 
 ## Verify The Environment
 
@@ -63,6 +57,25 @@ In Visual Studio, also verify:
 - A fresh WinUI app builds and launches with `F5`.
 - Developer Mode is enabled if deployment prompts appear.
 
+You do not need to create the ReadOS project yourself. The template check only proves your machine can compile and debug the WinUI app once Codex adds it to the repository.
+
+## Daily Compile And Debug Workflow
+
+After Codex adds the app source, your normal workflow should be:
+
+```powershell
+git switch draft/initial-mvp
+git pull
+```
+
+Then open `ReadOS.sln` in Visual Studio and press `F5`.
+
+If you want to build from the terminal after the solution exists:
+
+```powershell
+dotnet build .\ReadOS.sln
+```
+
 ## Repository-Specific Notes
 
 In the Codex runner, GitHub CLI was installed at:
@@ -74,16 +87,3 @@ C:\Program Files\GitHub CLI\gh.exe
 but that folder was not present in the runner PATH. If your own terminal already resolves `gh`, no action is needed. If not, add this folder to your user or system PATH.
 
 The Codex runner did not find `dotnet.exe` in PATH or in `C:\Program Files\dotnet`. Installing the WinUI workload through Visual Studio should resolve that for normal development terminals.
-
-## Scaffold The App After Setup
-
-After the environment is ready:
-
-1. Open this repository in Visual Studio.
-2. Create a new project in the repository.
-3. Select `WinUI Blank App (Packaged)` with C#.
-4. Name the project `ReadOS.App`.
-5. Place it under `src/ReadOS.App`.
-6. Name the solution `ReadOS`.
-7. Commit the generated solution and app project on the draft branch.
-

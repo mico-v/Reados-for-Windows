@@ -54,12 +54,12 @@ ReadOS should not be a generic PDF editor or a simple PDF-plus-chat app. The fir
 - [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, Visual Studio, WinUI, and CLI setup guide.
 - [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md): Draft branch MVP scope and first shell acceptance criteria.
 
-## Getting Started
+## Build Environment
 
-The app source has not been scaffolded yet. After the WinUI environment is installed:
+You only need to install the environment required to build and debug. Codex will handle project scaffolding and source changes.
 
 1. Follow [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md).
 2. Open Visual Studio.
 3. Install or confirm the WinUI application development workload.
-4. Create a WinUI Blank App (Packaged) C# project inside `src/ReadOS.App`.
-5. Keep project structure aligned with [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) and [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md).
+4. Verify that `WinUI Blank App (Packaged)` is available and that a fresh WinUI app can run with `F5`.
+5. After Codex adds `ReadOS.sln`, pull the branch, open the solution, and press `F5`.
