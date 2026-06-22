@@ -1,0 +1,55 @@
+# Visual Studio / WinUI / .NET
+.vs/
+.vscode/
+bin/
+obj/
+Debug/
+Release/
+x64/
+x86/
+ARM/
+ARM64/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+
+# Build and package outputs
+AppPackages/
+BundleArtifacts/
+TestResults/
+artifacts/
+publish/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.nupkg
+*.snupkg
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# Local secrets and machine-specific config
+.env
+.env.*
+*.pfx
+*.snk
+secrets.json
+
+# Agent/editor local state
+.agents/
+.codex/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
