@@ -12,7 +12,7 @@ This repository is on the `draft/initial-mvp` branch with an initial hand-scaffo
 - Development plan: drafted.
 - WinUI template research: completed at planning level.
 - Application source: initial mock shell added under `src/ReadOS.App`.
-- Build verification: pending until the local WinUI/.NET environment is installed.
+- Build verification: `dotnet build .\ReadOS.sln` passes with 0 warnings and 0 errors using .NET SDK 10.0.301.
 
 ## Planned Stack
 
@@ -64,3 +64,9 @@ You only need to install the environment required to build and debug. Codex will
 3. Install or confirm the WinUI application development workload.
 4. Verify that `WinUI Blank App (Packaged)` is available and that a fresh WinUI app can run with `F5`.
 5. Pull the branch, open `ReadOS.sln`, and press `F5`.
+
+Current verified CLI build command:
+
+```powershell
+& 'C:\Program Files\dotnet\dotnet.exe' build .\ReadOS.sln
+```

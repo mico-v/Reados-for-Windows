@@ -51,6 +51,14 @@ dotnet --info
 winget --version
 ```
 
+If `dotnet` is still not found after installing Visual Studio, install the .NET SDK directly:
+
+```powershell
+winget install --id Microsoft.DotNet.SDK.10 -e --source winget
+```
+
+The current verified SDK is `.NET SDK 10.0.301`.
+
 In Visual Studio, also verify:
 
 - `Create a new project` can find `WinUI Blank App (Packaged)`.
@@ -76,7 +84,23 @@ If you want to build from the terminal after the solution exists:
 dotnet build .\ReadOS.sln
 ```
 
+If your shell has not refreshed PATH yet, use the full path:
+
+```powershell
+& 'C:\Program Files\dotnet\dotnet.exe' build .\ReadOS.sln
+```
+
 The first MVP project is intentionally unpackaged to make the initial compile/debug loop faster. Visual Studio should still have the WinUI workload installed because the project uses WinUI and the Windows App SDK.
+
+## Debugging Access
+
+Codex cannot currently attach to your Visual Studio instance through an exposed Visual Studio MCP server in this thread. The reliable workflow is:
+
+1. Codex runs CLI builds with `dotnet` or Visual Studio MSBuild.
+2. You run `F5` in Visual Studio when UI debugging is needed.
+3. If Visual Studio-only errors appear, copy the error list text or build output. Screenshots are optional; text is better.
+
+Do not edit hidden Visual Studio Copilot configuration files to replace GitHub Copilot's base URL or API key. GitHub documents MCP and bring-your-own-key flows for Copilot, but the supported BYOK surfaces are Copilot Chat, Copilot CLI, and VS Code through organization or local configuration. It is not the supported route for wiring this Codex desktop thread into Visual Studio debugging.
 
 ## Repository-Specific Notes
 

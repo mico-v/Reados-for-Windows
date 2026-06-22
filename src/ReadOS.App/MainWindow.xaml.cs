@@ -11,7 +11,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         ViewModel = new ShellViewModel(new MockWorkspaceService());
-        DataContext = ViewModel;
+        RootShell.DataContext = ViewModel;
     }
 
     public ShellViewModel ViewModel { get; }

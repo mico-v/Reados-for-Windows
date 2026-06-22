@@ -12,31 +12,31 @@ public partial class ShellViewModel : ObservableObject
     private readonly WorkspaceSeed workspace;
 
     [ObservableProperty]
-    private bool isLibraryPaneOpen = true;
+    public partial bool IsLibraryPaneOpen { get; set; } = true;
 
     [ObservableProperty]
-    private bool isChatPaneOpen = true;
+    public partial bool IsChatPaneOpen { get; set; } = true;
 
     [ObservableProperty]
-    private string librarySearchQuery = string.Empty;
+    public partial string LibrarySearchQuery { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private LibraryItem? selectedLibraryItem;
+    public partial LibraryItem? SelectedLibraryItem { get; set; }
 
     [ObservableProperty]
-    private DocumentTab? selectedTab;
+    public partial DocumentTab? SelectedTab { get; set; }
 
     [ObservableProperty]
-    private ChatConversation? currentConversation;
+    public partial ChatConversation? CurrentConversation { get; set; }
 
     [ObservableProperty]
-    private string promptDraft = string.Empty;
+    public partial string PromptDraft { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string statusMessage = "Ready. Mock workspace loaded.";
+    public partial string StatusMessage { get; set; } = "Ready. Mock workspace loaded.";
 
     [ObservableProperty]
-    private int currentPageNumber = 1;
+    public partial int CurrentPageNumber { get; set; } = 1;
 
     public ShellViewModel(IWorkspaceService workspaceService)
     {

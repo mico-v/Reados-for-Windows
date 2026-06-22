@@ -32,9 +32,9 @@ The first source pass has been added by hand because the Codex runner does not c
 - App project: `src/ReadOS.App`
 - Mode: unpackaged WinUI app for the first compile/debug loop
 - Data: in-memory mock workspace
-- Status: awaiting compile feedback from a local WinUI development environment
+- Status: builds successfully with `.NET SDK 10.0.301`
 
-After the first successful local compile, we can decide whether to keep the lean unpackaged setup for fast development or switch to the packaged Visual Studio template shape.
+After the first successful Visual Studio `F5` run, we can decide whether to keep the lean unpackaged setup for fast development or switch to the packaged Visual Studio template shape.
 
 ## First App Shell Acceptance Criteria
 
