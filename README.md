@@ -51,12 +51,15 @@ ReadOS should not be a generic PDF editor or a simple PDF-plus-chat app. The fir
 
 - [PRODUCT_GOAL.md](PRODUCT_GOAL.md): Product vision and core feature map.
 - [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): WinUI-oriented implementation plan, milestones, and template research.
+- [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, Visual Studio, WinUI, and CLI setup guide.
+- [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md): Draft branch MVP scope and first shell acceptance criteria.
 
 ## Getting Started
 
 The app source has not been scaffolded yet. After the WinUI environment is installed:
 
-1. Open Visual Studio.
-2. Install or confirm the WinUI application development workload.
-3. Create a WinUI Blank App (Packaged) C# project inside this repository.
-4. Keep project structure aligned with [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
+1. Follow [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md).
+2. Open Visual Studio.
+3. Install or confirm the WinUI application development workload.
+4. Create a WinUI Blank App (Packaged) C# project inside `src/ReadOS.App`.
+5. Keep project structure aligned with [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) and [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md).
