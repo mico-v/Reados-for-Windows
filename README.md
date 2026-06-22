@@ -70,3 +70,21 @@ Current verified CLI build command:
 ```powershell
 & 'C:\Program Files\dotnet\dotnet.exe' build .\ReadOS.sln
 ```
+
+More convenient build-and-run command:
+
+```powershell
+.\scripts\run.ps1
+```
+
+If the app is already open and locking the build output:
+
+```powershell
+.\scripts\run.ps1 -StopExisting
+```
+
+Build only:
+
+```powershell
+.\scripts\run.ps1 -BuildOnly
+```

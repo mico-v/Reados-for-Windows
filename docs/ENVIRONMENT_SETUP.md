@@ -90,6 +90,24 @@ If your shell has not refreshed PATH yet, use the full path:
 & 'C:\Program Files\dotnet\dotnet.exe' build .\ReadOS.sln
 ```
 
+For day-to-day development, use the repository helper script:
+
+```powershell
+.\scripts\run.ps1
+```
+
+If an existing app window is locking the build output:
+
+```powershell
+.\scripts\run.ps1 -StopExisting
+```
+
+To build without launching:
+
+```powershell
+.\scripts\run.ps1 -BuildOnly
+```
+
 The first MVP project is intentionally unpackaged to make the initial compile/debug loop faster. Visual Studio should still have the WinUI workload installed because the project uses WinUI and the Windows App SDK.
 
 ## Debugging Access
