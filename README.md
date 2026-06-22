@@ -6,19 +6,20 @@ The detailed product goal is maintained in [PRODUCT_GOAL.md](PRODUCT_GOAL.md).
 
 ## Current Status
 
-This repository is at project initialization stage.
+This repository is on the `draft/initial-mvp` branch with an initial hand-scaffolded WinUI shell.
 
 - Product goal: drafted.
 - Development plan: drafted.
 - WinUI template research: completed at planning level.
-- Application source: not scaffolded yet.
+- Application source: initial mock shell added under `src/ReadOS.App`.
+- Build verification: pending until the local WinUI/.NET environment is installed.
 
 ## Planned Stack
 
 - UI framework: WinUI 3 with Windows App SDK.
 - Language: C#.
 - App architecture: MVVM, likely with CommunityToolkit.Mvvm.
-- Packaging: start with packaged WinUI app unless development constraints force an unpackaged build.
+- Packaging: the first hand-scaffolded MVP uses an unpackaged WinUI app for faster F5 debugging; MSIX packaging will be added after the first compile loop.
 - Local data: SQLite or an embedded document database after the first app shell lands.
 - PDF layer: to be selected after a focused spike on rendering, page labels, outlines, annotations, and export metadata.
 - AI layer: provider-agnostic model configuration with OpenAI-compatible endpoints as the first abstraction target.
@@ -62,4 +63,4 @@ You only need to install the environment required to build and debug. Codex will
 2. Open Visual Studio.
 3. Install or confirm the WinUI application development workload.
 4. Verify that `WinUI Blank App (Packaged)` is available and that a fresh WinUI app can run with `F5`.
-5. After Codex adds `ReadOS.sln`, pull the branch, open the solution, and press `F5`.
+5. Pull the branch, open `ReadOS.sln`, and press `F5`.

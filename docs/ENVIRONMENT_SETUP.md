@@ -76,6 +76,8 @@ If you want to build from the terminal after the solution exists:
 dotnet build .\ReadOS.sln
 ```
 
+The first MVP project is intentionally unpackaged to make the initial compile/debug loop faster. Visual Studio should still have the WinUI workload installed because the project uses WinUI and the Windows App SDK.
+
 ## Repository-Specific Notes
 
 In the Codex runner, GitHub CLI was installed at:

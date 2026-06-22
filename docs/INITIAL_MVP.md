@@ -24,9 +24,21 @@ Build a WinUI shell that makes the future product visible:
 
 No real PDF rendering or model calls are required in the first UI MVP. The app should communicate the workflow and make the next integration points obvious.
 
+## Current Scaffold
+
+The first source pass has been added by hand because the Codex runner does not currently have the WinUI template environment installed.
+
+- Solution: `ReadOS.sln`
+- App project: `src/ReadOS.App`
+- Mode: unpackaged WinUI app for the first compile/debug loop
+- Data: in-memory mock workspace
+- Status: awaiting compile feedback from a local WinUI development environment
+
+After the first successful local compile, we can decide whether to keep the lean unpackaged setup for fast development or switch to the packaged Visual Studio template shape.
+
 ## First App Shell Acceptance Criteria
 
-- App launches as a packaged WinUI desktop app.
+- App launches as a WinUI desktop app.
 - Main window uses a three-region reading layout.
 - Library panel shows folders and PDFs from mock data.
 - Reader area shows a selected document placeholder with page navigation affordances.
@@ -52,6 +64,8 @@ docs/
 ```
 
 Start with one app project if that is fastest. Extract `ReadOS.Core` after the shell stabilizes and the library/PDF/AI services need testable boundaries.
+
+The current source pass follows this single-project starting point.
 
 ## First ViewModels
 
@@ -97,4 +111,3 @@ Use simple in-memory data for the first shell:
 5. Provider settings and mockable AI service.
 6. Page attachment workflow.
 7. Book page mapping and outline generation.
-
