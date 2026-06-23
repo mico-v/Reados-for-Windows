@@ -89,4 +89,4 @@ Build only:
 .\scripts\run.ps1 -BuildOnly
 ```
 
-Current MVP shell interactions include library search, mock import, document tabs, page/outline navigation, page-range attachments, region-explain attachments, per-PDF conversation filtering, and mock prompt sending.
+Current MVP shell interactions include library search, mock import, document tabs, page/outline navigation, page-range attachments, region-explain attachments, per-PDF conversation filtering, mock prompt sending, a Chinese-by-default settings drawer, English switching, and draggable pane boundaries.

@@ -49,6 +49,9 @@ The mock shell now supports these MVP interactions:
 - Attachments can be cleared.
 - Conversation dropdown is scoped to the selected PDF.
 - `Send Mock Prompt` stores a user message and a mock ReadOS answer in the selected PDF conversation.
+- UI defaults to Chinese and can switch to English from the settings drawer.
+- Settings drawer exposes language, AI provider, base URL, API key, model, default prompts, MinorU endpoint, and mock-response mode.
+- Library, outline, and chat boundaries can be dragged to resize panes.
 
 ## First App Shell Acceptance Criteria
 

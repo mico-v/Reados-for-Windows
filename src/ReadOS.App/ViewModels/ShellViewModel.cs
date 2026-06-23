@@ -1,5 +1,5 @@
-using System.Collections.ObjectModel;
 using System;
+using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -17,6 +17,24 @@ public partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsChatPaneOpen { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsSettingsOpen { get; set; }
+
+    [ObservableProperty]
+    public partial double LibraryPaneWidth { get; set; } = 304;
+
+    [ObservableProperty]
+    public partial double ChatPaneWidth { get; set; } = 392;
+
+    [ObservableProperty]
+    public partial double OutlinePaneWidth { get; set; } = 272;
+
+    [ObservableProperty]
+    public partial AppStrings Strings { get; set; } = LocalizationCatalog.GetStrings("zh-CN");
+
+    [ObservableProperty]
+    public partial LanguageOption? SelectedLanguageOption { get; set; }
 
     [ObservableProperty]
     public partial string LibrarySearchQuery { get; set; } = string.Empty;
@@ -40,14 +58,45 @@ public partial class ShellViewModel : ObservableObject
     public partial string PageRangeDraft { get; set; } = "144-145";
 
     [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "Ready. Mock workspace loaded.";
+    public partial string StatusMessage { get; set; } = "就绪。已加载模拟工作区。";
 
     [ObservableProperty]
     public partial int CurrentPageNumber { get; set; } = 1;
 
+    [ObservableProperty]
+    public partial string ProviderName { get; set; } = "OpenAI Compatible";
+
+    [ObservableProperty]
+    public partial string ProviderBaseUrl { get; set; } = "https://api.openai.com/v1";
+
+    [ObservableProperty]
+    public partial string ProviderApiKey { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ModelName { get; set; } = "gpt-4.1";
+
+    [ObservableProperty]
+    public partial string AttachmentDefaultPrompt { get; set; } = "请按书本顺序解释我附加的页面。";
+
+    [ObservableProperty]
+    public partial string RegionExplainPrompt { get; set; } = "请结合上下文，重点讲解红框内容。";
+
+    [ObservableProperty]
+    public partial string ChapterExplainPrompt { get; set; } = "请围绕我附加的这一整节内容进行系统讲解。";
+
+    [ObservableProperty]
+    public partial string MinorUEndpoint { get; set; } = "https://mineru.net/api";
+
+    [ObservableProperty]
+    public partial bool UseMockResponses { get; set; } = true;
+
     public ShellViewModel(IWorkspaceService workspaceService)
     {
         workspace = workspaceService.CreateSeed();
+
+        LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
+        LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
+        SelectedLanguageOption = LanguageOptions.First();
 
         foreach (var item in workspace.LibraryItems)
         {
@@ -62,6 +111,8 @@ public partial class ShellViewModel : ObservableObject
         var firstDocument = workspace.Documents.First();
         OpenDocument(firstDocument.DocumentId);
     }
+
+    public ObservableCollection<LanguageOption> LanguageOptions { get; } = new();
 
     public ObservableCollection<LibraryItem> LibraryItems { get; } = new();
 
@@ -79,27 +130,41 @@ public partial class ShellViewModel : ObservableObject
 
     public ObservableCollection<AttachmentItem> Attachments { get; } = new();
 
-    public string SelectedDocumentTitle => SelectedTab?.Title ?? "No document selected";
+    public string SelectedDocumentTitle => SelectedTab?.Title ?? Strings.NoDocumentSelected;
 
-    public string SelectedDocumentSubtitle => SelectedTab?.Subtitle ?? "Choose a document from the library";
+    public string SelectedDocumentSubtitle => SelectedTab?.Subtitle ?? Strings.ChooseDocument;
 
-    public string ReaderHeading => SelectedTab is null ? "Reader" : "Reader preview";
+    public string ReaderHeading => SelectedTab is null ? Strings.Reader : Strings.ReaderPreview;
 
-    public string ReaderSubheading => SelectedTab is null ? "No PDF loaded" : "PDF engine placeholder";
+    public string ReaderSubheading => SelectedTab is null ? Strings.NoPdfLoaded : Strings.PdfEnginePlaceholder;
 
-    public string CurrentPageLabel => SelectedTab is null ? "No page" : $"{SelectedTab.PageLabelPrefix} {CurrentPageNumber}";
+    public string CurrentPageLabel => SelectedTab is null ? Strings.NoPage : $"{CurrentPagePrefix} {CurrentPageNumber}";
 
-    public string PagePreviewText => SelectedTab?.PagePreviewText ?? "Open a PDF to begin.";
+    public string PagePreviewText => SelectedTab?.PagePreviewText ?? Strings.OpenPdfToBegin;
 
     public int CurrentPageCount => SelectedTab?.PageCount ?? 1;
 
-    public string CurrentConversationScope => CurrentConversation?.Scope ?? "No PDF selected";
+    public string CurrentConversationScope => CurrentConversation?.Scope ?? Strings.NoPdfSelected;
 
-    public string ActiveModelLabel => "Model: mock provider";
+    public string ActiveModelLabel => string.Format(Strings.ModelLabelFormat, UseMockResponses ? "mock provider" : ModelName);
 
-    public string AttachmentSummary => Attachments.Count == 0 ? "No attachments" : $"{Attachments.Count} attachment(s) ready";
+    public string AttachmentSummary => Attachments.Count == 0 ? Strings.NoAttachments : string.Format(Strings.AttachmentsReadyFormat, Attachments.Count);
 
-    public string LibrarySummary => $"{LibraryItems.Count} item(s)";
+    public string LibrarySummary => string.Format(Strings.LibrarySummaryFormat, LibraryItems.Count);
+
+    private string CurrentPagePrefix => SelectedTab?.PageLabelPrefix == "PDF page" ? Strings.PdfPage : Strings.BookPage;
+
+    partial void OnSelectedLanguageOptionChanged(LanguageOption? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        Strings = LocalizationCatalog.GetStrings(value.Code);
+        NotifyLocalizedProperties();
+        StatusMessage = value.Code == "zh-CN" ? "已切换到中文界面。" : "Switched to English.";
+    }
 
     partial void OnLibrarySearchQueryChanged(string value)
     {
@@ -116,7 +181,7 @@ public partial class ShellViewModel : ObservableObject
 
         if (value?.Kind == LibraryItemKind.Folder)
         {
-            StatusMessage = $"Selected folder \"{value.DisplayName}\". Nested navigation lands with the library persistence milestone.";
+            StatusMessage = $"已选择文件夹“{value.DisplayName}”。嵌套导航会在资料库持久化阶段实现。";
         }
     }
 
@@ -129,7 +194,7 @@ public partial class ShellViewModel : ObservableObject
 
         CurrentPageNumber = value.PageNumber;
         RefreshDocumentState(value);
-        StatusMessage = $"Opened {value.Title}.";
+        StatusMessage = $"已打开 {value.Title}。";
     }
 
     partial void OnCurrentConversationChanged(ChatConversation? value)
@@ -145,7 +210,7 @@ public partial class ShellViewModel : ObservableObject
         }
 
         CurrentPageNumber = Math.Clamp(value.PageNumber, 1, CurrentPageCount);
-        StatusMessage = $"Jumped to outline item: {value.Title}.";
+        StatusMessage = $"已跳转到目录项：{value.Title}。";
     }
 
     partial void OnCurrentPageNumberChanged(int value)
@@ -156,7 +221,17 @@ public partial class ShellViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(CurrentPageLabel));
-        StatusMessage = $"Preview page moved to {CurrentPageLabel}. Real PDF navigation will be wired in the PDF engine milestone.";
+        StatusMessage = $"预览页已移动到 {CurrentPageLabel}。真实 PDF 导航会在 PDF 引擎阶段接入。";
+    }
+
+    partial void OnUseMockResponsesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ActiveModelLabel));
+    }
+
+    partial void OnModelNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(ActiveModelLabel));
     }
 
     [RelayCommand]
@@ -174,7 +249,23 @@ public partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void OpenSettings()
     {
-        StatusMessage = "Settings placeholder: providers, prompts, shortcuts, and MinorU configuration will live here.";
+        IsSettingsOpen = true;
+        StatusMessage = "已打开设置。";
+    }
+
+    [RelayCommand]
+    private void CloseSettings()
+    {
+        IsSettingsOpen = false;
+        StatusMessage = "已关闭设置。";
+    }
+
+    [RelayCommand]
+    private void SaveSettings()
+    {
+        IsSettingsOpen = false;
+        OnPropertyChanged(nameof(ActiveModelLabel));
+        StatusMessage = "设置已保存到当前会话。持久化会在数据层里实现。";
     }
 
     [RelayCommand]
@@ -234,7 +325,7 @@ public partial class ShellViewModel : ObservableObject
         RefreshLibraryItems();
         OpenDocument(documentId);
         SelectedLibraryItem = LibraryItems.FirstOrDefault(item => item.Id == documentId);
-        StatusMessage = $"Imported mock document: {title}.";
+        StatusMessage = $"已导入模拟文档：{title}。";
     }
 
     [RelayCommand]
@@ -251,7 +342,7 @@ public partial class ShellViewModel : ObservableObject
             PageChips.Add("mapped");
         }
 
-        StatusMessage = "Page mapping mock complete: cover, roman numerals, and book pages are represented by chips.";
+        StatusMessage = "页码映射模拟完成：封面、罗马数字页和书本页会显示为标签。";
     }
 
     [RelayCommand]
@@ -264,18 +355,19 @@ public partial class ShellViewModel : ObservableObject
 
         if (SelectedTab.Outline.All(item => item.Title != "AI generated study checkpoint"))
         {
+            var pageNumber = Math.Min(CurrentPageNumber + 2, CurrentPageCount);
             var checkpoint = new OutlineItem
             {
                 Title = "AI generated study checkpoint",
-                PageLabel = $"{SelectedTab.PageLabelPrefix} {Math.Min(CurrentPageNumber + 2, CurrentPageCount)}",
-                PageNumber = Math.Min(CurrentPageNumber + 2, CurrentPageCount)
+                PageLabel = $"{CurrentPagePrefix} {pageNumber}",
+                PageNumber = pageNumber
             };
 
             SelectedTab.Outline.Add(checkpoint);
             CurrentOutline.Add(checkpoint);
         }
 
-        StatusMessage = "Outline mock updated. Metadata export will write these entries into the PDF later.";
+        StatusMessage = "目录模拟已更新。后续导出时会写入 PDF 元数据。";
     }
 
     [RelayCommand]
@@ -288,12 +380,12 @@ public partial class ShellViewModel : ObservableObject
 
         Attachments.Add(new AttachmentItem
         {
-            Name = SelectedTab.PageLabel,
+            Name = CurrentPageLabel,
             Detail = $"Attached from {SelectedTab.Title}"
         });
 
-        PromptDraft = "Please explain the attached page in the order used by the book.";
-        StatusMessage = $"Attached {SelectedTab.PageLabel}.";
+        PromptDraft = AttachmentDefaultPrompt;
+        StatusMessage = $"已附加 {CurrentPageLabel}。";
         OnPropertyChanged(nameof(AttachmentSummary));
     }
 
@@ -312,8 +404,8 @@ public partial class ShellViewModel : ObservableObject
             Detail = $"Range attachment from {SelectedTab.Title}"
         });
 
-        PromptDraft = $"Please explain pages {range} and keep the explanation aligned with the book.";
-        StatusMessage = $"Attached page range: {range}.";
+        PromptDraft = $"{AttachmentDefaultPrompt} 范围：{range}";
+        StatusMessage = $"已附加页码范围：{range}。";
         OnPropertyChanged(nameof(AttachmentSummary));
     }
 
@@ -328,11 +420,11 @@ public partial class ShellViewModel : ObservableObject
         Attachments.Add(new AttachmentItem
         {
             Name = "Red-box region + context",
-            Detail = $"{SelectedTab.PageLabel} with surrounding pages"
+            Detail = $"{CurrentPageLabel} with surrounding pages"
         });
 
-        PromptDraft = "Please use the surrounding context and focus on the red-boxed content.";
-        StatusMessage = "Region explain mock prepared.";
+        PromptDraft = RegionExplainPrompt;
+        StatusMessage = "框选讲解附件已准备。";
         OnPropertyChanged(nameof(AttachmentSummary));
     }
 
@@ -340,7 +432,7 @@ public partial class ShellViewModel : ObservableObject
     private void ClearAttachments()
     {
         Attachments.Clear();
-        StatusMessage = "Cleared pending attachments.";
+        StatusMessage = "已清空待发送附件。";
         OnPropertyChanged(nameof(AttachmentSummary));
     }
 
@@ -356,7 +448,7 @@ public partial class ShellViewModel : ObservableObject
         {
             Id = $"chat-{SelectedTab.DocumentId}-{Conversations.Count + 1}",
             DocumentId = SelectedTab.DocumentId,
-            Title = "New study note",
+            Title = "新的学习记录",
             Scope = SelectedTab.Title
         };
 
@@ -364,13 +456,13 @@ public partial class ShellViewModel : ObservableObject
         {
             Author = "ReadOS",
             TimeLabel = "now",
-            Content = "New mock conversation created. Real persistence lands with the chat warehouse milestone."
+            Content = "已创建新的模拟对话。真实持久化会在对话仓库里实现。"
         });
 
         Conversations.Add(conversation);
         DocumentConversations.Add(conversation);
         CurrentConversation = conversation;
-        StatusMessage = "Created a new per-PDF conversation.";
+        StatusMessage = "已创建当前 PDF 的新对话。";
     }
 
     [RelayCommand]
@@ -392,10 +484,10 @@ public partial class ShellViewModel : ObservableObject
         }
 
         var prompt = string.IsNullOrWhiteSpace(PromptDraft)
-            ? "Please explain the attached material."
+            ? AttachmentDefaultPrompt
             : PromptDraft.Trim();
         var attachmentNote = Attachments.Count == 0
-            ? "No attachments"
+            ? Strings.NoAttachments
             : string.Join(", ", Attachments.Select(item => item.Name));
 
         CurrentConversation.Messages.Add(new ChatMessage
@@ -407,15 +499,17 @@ public partial class ShellViewModel : ObservableObject
         CurrentConversation.Messages.Add(new ChatMessage
         {
             Author = "ReadOS",
-            TimeLabel = "mock",
-            Content = $"Mock answer for {SelectedTab.Title}. Real model calls will use the selected provider, PDF page images, and per-document system prompt."
+            TimeLabel = UseMockResponses ? "mock" : "queued",
+            Content = UseMockResponses
+                ? $"这是 {SelectedTab.Title} 的模拟回答。真实模型调用会使用设置中的服务商、PDF 页面图像和文档提示词。"
+                : $"将使用 {ProviderName} / {ModelName} 调用真实模型。当前 MVP 还没有接入网络请求。"
         });
 
         RefreshMessages(CurrentConversation);
         PromptDraft = string.Empty;
         Attachments.Clear();
         OnPropertyChanged(nameof(AttachmentSummary));
-        StatusMessage = "Sent mock prompt and stored it in the per-PDF chat warehouse.";
+        StatusMessage = "已发送模拟提问，并保存到当前 PDF 的对话仓库。";
     }
 
     [RelayCommand]
@@ -437,7 +531,7 @@ public partial class ShellViewModel : ObservableObject
         if (SelectedTab is null)
         {
             ClearDocumentState();
-            StatusMessage = $"Closed {tab.Title}.";
+            StatusMessage = $"已关闭 {tab.Title}。";
         }
     }
 
@@ -464,7 +558,7 @@ public partial class ShellViewModel : ObservableObject
         var document = workspace.Documents.FirstOrDefault(item => item.DocumentId == documentId);
         if (document is null)
         {
-            StatusMessage = "Folder selected. Nested navigation lands with the library milestone.";
+            StatusMessage = "已选择文件夹。嵌套导航会在资料库持久化阶段实现。";
             return;
         }
 
@@ -568,5 +662,19 @@ public partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(CurrentPageCount));
         OnPropertyChanged(nameof(CurrentConversationScope));
         OnPropertyChanged(nameof(AttachmentSummary));
+    }
+
+    private void NotifyLocalizedProperties()
+    {
+        OnPropertyChanged(nameof(SelectedDocumentTitle));
+        OnPropertyChanged(nameof(SelectedDocumentSubtitle));
+        OnPropertyChanged(nameof(ReaderHeading));
+        OnPropertyChanged(nameof(ReaderSubheading));
+        OnPropertyChanged(nameof(CurrentPageLabel));
+        OnPropertyChanged(nameof(PagePreviewText));
+        OnPropertyChanged(nameof(CurrentConversationScope));
+        OnPropertyChanged(nameof(ActiveModelLabel));
+        OnPropertyChanged(nameof(AttachmentSummary));
+        OnPropertyChanged(nameof(LibrarySummary));
     }
 }
