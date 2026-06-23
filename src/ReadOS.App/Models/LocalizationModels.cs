@@ -10,6 +10,16 @@ public sealed class LanguageOption
 public sealed class AppStrings
 {
     public required string AppSubtitle { get; init; }
+    public required string NewSession { get; init; }
+    public required string Projects { get; init; }
+    public required string Sessions { get; init; }
+    public required string ImportMaterial { get; init; }
+    public required string CreateProject { get; init; }
+    public required string OpenLocation { get; init; }
+    public required string ComposerPlaceholder { get; init; }
+    public required string FullAccess { get; init; }
+    public required string Review { get; init; }
+    public required string FilesEdited { get; init; }
     public required string Library { get; init; }
     public required string Chat { get; init; }
     public required string CloseTab { get; init; }
@@ -73,6 +83,16 @@ public static class LocalizationCatalog
     private static AppStrings Chinese { get; } = new()
     {
         AppSubtitle = "AI PDF 学习工作台",
+        NewSession = "新对话",
+        Projects = "项目",
+        Sessions = "会话",
+        ImportMaterial = "导入资料",
+        CreateProject = "新建项目",
+        OpenLocation = "打开位置",
+        ComposerPlaceholder = "要求后续变更",
+        FullAccess = "完全访问",
+        Review = "审核",
+        FilesEdited = "已编辑文件",
         Library = "资料库",
         Chat = "对话",
         CloseTab = "关闭标签",
@@ -129,6 +149,16 @@ public static class LocalizationCatalog
     private static AppStrings English { get; } = new()
     {
         AppSubtitle = "AI PDF Workspace",
+        NewSession = "New Session",
+        Projects = "Projects",
+        Sessions = "Sessions",
+        ImportMaterial = "Import Material",
+        CreateProject = "Create Project",
+        OpenLocation = "Open Location",
+        ComposerPlaceholder = "Ask for follow-up changes",
+        FullAccess = "Full access",
+        Review = "Review",
+        FilesEdited = "Files edited",
         Library = "Library",
         Chat = "Chat",
         CloseTab = "Close Tab",

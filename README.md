@@ -52,6 +52,7 @@ ReadOS should not be a generic PDF editor or a simple PDF-plus-chat app. The fir
 
 - [PRODUCT_GOAL.md](PRODUCT_GOAL.md): Product vision and core feature map.
 - [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): WinUI-oriented implementation plan, milestones, and template research.
+- [docs/APP_FRAME_DESIGN.md](docs/APP_FRAME_DESIGN.md): Compact Codex-like project/session frame design.
 - [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, Visual Studio, WinUI, and CLI setup guide.
 - [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md): Draft branch MVP scope and first shell acceptance criteria.
 
@@ -89,4 +90,4 @@ Build only:
 .\scripts\run.ps1 -BuildOnly
 ```
 
-Current MVP shell interactions include library search, mock import, document tabs, page/outline navigation, page-range attachments, region-explain attachments, per-PDF conversation filtering, mock prompt sending, a Chinese-by-default settings drawer, English switching, and draggable pane boundaries.
+Current MVP shell interactions use a compact Codex-like project frame: create projects, import materials, start sessions, select project sessions from the left rail, send mock prompts in the active session, edit settings, switch Chinese/English, and resize the left navigation rail.

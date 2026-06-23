@@ -2,93 +2,126 @@ using System.Collections.ObjectModel;
 
 namespace ReadOS.App.Models;
 
-public enum LibraryItemKind
+public enum MaterialKind
 {
-    Folder,
-    Document
+    Pdf,
+    Markdown,
+    Note,
+    Folder
 }
 
-public sealed class LibraryItem
+public enum ActivityKind
+{
+    Text,
+    Code,
+    Materials,
+    Changes,
+    Answer
+}
+
+public enum NavigationEntryKind
+{
+    Project,
+    Session
+}
+
+public sealed class NavigationEntry
 {
     public required string Id { get; init; }
 
-    public required string DisplayName { get; init; }
+    public required string ProjectId { get; init; }
 
-    public required LibraryItemKind Kind { get; init; }
+    public string? SessionId { get; init; }
+
+    public required NavigationEntryKind Kind { get; init; }
+
+    public required string Title { get; init; }
 
     public required string Detail { get; init; }
 
-    public string ProgressText { get; init; } = string.Empty;
+    public string Prefix => Kind == NavigationEntryKind.Project ? "▸" : "  ";
 
-    public string KindLabel => Kind == LibraryItemKind.Folder ? "DIR" : "PDF";
+    public string TimeLabel => Detail;
 }
 
-public sealed class DocumentTab
-{
-    public required string DocumentId { get; init; }
-
-    public required string Title { get; init; }
-
-    public required string Subtitle { get; init; }
-
-    public required string PageLabel { get; init; }
-
-    public required string PagePreviewText { get; init; }
-
-    public string PageLabelPrefix { get; init; } = "Book page";
-
-    public int PageNumber { get; init; }
-
-    public int PageCount { get; init; }
-
-    public ObservableCollection<string> PageChips { get; } = new();
-
-    public ObservableCollection<OutlineItem> Outline { get; } = new();
-}
-
-public sealed class OutlineItem
-{
-    public required string Title { get; init; }
-
-    public required string PageLabel { get; init; }
-
-    public int PageNumber { get; init; }
-}
-
-public sealed class ChatConversation
+public sealed class ProjectItem
 {
     public required string Id { get; init; }
 
-    public required string DocumentId { get; init; }
+    public required string Name { get; set; }
 
-    public required string Title { get; init; }
+    public required string Description { get; set; }
 
-    public required string Scope { get; init; }
+    public required string UpdatedLabel { get; set; }
 
-    public ObservableCollection<ChatMessage> Messages { get; } = new();
+    public ObservableCollection<SessionItem> Sessions { get; } = new();
+
+    public ObservableCollection<MaterialItem> Materials { get; } = new();
 }
 
-public sealed class ChatMessage
+public sealed class SessionItem
 {
-    public required string Author { get; init; }
+    public required string Id { get; init; }
 
-    public required string Content { get; init; }
+    public required string ProjectId { get; init; }
 
-    public required string TimeLabel { get; init; }
+    public required string Title { get; set; }
+
+    public required string UpdatedLabel { get; set; }
+
+    public ObservableCollection<ActivityItem> Activities { get; } = new();
 }
 
-public sealed class AttachmentItem
+public sealed class MaterialItem
 {
-    public required string Name { get; init; }
+    public required string Id { get; init; }
 
-    public required string Detail { get; init; }
+    public required string Name { get; set; }
+
+    public required MaterialKind Kind { get; init; }
+
+    public required string Detail { get; set; }
+
+    public string KindLabel => Kind switch
+    {
+        MaterialKind.Pdf => "PDF",
+        MaterialKind.Markdown => "MD",
+        MaterialKind.Note => "NOTE",
+        _ => "DIR"
+    };
+}
+
+public sealed class ActivityItem
+{
+    public required string Id { get; init; }
+
+    public required ActivityKind Kind { get; init; }
+
+    public required string Title { get; set; }
+
+    public required string Subtitle { get; set; }
+
+    public string Body { get; set; } = string.Empty;
+
+    public string Badge { get; set; } = string.Empty;
+
+    public ObservableCollection<MaterialItem> Materials { get; } = new();
+
+    public ObservableCollection<FileChangeItem> FileChanges { get; } = new();
+}
+
+public sealed class FileChangeItem
+{
+    public required string Path { get; init; }
+
+    public required int Added { get; init; }
+
+    public required int Removed { get; init; }
+
+    public string DeltaText => $"+{Added} -{Removed}";
 }
 
 public sealed class WorkspaceSeed
 {
-    public ObservableCollection<LibraryItem> LibraryItems { get; } = new();
-
-    public ObservableCollection<DocumentTab> Documents { get; } = new();
-
-    public ObservableCollection<ChatConversation> Conversations { get; } = new();
+    public ObservableCollection<ProjectItem> Projects { get; } = new();
 }

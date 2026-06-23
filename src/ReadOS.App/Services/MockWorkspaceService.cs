@@ -8,214 +8,165 @@ public sealed class MockWorkspaceService : IWorkspaceService
     {
         var seed = new WorkspaceSeed();
 
-        seed.LibraryItems.Add(new LibraryItem
-        {
-            Id = "folder-textbooks",
-            DisplayName = "Textbooks",
-            Kind = LibraryItemKind.Folder,
-            Detail = "12 documents",
-            ProgressText = "Ordered manually"
-        });
-        seed.LibraryItems.Add(new LibraryItem
-        {
-            Id = "networks",
-            DisplayName = "Computer Networking.pdf",
-            Kind = LibraryItemKind.Document,
-            Detail = "Textbooks / Networking",
-            ProgressText = "Reading page 144"
-        });
-        seed.LibraryItems.Add(new LibraryItem
-        {
-            Id = "algebra",
-            DisplayName = "Abstract Algebra.pdf",
-            Kind = LibraryItemKind.Document,
-            Detail = "Textbooks / Mathematics",
-            ProgressText = "Mapped pages ready"
-        });
-        seed.LibraryItems.Add(new LibraryItem
-        {
-            Id = "transformers",
-            DisplayName = "Transformer Notes.pdf",
-            Kind = LibraryItemKind.Document,
-            Detail = "Papers / Machine Learning",
-            ProgressText = "Outline pending"
-        });
-        seed.LibraryItems.Add(new LibraryItem
-        {
-            Id = "folder-papers",
-            DisplayName = "Papers",
-            Kind = LibraryItemKind.Folder,
-            Detail = "7 documents",
-            ProgressText = "Synced locally"
-        });
+        var reados = CreateReadOsProject();
+        var math = CreateMathProject();
+        var story = CreateStoryProject();
 
-        seed.Documents.Add(CreateNetworkingDocument());
-        seed.Documents.Add(CreateAlgebraDocument());
-        seed.Documents.Add(CreateTransformerDocument());
-
-        seed.Conversations.Add(CreateNetworkingConversation());
-        seed.Conversations.Add(CreateAlgebraConversation());
-        seed.Conversations.Add(CreateTransformerConversation());
+        seed.Projects.Add(reados);
+        seed.Projects.Add(math);
+        seed.Projects.Add(story);
 
         return seed;
     }
 
-    private static DocumentTab CreateNetworkingDocument()
+    private static ProjectItem CreateReadOsProject()
     {
-        var document = new DocumentTab
+        var project = new ProjectItem
         {
-            DocumentId = "networks",
-            Title = "Computer Networking.pdf",
-            Subtitle = "AI page mapping and outline mock are active",
-            PageLabel = "Book page 144",
-            PageLabelPrefix = "Book page",
-            PageNumber = 144,
-            PageCount = 328,
-            PagePreviewText = "This placeholder represents the PDF surface. The first MVP proves the library, reader, outline, attachment, and chat workflow before the PDF engine is wired in."
+            Id = "reados",
+            Name = "reados",
+            Description = "AI PDF 阅读器 MVP",
+            UpdatedLabel = "1 小时"
         };
 
-        document.PageChips.Add("cover");
-        document.PageChips.Add("i");
-        document.PageChips.Add("1");
-        document.PageChips.Add("144");
-        document.PageChips.Add("145");
+        project.Materials.Add(new MaterialItem
+        {
+            Id = "goal",
+            Name = "PRODUCT_GOAL.md",
+            Kind = MaterialKind.Markdown,
+            Detail = "产品目标 · MD"
+        });
+        project.Materials.Add(new MaterialItem
+        {
+            Id = "mvp",
+            Name = "INITIAL_MVP.md",
+            Kind = MaterialKind.Markdown,
+            Detail = "MVP 规划 · MD"
+        });
 
-        document.Outline.Add(new OutlineItem { Title = "6.4 Network security", PageLabel = "Book page 170", PageNumber = 170 });
-        document.Outline.Add(new OutlineItem { Title = "6.4.1 Cryptographic principles", PageLabel = "Book page 171", PageNumber = 171 });
-        document.Outline.Add(new OutlineItem { Title = "6.4.2 Symmetric key algorithms", PageLabel = "Book page 172", PageNumber = 172 });
-        document.Outline.Add(new OutlineItem { Title = "6.4.3 Public key cryptography", PageLabel = "Book page 176", PageNumber = 176 });
+        var session = new SessionItem
+        {
+            Id = "understand-docs",
+            ProjectId = project.Id,
+            Title = "理解应用文档",
+            UpdatedLabel = "1 小时"
+        };
 
-        return document;
+        session.Activities.Add(new ActivityItem
+        {
+            Id = "summary",
+            Kind = ActivityKind.Text,
+            Title = "目标",
+            Subtitle = "建立紧凑项目工作台",
+            Body = "ReadOS 现在以项目为核心组织资料、会话与后续 AI 阅读动作。"
+        });
+        session.Activities.Add(new ActivityItem
+        {
+            Id = "command",
+            Kind = ActivityKind.Code,
+            Title = "你现在可以：",
+            Subtitle = "powershell",
+            Body = "git pull\n.\\scripts\\run.ps1"
+        });
+        session.Activities.Add(CreateMaterialActivity(project));
+        session.Activities.Add(new ActivityItem
+        {
+            Id = "changes",
+            Kind = ActivityKind.Changes,
+            Title = "已编辑 8 个文件",
+            Subtitle = "+528 -78",
+            Badge = "待审核"
+        });
+        session.Activities[^1].FileChanges.Add(new FileChangeItem { Path = "README.md", Added = 1, Removed = 1 });
+        session.Activities[^1].FileChanges.Add(new FileChangeItem { Path = "docs/INITIAL_MVP.md", Added = 3, Removed = 0 });
+        session.Activities[^1].FileChanges.Add(new FileChangeItem { Path = "src/ReadOS.App/MainWindow.xaml", Added = 120, Removed = 58 });
+
+        project.Sessions.Add(session);
+        return project;
     }
 
-    private static DocumentTab CreateAlgebraDocument()
+    private static ProjectItem CreateMathProject()
     {
-        var document = new DocumentTab
+        var project = new ProjectItem
         {
-            DocumentId = "algebra",
-            Title = "Abstract Algebra.pdf",
-            Subtitle = "Per-PDF system prompt mock is ready",
-            PageLabel = "Book page 37",
-            PageLabelPrefix = "Book page",
-            PageNumber = 37,
-            PageCount = 412,
-            PagePreviewText = "This mock document shows how page labels, outline entries, and chat history will stay bound to each PDF."
+            Id = "math",
+            Name = "math",
+            Description = "整理高数 PPT 复习资料",
+            UpdatedLabel = "2 天"
         };
 
-        document.PageChips.Add("cover");
-        document.PageChips.Add("iii");
-        document.PageChips.Add("1");
-        document.PageChips.Add("37");
-        document.PageChips.Add("38");
+        project.Materials.Add(new MaterialItem
+        {
+            Id = "math-pdf",
+            Name = "高等数学讲义.pdf",
+            Kind = MaterialKind.Pdf,
+            Detail = "资料 · PDF"
+        });
 
-        document.Outline.Add(new OutlineItem { Title = "2.1 Groups and symmetries", PageLabel = "Book page 31", PageNumber = 31 });
-        document.Outline.Add(new OutlineItem { Title = "2.2 Subgroups", PageLabel = "Book page 37", PageNumber = 37 });
-        document.Outline.Add(new OutlineItem { Title = "2.3 Cyclic groups", PageLabel = "Book page 45", PageNumber = 45 });
+        project.Sessions.Add(new SessionItem
+        {
+            Id = "math-review",
+            ProjectId = project.Id,
+            Title = "整理高数PPT复习资料",
+            UpdatedLabel = "2 天"
+        });
 
-        return document;
+        project.Sessions[0].Activities.Add(CreateMaterialActivity(project));
+        return project;
     }
 
-    private static DocumentTab CreateTransformerDocument()
+    private static ProjectItem CreateStoryProject()
     {
-        var document = new DocumentTab
+        var project = new ProjectItem
         {
-            DocumentId = "transformers",
-            Title = "Transformer Notes.pdf",
-            Subtitle = "Outline generation is waiting for a vision model",
-            PageLabel = "PDF page 12",
-            PageLabelPrefix = "PDF page",
-            PageNumber = 12,
-            PageCount = 64,
-            PagePreviewText = "Later this area will render the real PDF. The MVP keeps the UX shape while services are still mocks."
+            Id = "uni-story",
+            Name = "Uni-Story",
+            Description = "阅读项目进程",
+            UpdatedLabel = "1 周"
         };
 
-        document.PageChips.Add("1");
-        document.PageChips.Add("2");
-        document.PageChips.Add("12");
-        document.PageChips.Add("13");
+        project.Sessions.Add(new SessionItem
+        {
+            Id = "ui-progress",
+            ProjectId = project.Id,
+            Title = "阅读项目进程 ui_button_ring.tscn...",
+            UpdatedLabel = "1 周"
+        });
+        project.Sessions.Add(new SessionItem
+        {
+            Id = "mcp-check",
+            ProjectId = project.Id,
+            Title = "帮我查看 mcp 是否已连接，系统...",
+            UpdatedLabel = "1 周"
+        });
 
-        document.Outline.Add(new OutlineItem { Title = "Attention overview", PageLabel = "PDF page 8", PageNumber = 8 });
-        document.Outline.Add(new OutlineItem { Title = "Multi-head attention", PageLabel = "PDF page 12", PageNumber = 12 });
-        document.Outline.Add(new OutlineItem { Title = "Position encodings", PageLabel = "PDF page 18", PageNumber = 18 });
+        project.Sessions[0].Activities.Add(new ActivityItem
+        {
+            Id = "story-note",
+            Kind = ActivityKind.Text,
+            Title = "项目记录",
+            Subtitle = "模拟会话",
+            Body = "这里展示项目会话如何被保留在左侧项目下。"
+        });
 
-        return document;
+        return project;
     }
 
-    private static ChatConversation CreateNetworkingConversation()
+    private static ActivityItem CreateMaterialActivity(ProjectItem project)
     {
-        var conversation = new ChatConversation
+        var activity = new ActivityItem
         {
-            Id = "chat-networks-1",
-            DocumentId = "networks",
-            Title = "Explain pages 144-145",
-            Scope = "Computer Networking.pdf"
+            Id = $"materials-{project.Id}",
+            Kind = ActivityKind.Materials,
+            Title = "已导入资料",
+            Subtitle = $"{project.Materials.Count} 个文件"
         };
 
-        conversation.Messages.Add(new ChatMessage
+        foreach (var material in project.Materials)
         {
-            Author = "You",
-            TimeLabel = "mock",
-            Content = "Explain these two pages in the order used by the book."
-        });
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = "mock",
-            Content = "The answer will stay attached to the PDF, page labels, and original attachments so it can be reviewed later."
-        });
+            activity.Materials.Add(material);
+        }
 
-        return conversation;
-    }
-
-    private static ChatConversation CreateAlgebraConversation()
-    {
-        var conversation = new ChatConversation
-        {
-            Id = "chat-algebra-1",
-            DocumentId = "algebra",
-            Title = "Subgroups intuition",
-            Scope = "Abstract Algebra.pdf"
-        };
-
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "You",
-            TimeLabel = "mock",
-            Content = "Use concrete examples to explain this section."
-        });
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = "mock",
-            Content = "The per-document prompt will let this book use a different teaching style from other PDFs."
-        });
-
-        return conversation;
-    }
-
-    private static ChatConversation CreateTransformerConversation()
-    {
-        var conversation = new ChatConversation
-        {
-            Id = "chat-transformers-1",
-            DocumentId = "transformers",
-            Title = "Attention notes",
-            Scope = "Transformer Notes.pdf"
-        };
-
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "You",
-            TimeLabel = "mock",
-            Content = "What should I focus on before reading the attention equations?"
-        });
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = "mock",
-            Content = "The first MVP keeps this as mock chat until provider settings and model calls are added."
-        });
-
-        return conversation;
+        return activity;
     }
 }

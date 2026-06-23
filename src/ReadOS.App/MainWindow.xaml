@@ -8,492 +8,354 @@
     mc:Ignorable="d"
     Title="ReadOS">
 
-    <Grid x:Name="RootShell" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid x:Name="RootShell" Background="#111111">
         <Grid.RowDefinitions>
             <RowDefinition Height="52" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="32" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0"
-                Padding="16,8"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1">
-            <Grid ColumnSpacing="12">
+        <Border Grid.Row="0" Background="#1D1D1D" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+            <Grid Padding="12,0" ColumnSpacing="18">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <TextBlock Text="ReadOS" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Strings.AppSubtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                    <Button Width="32" Height="32" Padding="0" Content="‹" FontSize="22" />
+                    <Button Width="32" Height="32" Padding="0" Content="›" FontSize="22" />
+                    <Button Width="32" Height="32" Padding="0" Content="↓" />
                 </StackPanel>
 
-                <ListView Grid.Column="1"
-                          ItemsSource="{Binding OpenTabs}"
-                          SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
-                          SelectionMode="Single"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          Background="Transparent"
-                          BorderThickness="0"
-                          MinHeight="36">
-                    <ListView.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <ItemsStackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ListView.ItemsPanel>
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Border MinWidth="150" Padding="10,6" CornerRadius="6">
-                                <StackPanel Spacing="1">
-                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                    <TextBlock Text="{Binding PageLabel}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Content="{Binding Strings.Library}" Command="{Binding ToggleLibraryPaneCommand}" />
-                    <Button Content="{Binding Strings.Chat}" Command="{Binding ToggleChatPaneCommand}" />
-                    <Button Content="{Binding Strings.CloseTab}" Command="{Binding CloseCurrentTabCommand}" />
-                    <Button Content="{Binding Strings.Settings}" Command="{Binding OpenSettingsCommand}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="28" VerticalAlignment="Center">
+                    <TextBlock Text="文件" Foreground="#D6D6D6" FontSize="16" />
+                    <TextBlock Text="编辑" Foreground="#9A9A9A" FontSize="16" />
+                    <TextBlock Text="视图" Foreground="#9A9A9A" FontSize="16" />
+                    <TextBlock Text="帮助" Foreground="#9A9A9A" FontSize="16" />
                 </StackPanel>
+
+                <TextBlock Grid.Column="2"
+                           Text="{Binding Strings.AppSubtitle}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="#777777" />
+
+                <Button Grid.Column="3"
+                        Content="{Binding Strings.OpenLocation}"
+                        Padding="14,6"
+                        Command="{Binding OpenSettingsCommand}" />
             </Grid>
         </Border>
 
-        <SplitView x:Name="LibrarySplitView"
-                   Grid.Row="1"
-                   DisplayMode="Inline"
-                   IsPaneOpen="{Binding IsLibraryPaneOpen, Mode=TwoWay}"
-                   OpenPaneLength="{Binding LibraryPaneWidth, Mode=TwoWay}"
-                   CompactPaneLength="0">
-            <SplitView.Pane>
-                <Grid Padding="16" RowSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="320" />
+                <ColumnDefinition Width="1" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="{Binding Strings.Library}" FontSize="20" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding LibrarySummary}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="{Binding Strings.Import}" Command="{Binding ImportDocumentCommand}" />
-                    </Grid>
-
-                    <TextBlock Grid.Row="1"
-                               Text="{Binding Strings.DragHint}"
-                               TextWrapping="WrapWholeWords"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-
-                    <TextBox Grid.Row="2"
-                             Header="{Binding Strings.Search}"
-                             PlaceholderText="{Binding Strings.SearchPlaceholder}"
-                             Text="{Binding LibrarySearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                    <ListView Grid.Row="3"
-                              ItemsSource="{Binding LibraryItems}"
-                              SelectedItem="{Binding SelectedLibraryItem, Mode=TwoWay}"
-                              SelectionMode="Single">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="8" ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="34" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Width="30"
-                                            Height="30"
-                                            CornerRadius="6"
-                                            Background="{ThemeResource AccentFillColorSecondaryBrush}">
-                                        <TextBlock Text="{Binding KindLabel}"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" Spacing="2">
-                                        <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Detail}" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        <TextBlock Text="{Binding ProgressText}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-
-                    <primitives:Thumb Grid.RowSpan="4"
-                                      Width="8"
-                                      HorizontalAlignment="Right"
-                                      Background="Transparent"
-                                      DragDelta="LibraryResizeThumb_DragDelta" />
-                </Grid>
-            </SplitView.Pane>
-
-            <SplitView.Content>
-                <SplitView x:Name="ChatSplitView"
-                           DisplayMode="Inline"
-                           PanePlacement="Right"
-                           IsPaneOpen="{Binding IsChatPaneOpen, Mode=TwoWay}"
-                           OpenPaneLength="{Binding ChatPaneWidth, Mode=TwoWay}"
-                           CompactPaneLength="0">
-                    <SplitView.Content>
-                        <Grid Padding="20" RowSpacing="14">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="{Binding SelectedDocumentTitle}" FontSize="24" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding SelectedDocumentSubtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <Button Content="{Binding Strings.MapPages}" Command="{Binding ConfigurePageMappingCommand}" />
-                                    <Button Content="{Binding Strings.Outline}" Command="{Binding GenerateOutlineCommand}" />
-                                    <Button Content="{Binding Strings.AttachPage}" Command="{Binding AttachCurrentPageCommand}" />
-                                    <Button Content="{Binding Strings.ExplainRegion}" Command="{Binding StartRegionExplainCommand}" />
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Grid.Row="1" ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="144" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <ItemsControl ItemsSource="{Binding PageChips}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <ItemsStackPanel Orientation="Horizontal" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Padding="10,5"
-                                                    Margin="0,0,8,0"
-                                                    CornerRadius="6"
-                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                    BorderThickness="1">
-                                                <TextBlock Text="{Binding}" FontSize="12" />
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <TextBox Grid.Column="1"
-                                         PlaceholderText="144-145"
-                                         Text="{Binding PageRangeDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <Button Grid.Column="2" Content="{Binding Strings.AttachRange}" Command="{Binding AttachPageRangeCommand}" />
-                            </Grid>
-
-                            <Grid Grid.Row="2" ColumnSpacing="0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="8" />
-                                    <ColumnDefinition x:Name="OutlineColumn" Width="272" />
-                                </Grid.ColumnDefinitions>
-
-                                <Border Padding="28"
-                                        CornerRadius="8"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1">
-                                    <Grid RowSpacing="16">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Text="{Binding ReaderHeading}" FontSize="18" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding ReaderSubheading}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </StackPanel>
-
-                                        <Border Grid.Row="1"
-                                                Padding="28"
-                                                CornerRadius="8"
-                                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                BorderThickness="1">
-                                            <Grid>
-                                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                                                    <TextBlock Text="{Binding CurrentPageLabel}" FontSize="42" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                                    <TextBlock Text="{Binding PagePreviewText}"
-                                                               MaxWidth="520"
-                                                               TextWrapping="Wrap"
-                                                               TextAlignment="Center"
-                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-
-                                        <Grid Grid.Row="2" ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Content="{Binding Strings.Previous}" Command="{Binding PreviousPageCommand}" />
-                                            <Slider Grid.Column="1"
-                                                    Minimum="1"
-                                                    Maximum="{Binding CurrentPageCount}"
-                                                    Value="{Binding CurrentPageNumber, Mode=TwoWay}" />
-                                            <Button Grid.Column="2" Content="{Binding Strings.Next}" Command="{Binding NextPageCommand}" />
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-
-                                <primitives:Thumb Grid.Column="1"
-                                                  Width="8"
-                                                  Background="Transparent"
-                                                  DragDelta="OutlineResizeThumb_DragDelta" />
-
-                                <Border Grid.Column="2"
-                                        Margin="8,0,0,0"
-                                        Padding="14"
-                                        CornerRadius="8"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1">
-                                    <Grid RowSpacing="10">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Text="{Binding Strings.Outline}" FontSize="18" FontWeight="SemiBold" />
-                                        <ListView Grid.Row="1"
-                                                  ItemsSource="{Binding CurrentOutline}"
-                                                  SelectedItem="{Binding SelectedOutlineItem, Mode=TwoWay}"
-                                                  SelectionMode="Single">
-                                            <ListView.ItemTemplate>
-                                                <DataTemplate>
-                                                    <StackPanel Padding="0,6" Spacing="2">
-                                                        <TextBlock Text="{Binding Title}" TextWrapping="WrapWholeWords" />
-                                                        <TextBlock Text="{Binding PageLabel}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ListView.ItemTemplate>
-                                        </ListView>
-                                    </Grid>
-                                </Border>
-                            </Grid>
-                        </Grid>
-                    </SplitView.Content>
-
-                    <SplitView.Pane>
-                        <Grid Padding="16" RowSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <primitives:Thumb Grid.RowSpan="4"
-                                              Width="8"
-                                              HorizontalAlignment="Left"
-                                              Background="Transparent"
-                                              DragDelta="ChatResizeThumb_DragDelta" />
-
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="{Binding Strings.ChatWarehouse}" FontSize="20" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding CurrentConversationScope}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </StackPanel>
-                                <Button Grid.Column="1" Content="{Binding Strings.New}" Command="{Binding CreateConversationCommand}" />
-                            </Grid>
-
-                            <ComboBox Grid.Row="1"
-                                      Header="{Binding Strings.Conversation}"
-                                      ItemsSource="{Binding DocumentConversations}"
-                                      SelectedItem="{Binding CurrentConversation, Mode=TwoWay}"
-                                      DisplayMemberPath="Title"
-                                      HorizontalAlignment="Stretch" />
-
-                            <ListView Grid.Row="2" ItemsSource="{Binding CurrentMessages}" SelectionMode="None">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Padding="10"
-                                                Margin="0,0,0,8"
-                                                CornerRadius="8"
-                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                            <StackPanel Spacing="5">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Author}" FontWeight="SemiBold" />
-                                                    <TextBlock Grid.Column="1" Text="{Binding TimeLabel}" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                                </Grid>
-                                                <TextBlock Text="{Binding Content}" TextWrapping="WrapWholeWords" />
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-
-                            <Grid Grid.Row="3" RowSpacing="8">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding AttachmentSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <Button Grid.Column="1" Content="{Binding Strings.Clear}" Command="{Binding ClearAttachmentsCommand}" />
-                                </Grid>
-
-                                <ItemsControl Grid.Row="1" ItemsSource="{Binding Attachments}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Padding="8"
-                                                    Margin="0,0,0,6"
-                                                    CornerRadius="6"
-                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
-                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBox Grid.Row="2"
-                                         PlaceholderText="{Binding Strings.AskPlaceholder}"
-                                         Text="{Binding PromptDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AcceptsReturn="True"
-                                         MinHeight="72" />
-                                <Button Grid.Row="3"
-                                        Content="{Binding Strings.SendMockPrompt}"
-                                        HorizontalAlignment="Stretch"
-                                        Command="{Binding SendPromptCommand}" />
-                            </Grid>
-                        </Grid>
-                    </SplitView.Pane>
-                </SplitView>
-            </SplitView.Content>
-        </SplitView>
-
-        <Border Grid.Row="1"
-                Canvas.ZIndex="10"
-                Width="460"
-                HorizontalAlignment="Right"
-                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1,0,0,0"
-                Visibility="{Binding IsSettingsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid Padding="20" RowSpacing="16">
+            <Grid Grid.Column="0" Background="#1C1C1C">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="{Binding Strings.Settings}" FontSize="24" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Strings.DragHint}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
-                    <Button Grid.Column="1" Content="{Binding Strings.CloseSettings}" Command="{Binding CloseSettingsCommand}" />
-                </Grid>
+                <StackPanel Padding="12,16,12,12" Spacing="8">
+                    <Button HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"
+                            Content="{Binding Strings.NewSession}"
+                            Command="{Binding StartSessionCommand}" />
+                    <Button HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="12,8"
+                            Content="{Binding Strings.ImportMaterial}"
+                            Command="{Binding ImportMaterialCommand}" />
+                    <TextBox Header="{Binding Strings.Search}"
+                             PlaceholderText="{Binding Strings.SearchPlaceholder}"
+                             Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
 
                 <ScrollViewer Grid.Row="1">
-                    <StackPanel Spacing="18">
-                        <ComboBox Header="{Binding Strings.Language}"
-                                  ItemsSource="{Binding LanguageOptions}"
-                                  SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay}"
-                                  DisplayMemberPath="DisplayName"
-                                  HorizontalAlignment="Stretch" />
+                    <StackPanel Padding="12,4,12,12" Spacing="12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Strings.Projects}"
+                                       Foreground="#818181"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Width="30"
+                                    Height="30"
+                                    Padding="0"
+                                    Content="+"
+                                    Command="{Binding CreateProjectCommand}" />
+                        </Grid>
 
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="{Binding Strings.AiProvider}" FontSize="18" FontWeight="SemiBold" />
-                            <TextBox Header="{Binding Strings.ProviderName}" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox Header="{Binding Strings.BaseUrl}" Text="{Binding ProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox Header="{Binding Strings.ApiKey}" Text="{Binding ProviderApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox Header="{Binding Strings.ModelName}" Text="{Binding ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <ToggleSwitch Header="{Binding Strings.UseMockResponses}" IsOn="{Binding UseMockResponses, Mode=TwoWay}" />
-                        </StackPanel>
-
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="{Binding Strings.Prompts}" FontSize="18" FontWeight="SemiBold" />
-                            <TextBox Header="{Binding Strings.AttachmentPrompt}"
-                                     Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     MinHeight="68" />
-                            <TextBox Header="{Binding Strings.RegionPrompt}"
-                                     Text="{Binding RegionExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     MinHeight="68" />
-                            <TextBox Header="{Binding Strings.ChapterPrompt}"
-                                     Text="{Binding ChapterExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     MinHeight="68" />
-                        </StackPanel>
-
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="{Binding Strings.MinorU}" FontSize="18" FontWeight="SemiBold" />
-                            <TextBox Header="{Binding Strings.MinorUEndpoint}" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
+                        <ListView ItemsSource="{Binding NavigationEntries}"
+                                  SelectedItem="{Binding SelectedNavigationEntry, Mode=TwoWay}"
+                                  SelectionMode="Single"
+                                  Background="Transparent"
+                                  BorderThickness="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="8,7" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Prefix}" Foreground="#AAAAAA" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Title}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="#E7E7E7" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding TimeLabel}"
+                                                   Foreground="#858585"
+                                                   FontSize="12" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
                 </ScrollViewer>
 
                 <Button Grid.Row="2"
-                        Content="{Binding Strings.SaveSettings}"
+                        Margin="12,10,12,16"
                         HorizontalAlignment="Stretch"
-                        Command="{Binding SaveSettingsCommand}" />
+                        HorizontalContentAlignment="Left"
+                        Padding="12,8"
+                        Content="{Binding Strings.Settings}"
+                        Command="{Binding OpenSettingsCommand}" />
             </Grid>
-        </Border>
 
-        <Border Grid.Row="2"
-                Padding="14,0"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Grid.Column="1" Text="{Binding ActiveModelLabel}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Border Grid.Column="1" Background="#303030">
+                <primitives:Thumb Width="8"
+                                  HorizontalAlignment="Center"
+                                  Background="Transparent"
+                                  DragDelta="SidebarResizeThumb_DragDelta" />
+            </Border>
+
+            <Grid Grid.Column="2" Background="#121212">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="68" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="150" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+                    <Grid Padding="26,0" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="{Binding ActiveTitle}" Foreground="#F2F2F2" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="..." Foreground="#858585" FontSize="18" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding ActiveSubtitle}" Foreground="#818181" FontSize="12" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Button Content="{Binding Strings.OpenLocation}" Padding="14,6" />
+                            <Button Content="{Binding Strings.Review}" Padding="14,6" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding ActivityStream}"
+                                  MaxWidth="1120"
+                                  HorizontalAlignment="Center"
+                                  Margin="0,24,0,24">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,18"
+                                        Padding="18"
+                                        CornerRadius="8"
+                                        BorderBrush="#343434"
+                                        BorderThickness="1"
+                                        Background="#202020">
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Width="40"
+                                                Height="40"
+                                                CornerRadius="8"
+                                                Background="#101010">
+                                            <TextBlock Text="□"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="#BEBEBE"
+                                                       FontSize="18" />
+                                        </Border>
+
+                                        <StackPanel Grid.Column="1" Spacing="10">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#F0F0F0" FontSize="16" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Subtitle}" Foreground="#A0A0A0" FontSize="12" />
+                                            </StackPanel>
+
+                                            <TextBlock Text="{Binding Body}"
+                                                       Foreground="#D8D8D8"
+                                                       TextWrapping="WrapWholeWords"
+                                                       FontSize="14" />
+
+                                            <ItemsControl ItemsSource="{Binding Materials}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Padding="0,8" ColumnSpacing="12">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="42" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Border Width="38" Height="38" CornerRadius="7" Background="#111111">
+                                                                <TextBlock Text="{Binding KindLabel}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" Foreground="#CCCCCC" />
+                                                            </Border>
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Text="{Binding Name}" Foreground="#F0F0F0" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding Detail}" Foreground="#9B9B9B" FontSize="12" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="2" Content="打开方式" Padding="12,5" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <ItemsControl ItemsSource="{Binding FileChanges}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Padding="0,5" ColumnSpacing="12">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Path}" Foreground="#E0E0E0" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding DeltaText}" Foreground="#49D17D" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding Badge}"
+                                                   Foreground="#D8D8D8" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <Border Grid.Row="2" Padding="0,0,0,22">
+                    <Border MaxWidth="1120"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            CornerRadius="20"
+                            Background="#2A2A2A"
+                            BorderBrush="#303030"
+                            BorderThickness="1"
+                            Padding="18,14">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBox PlaceholderText="{Binding Strings.ComposerPlaceholder}"
+                                     Text="{Binding ComposerDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     MinHeight="58" />
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Width="34" Height="34" Padding="0" Content="+" Command="{Binding ImportMaterialCommand}" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="14,0,0,0"
+                                           Text="{Binding Strings.FullAccess}"
+                                           Foreground="#FF8B3D"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{Binding ActiveModelLabel}"
+                                           Foreground="#CFCFCF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,14,0" />
+                                <Button Grid.Column="4"
+                                        Width="38"
+                                        Height="38"
+                                        Padding="0"
+                                        Content="↑"
+                                        Command="{Binding SendPromptCommand}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Border>
+
+                <Border Width="460"
+                        HorizontalAlignment="Right"
+                        Background="#1E1E1E"
+                        BorderBrush="#303030"
+                        BorderThickness="1,0,0,0"
+                        Visibility="{Binding IsSettingsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid Padding="20" RowSpacing="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Strings.Settings}" FontSize="24" FontWeight="SemiBold" Foreground="#F1F1F1" />
+                            <Button Grid.Column="1" Content="{Binding Strings.CloseSettings}" Command="{Binding CloseSettingsCommand}" />
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="1">
+                            <StackPanel Spacing="16">
+                                <ComboBox Header="{Binding Strings.Language}"
+                                          ItemsSource="{Binding LanguageOptions}"
+                                          SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay}"
+                                          DisplayMemberPath="DisplayName"
+                                          HorizontalAlignment="Stretch" />
+
+                                <TextBox Header="{Binding Strings.ProviderName}" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="{Binding Strings.BaseUrl}" Text="{Binding ProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="{Binding Strings.ApiKey}" Text="{Binding ProviderApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="{Binding Strings.ModelName}" Text="{Binding ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ToggleSwitch Header="{Binding Strings.UseMockResponses}" IsOn="{Binding UseMockResponses, Mode=TwoWay}" />
+                                <TextBox Header="{Binding Strings.AttachmentPrompt}" Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
+                                <TextBox Header="{Binding Strings.RegionPrompt}" Text="{Binding RegionExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
+                                <TextBox Header="{Binding Strings.ChapterPrompt}" Text="{Binding ChapterExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
+                                <TextBox Header="{Binding Strings.MinorUEndpoint}" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <Button Grid.Row="2" Content="{Binding Strings.SaveSettings}" HorizontalAlignment="Stretch" Command="{Binding SaveSettingsCommand}" />
+                    </Grid>
+                </Border>
             </Grid>
-        </Border>
+        </Grid>
     </Grid>
 </Window>

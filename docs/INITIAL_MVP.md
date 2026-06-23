@@ -12,15 +12,16 @@ draft/initial-mvp
 
 ## MVP Goal
 
-Build a WinUI shell that makes the future product visible:
+Build a compact Codex-like WinUI shell that makes the future product visible:
 
-- left library panel
-- central reader workspace
-- right chat panel
-- top command area
-- tab strip placeholder
-- settings entry
-- local mock state for library items, open tabs, chat messages, and attachments
+- left navigation rail
+- project list
+- project sessions
+- import material command
+- central session stream
+- bottom composer
+- settings drawer
+- local mock state for projects, sessions, materials, and activity cards
 
 No real PDF rendering or model calls are required in the first UI MVP. The app should communicate the workflow and make the next integration points obvious.
 
@@ -40,18 +41,15 @@ After the first successful Visual Studio `F5` run, we can decide whether to keep
 
 The mock shell now supports these MVP interactions:
 
-- Search filters the library list by document name, folder name, detail, or progress text.
-- Import creates a new mock PDF, opens it, and gives it a starter conversation.
-- Tabs can be opened by selecting documents and closed with `Close Tab`.
-- Page slider and outline selection update the current page label.
-- Page mapping and outline buttons mutate the mock chips/outline instead of only changing status text.
-- Current page, page range, and region explanation add mock attachments.
-- Attachments can be cleared.
-- Conversation dropdown is scoped to the selected PDF.
-- `Send Mock Prompt` stores a user message and a mock ReadOS answer in the selected PDF conversation.
+- Left navigation shows global actions, projects, and project sessions.
+- `新建项目` creates a project with a starter session.
+- `新对话` creates a session in the selected project.
+- `导入资料` adds a mock PDF material to the active project and posts it into the active session stream.
+- Selecting a project/session updates the central stream.
+- Bottom composer sends a mock user request and mock ReadOS answer into the active session.
 - UI defaults to Chinese and can switch to English from the settings drawer.
 - Settings drawer exposes language, AI provider, base URL, API key, model, default prompts, MinorU endpoint, and mock-response mode.
-- Library, outline, and chat boundaries can be dragged to resize panes.
+- The left navigation rail can be dragged to resize.
 
 ## First App Shell Acceptance Criteria
 

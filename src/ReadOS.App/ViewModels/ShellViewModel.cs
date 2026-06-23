@@ -13,22 +13,10 @@ public partial class ShellViewModel : ObservableObject
     private readonly WorkspaceSeed workspace;
 
     [ObservableProperty]
-    public partial bool IsLibraryPaneOpen { get; set; } = true;
-
-    [ObservableProperty]
-    public partial bool IsChatPaneOpen { get; set; } = true;
+    public partial double SidebarWidth { get; set; } = 320;
 
     [ObservableProperty]
     public partial bool IsSettingsOpen { get; set; }
-
-    [ObservableProperty]
-    public partial double LibraryPaneWidth { get; set; } = 304;
-
-    [ObservableProperty]
-    public partial double ChatPaneWidth { get; set; } = 392;
-
-    [ObservableProperty]
-    public partial double OutlinePaneWidth { get; set; } = 272;
 
     [ObservableProperty]
     public partial AppStrings Strings { get; set; } = LocalizationCatalog.GetStrings("zh-CN");
@@ -37,31 +25,22 @@ public partial class ShellViewModel : ObservableObject
     public partial LanguageOption? SelectedLanguageOption { get; set; }
 
     [ObservableProperty]
-    public partial string LibrarySearchQuery { get; set; } = string.Empty;
+    public partial NavigationEntry? SelectedNavigationEntry { get; set; }
 
     [ObservableProperty]
-    public partial LibraryItem? SelectedLibraryItem { get; set; }
+    public partial ProjectItem? SelectedProject { get; set; }
 
     [ObservableProperty]
-    public partial DocumentTab? SelectedTab { get; set; }
+    public partial SessionItem? SelectedSession { get; set; }
 
     [ObservableProperty]
-    public partial ChatConversation? CurrentConversation { get; set; }
+    public partial string SearchQuery { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial OutlineItem? SelectedOutlineItem { get; set; }
+    public partial string ComposerDraft { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string PromptDraft { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string PageRangeDraft { get; set; } = "144-145";
-
-    [ObservableProperty]
-    public partial string StatusMessage { get; set; } = "就绪。已加载模拟工作区。";
-
-    [ObservableProperty]
-    public partial int CurrentPageNumber { get; set; } = 1;
+    public partial string StatusMessage { get; set; } = "就绪。";
 
     [ObservableProperty]
     public partial string ProviderName { get; set; } = "OpenAI Compatible";
@@ -98,61 +77,29 @@ public partial class ShellViewModel : ObservableObject
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
         SelectedLanguageOption = LanguageOptions.First();
 
-        foreach (var item in workspace.LibraryItems)
-        {
-            LibraryItems.Add(item);
-        }
-
-        foreach (var conversation in workspace.Conversations)
-        {
-            Conversations.Add(conversation);
-        }
-
-        var firstDocument = workspace.Documents.First();
-        OpenDocument(firstDocument.DocumentId);
+        RefreshProjects();
+        SelectProject(workspace.Projects.First());
     }
 
     public ObservableCollection<LanguageOption> LanguageOptions { get; } = new();
 
-    public ObservableCollection<LibraryItem> LibraryItems { get; } = new();
+    public ObservableCollection<ProjectItem> Projects { get; } = new();
 
-    public ObservableCollection<DocumentTab> OpenTabs { get; } = new();
+    public ObservableCollection<NavigationEntry> NavigationEntries { get; } = new();
 
-    public ObservableCollection<string> PageChips { get; } = new();
+    public ObservableCollection<ActivityItem> ActivityStream { get; } = new();
 
-    public ObservableCollection<OutlineItem> CurrentOutline { get; } = new();
+    public ObservableCollection<MaterialItem> ActiveMaterials { get; } = new();
 
-    public ObservableCollection<ChatConversation> Conversations { get; } = new();
+    public string ActiveTitle => SelectedSession?.Title ?? SelectedProject?.Name ?? "ReadOS";
 
-    public ObservableCollection<ChatConversation> DocumentConversations { get; } = new();
-
-    public ObservableCollection<ChatMessage> CurrentMessages { get; } = new();
-
-    public ObservableCollection<AttachmentItem> Attachments { get; } = new();
-
-    public string SelectedDocumentTitle => SelectedTab?.Title ?? Strings.NoDocumentSelected;
-
-    public string SelectedDocumentSubtitle => SelectedTab?.Subtitle ?? Strings.ChooseDocument;
-
-    public string ReaderHeading => SelectedTab is null ? Strings.Reader : Strings.ReaderPreview;
-
-    public string ReaderSubheading => SelectedTab is null ? Strings.NoPdfLoaded : Strings.PdfEnginePlaceholder;
-
-    public string CurrentPageLabel => SelectedTab is null ? Strings.NoPage : $"{CurrentPagePrefix} {CurrentPageNumber}";
-
-    public string PagePreviewText => SelectedTab?.PagePreviewText ?? Strings.OpenPdfToBegin;
-
-    public int CurrentPageCount => SelectedTab?.PageCount ?? 1;
-
-    public string CurrentConversationScope => CurrentConversation?.Scope ?? Strings.NoPdfSelected;
+    public string ActiveSubtitle => SelectedProject is null
+        ? "选择一个项目开始"
+        : $"{SelectedProject.Name} · {SelectedProject.Description}";
 
     public string ActiveModelLabel => string.Format(Strings.ModelLabelFormat, UseMockResponses ? "mock provider" : ModelName);
 
-    public string AttachmentSummary => Attachments.Count == 0 ? Strings.NoAttachments : string.Format(Strings.AttachmentsReadyFormat, Attachments.Count);
-
-    public string LibrarySummary => string.Format(Strings.LibrarySummaryFormat, LibraryItems.Count);
-
-    private string CurrentPagePrefix => SelectedTab?.PageLabelPrefix == "PDF page" ? Strings.PdfPage : Strings.BookPage;
+    public string MaterialsSummary => $"{ActiveMaterials.Count} 个资料";
 
     partial void OnSelectedLanguageOptionChanged(LanguageOption? value)
     {
@@ -166,62 +113,35 @@ public partial class ShellViewModel : ObservableObject
         StatusMessage = value.Code == "zh-CN" ? "已切换到中文界面。" : "Switched to English.";
     }
 
-    partial void OnLibrarySearchQueryChanged(string value)
-    {
-        RefreshLibraryItems();
-    }
-
-    partial void OnSelectedLibraryItemChanged(LibraryItem? value)
-    {
-        if (value?.Kind == LibraryItemKind.Document)
-        {
-            OpenDocument(value.Id);
-            return;
-        }
-
-        if (value?.Kind == LibraryItemKind.Folder)
-        {
-            StatusMessage = $"已选择文件夹“{value.DisplayName}”。嵌套导航会在资料库持久化阶段实现。";
-        }
-    }
-
-    partial void OnSelectedTabChanged(DocumentTab? value)
+    partial void OnSelectedNavigationEntryChanged(NavigationEntry? value)
     {
         if (value is null)
         {
             return;
         }
 
-        CurrentPageNumber = value.PageNumber;
-        RefreshDocumentState(value);
-        StatusMessage = $"已打开 {value.Title}。";
-    }
-
-    partial void OnCurrentConversationChanged(ChatConversation? value)
-    {
-        RefreshMessages(value);
-    }
-
-    partial void OnSelectedOutlineItemChanged(OutlineItem? value)
-    {
-        if (value is null)
+        var project = workspace.Projects.FirstOrDefault(item => item.Id == value.ProjectId);
+        if (project is null)
         {
             return;
         }
 
-        CurrentPageNumber = Math.Clamp(value.PageNumber, 1, CurrentPageCount);
-        StatusMessage = $"已跳转到目录项：{value.Title}。";
-    }
-
-    partial void OnCurrentPageNumberChanged(int value)
-    {
-        if (SelectedTab is null)
+        if (value.Kind == NavigationEntryKind.Project)
         {
+            SelectProject(project);
             return;
         }
 
-        OnPropertyChanged(nameof(CurrentPageLabel));
-        StatusMessage = $"预览页已移动到 {CurrentPageLabel}。真实 PDF 导航会在 PDF 引擎阶段接入。";
+        var session = project.Sessions.FirstOrDefault(item => item.Id == value.SessionId);
+        if (session is not null)
+        {
+            SelectProject(project, session);
+        }
+    }
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        RefreshNavigation();
     }
 
     partial void OnUseMockResponsesChanged(bool value)
@@ -235,15 +155,165 @@ public partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ToggleLibraryPane()
+    private void CreateProject()
     {
-        IsLibraryPaneOpen = !IsLibraryPaneOpen;
+        var number = workspace.Projects.Count + 1;
+        var project = new ProjectItem
+        {
+            Id = $"project-{number}",
+            Name = $"新项目 {number}",
+            Description = "新的阅读项目",
+            UpdatedLabel = "刚刚"
+        };
+
+        var session = new SessionItem
+        {
+            Id = $"project-{number}-session-1",
+            ProjectId = project.Id,
+            Title = "启动阅读会话",
+            UpdatedLabel = "刚刚"
+        };
+        session.Activities.Add(new ActivityItem
+        {
+            Id = $"project-{number}-welcome",
+            Kind = ActivityKind.Text,
+            Title = "新项目已创建",
+            Subtitle = "下一步可以导入资料或直接提问",
+            Body = "这是一个模拟项目。后续会接入真实资料库和 PDF 引擎。"
+        });
+
+        project.Sessions.Add(session);
+        workspace.Projects.Add(project);
+        RefreshProjects();
+        SelectProject(project, session);
+        StatusMessage = $"已创建项目：{project.Name}。";
     }
 
     [RelayCommand]
-    private void ToggleChatPane()
+    private void StartSession()
     {
-        IsChatPaneOpen = !IsChatPaneOpen;
+        if (SelectedProject is null)
+        {
+            CreateProject();
+            return;
+        }
+
+        var number = SelectedProject.Sessions.Count + 1;
+        var session = new SessionItem
+        {
+            Id = $"{SelectedProject.Id}-session-{number}",
+            ProjectId = SelectedProject.Id,
+            Title = $"新会话 {number}",
+            UpdatedLabel = "刚刚"
+        };
+        session.Activities.Add(new ActivityItem
+        {
+            Id = $"{session.Id}-start",
+            Kind = ActivityKind.Text,
+            Title = "会话已开启",
+            Subtitle = SelectedProject.Name,
+            Body = "你可以在底部输入需求，或者先导入资料。"
+        });
+
+        SelectedProject.Sessions.Insert(0, session);
+        RefreshNavigation();
+        SelectProject(SelectedProject, session);
+        StatusMessage = $"已开启会话：{session.Title}。";
+    }
+
+    [RelayCommand]
+    private void ImportMaterial()
+    {
+        if (SelectedProject is null)
+        {
+            CreateProject();
+        }
+
+        if (SelectedProject is null)
+        {
+            return;
+        }
+
+        var number = SelectedProject.Materials.Count + 1;
+        var material = new MaterialItem
+        {
+            Id = $"{SelectedProject.Id}-material-{number}",
+            Name = $"导入资料 {number}.pdf",
+            Kind = MaterialKind.Pdf,
+            Detail = "资料 · PDF"
+        };
+
+        SelectedProject.Materials.Add(material);
+        RefreshActiveMaterials();
+
+        var session = SelectedSession ?? SelectedProject.Sessions.FirstOrDefault();
+        if (session is null)
+        {
+            StartSession();
+            session = SelectedSession;
+        }
+
+        if (session is not null)
+        {
+            var activity = new ActivityItem
+            {
+                Id = $"{session.Id}-material-{number}",
+                Kind = ActivityKind.Materials,
+                Title = "已导入资料",
+                Subtitle = material.Name
+            };
+            activity.Materials.Add(material);
+            session.Activities.Add(activity);
+            SelectProject(SelectedProject, session);
+        }
+
+        StatusMessage = $"已导入资料：{material.Name}。";
+    }
+
+    [RelayCommand]
+    private void SendPrompt()
+    {
+        if (SelectedProject is null)
+        {
+            CreateProject();
+        }
+
+        if (SelectedSession is null)
+        {
+            StartSession();
+        }
+
+        if (SelectedSession is null)
+        {
+            return;
+        }
+
+        var prompt = string.IsNullOrWhiteSpace(ComposerDraft)
+            ? "请总结当前项目资料。"
+            : ComposerDraft.Trim();
+
+        SelectedSession.Activities.Add(new ActivityItem
+        {
+            Id = $"{SelectedSession.Id}-user-{SelectedSession.Activities.Count + 1}",
+            Kind = ActivityKind.Text,
+            Title = "你",
+            Subtitle = "刚刚",
+            Body = prompt
+        });
+        SelectedSession.Activities.Add(new ActivityItem
+        {
+            Id = $"{SelectedSession.Id}-answer-{SelectedSession.Activities.Count + 1}",
+            Kind = ActivityKind.Answer,
+            Title = "ReadOS",
+            Subtitle = UseMockResponses ? "模拟回答" : $"{ProviderName} / {ModelName}",
+            Body = UseMockResponses
+                ? "已收到。真实 AI 接入后，这里会结合项目资料、当前会话和提示词生成回答。"
+                : "真实模型调用尚未接入；设置已保存为后续服务层输入。"
+        });
+
+        ComposerDraft = string.Empty;
+        RefreshActivityStream();
+        StatusMessage = "已发送到当前会话。";
     }
 
     [RelayCommand]
@@ -265,416 +335,117 @@ public partial class ShellViewModel : ObservableObject
     {
         IsSettingsOpen = false;
         OnPropertyChanged(nameof(ActiveModelLabel));
-        StatusMessage = "设置已保存到当前会话。持久化会在数据层里实现。";
+        StatusMessage = "设置已保存到当前会话。";
     }
 
-    [RelayCommand]
-    private void ImportDocument()
+    private void RefreshProjects()
     {
-        var number = workspace.Documents.Count + 1;
-        var documentId = $"imported-{number}";
-        var title = $"Imported Draft {number}.pdf";
-
-        var libraryItem = new LibraryItem
+        Projects.Clear();
+        foreach (var project in workspace.Projects)
         {
-            Id = documentId,
-            DisplayName = title,
-            Kind = LibraryItemKind.Document,
-            Detail = "Mock Imports / Inbox",
-            ProgressText = "Newly imported"
-        };
+            Projects.Add(project);
+        }
 
-        var document = new DocumentTab
-        {
-            DocumentId = documentId,
-            Title = title,
-            Subtitle = "Mock import created from the toolbar",
-            PageLabel = "PDF page 1",
-            PageLabelPrefix = "PDF page",
-            PageNumber = 1,
-            PageCount = 24,
-            PagePreviewText = "This document was created by the MVP import mock. Real file pickers and persistence come next."
-        };
-
-        document.PageChips.Add("1");
-        document.PageChips.Add("2");
-        document.PageChips.Add("3");
-        document.Outline.Add(new OutlineItem { Title = "Imported overview", PageLabel = "PDF page 1", PageNumber = 1 });
-        document.Outline.Add(new OutlineItem { Title = "Notes to review", PageLabel = "PDF page 6", PageNumber = 6 });
-
-        var conversation = new ChatConversation
-        {
-            Id = $"chat-{documentId}-1",
-            DocumentId = documentId,
-            Title = "Import notes",
-            Scope = title
-        };
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = "now",
-            Content = "Mock import is ready. The real importer will attach a PDF file and persist it in the library."
-        });
-
-        workspace.LibraryItems.Add(libraryItem);
-        workspace.Documents.Add(document);
-        workspace.Conversations.Add(conversation);
-        Conversations.Add(conversation);
-
-        LibrarySearchQuery = string.Empty;
-        RefreshLibraryItems();
-        OpenDocument(documentId);
-        SelectedLibraryItem = LibraryItems.FirstOrDefault(item => item.Id == documentId);
-        StatusMessage = $"已导入模拟文档：{title}。";
+        RefreshNavigation();
     }
 
-    [RelayCommand]
-    private void ConfigurePageMapping()
+    private void RefreshNavigation()
     {
-        if (SelectedTab is null)
-        {
-            return;
-        }
+        var query = SearchQuery.Trim();
+        NavigationEntries.Clear();
 
-        if (!SelectedTab.PageChips.Contains("mapped"))
+        foreach (var project in workspace.Projects)
         {
-            SelectedTab.PageChips.Add("mapped");
-            PageChips.Add("mapped");
-        }
+            var projectMatches = string.IsNullOrWhiteSpace(query) ||
+                project.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                project.Description.Contains(query, StringComparison.OrdinalIgnoreCase);
+            var sessions = project.Sessions.Where(session => string.IsNullOrWhiteSpace(query) ||
+                session.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                projectMatches).ToList();
 
-        StatusMessage = "页码映射模拟完成：封面、罗马数字页和书本页会显示为标签。";
-    }
-
-    [RelayCommand]
-    private void GenerateOutline()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        if (SelectedTab.Outline.All(item => item.Title != "AI generated study checkpoint"))
-        {
-            var pageNumber = Math.Min(CurrentPageNumber + 2, CurrentPageCount);
-            var checkpoint = new OutlineItem
+            if (!projectMatches && sessions.Count == 0)
             {
-                Title = "AI generated study checkpoint",
-                PageLabel = $"{CurrentPagePrefix} {pageNumber}",
-                PageNumber = pageNumber
-            };
+                continue;
+            }
 
-            SelectedTab.Outline.Add(checkpoint);
-            CurrentOutline.Add(checkpoint);
-        }
-
-        StatusMessage = "目录模拟已更新。后续导出时会写入 PDF 元数据。";
-    }
-
-    [RelayCommand]
-    private void AttachCurrentPage()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        Attachments.Add(new AttachmentItem
-        {
-            Name = CurrentPageLabel,
-            Detail = $"Attached from {SelectedTab.Title}"
-        });
-
-        PromptDraft = AttachmentDefaultPrompt;
-        StatusMessage = $"已附加 {CurrentPageLabel}。";
-        OnPropertyChanged(nameof(AttachmentSummary));
-    }
-
-    [RelayCommand]
-    private void AttachPageRange()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        var range = string.IsNullOrWhiteSpace(PageRangeDraft) ? CurrentPageLabel : PageRangeDraft.Trim();
-        Attachments.Add(new AttachmentItem
-        {
-            Name = $"Pages {range}",
-            Detail = $"Range attachment from {SelectedTab.Title}"
-        });
-
-        PromptDraft = $"{AttachmentDefaultPrompt} 范围：{range}";
-        StatusMessage = $"已附加页码范围：{range}。";
-        OnPropertyChanged(nameof(AttachmentSummary));
-    }
-
-    [RelayCommand]
-    private void StartRegionExplain()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        Attachments.Add(new AttachmentItem
-        {
-            Name = "Red-box region + context",
-            Detail = $"{CurrentPageLabel} with surrounding pages"
-        });
-
-        PromptDraft = RegionExplainPrompt;
-        StatusMessage = "框选讲解附件已准备。";
-        OnPropertyChanged(nameof(AttachmentSummary));
-    }
-
-    [RelayCommand]
-    private void ClearAttachments()
-    {
-        Attachments.Clear();
-        StatusMessage = "已清空待发送附件。";
-        OnPropertyChanged(nameof(AttachmentSummary));
-    }
-
-    [RelayCommand]
-    private void CreateConversation()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        var conversation = new ChatConversation
-        {
-            Id = $"chat-{SelectedTab.DocumentId}-{Conversations.Count + 1}",
-            DocumentId = SelectedTab.DocumentId,
-            Title = "新的学习记录",
-            Scope = SelectedTab.Title
-        };
-
-        conversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = "now",
-            Content = "已创建新的模拟对话。真实持久化会在对话仓库里实现。"
-        });
-
-        Conversations.Add(conversation);
-        DocumentConversations.Add(conversation);
-        CurrentConversation = conversation;
-        StatusMessage = "已创建当前 PDF 的新对话。";
-    }
-
-    [RelayCommand]
-    private void SendPrompt()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        if (CurrentConversation is null || CurrentConversation.DocumentId != SelectedTab.DocumentId)
-        {
-            CreateConversation();
-        }
-
-        if (CurrentConversation is null)
-        {
-            return;
-        }
-
-        var prompt = string.IsNullOrWhiteSpace(PromptDraft)
-            ? AttachmentDefaultPrompt
-            : PromptDraft.Trim();
-        var attachmentNote = Attachments.Count == 0
-            ? Strings.NoAttachments
-            : string.Join(", ", Attachments.Select(item => item.Name));
-
-        CurrentConversation.Messages.Add(new ChatMessage
-        {
-            Author = "You",
-            TimeLabel = "now",
-            Content = $"{prompt}\n\nAttachments: {attachmentNote}"
-        });
-        CurrentConversation.Messages.Add(new ChatMessage
-        {
-            Author = "ReadOS",
-            TimeLabel = UseMockResponses ? "mock" : "queued",
-            Content = UseMockResponses
-                ? $"这是 {SelectedTab.Title} 的模拟回答。真实模型调用会使用设置中的服务商、PDF 页面图像和文档提示词。"
-                : $"将使用 {ProviderName} / {ModelName} 调用真实模型。当前 MVP 还没有接入网络请求。"
-        });
-
-        RefreshMessages(CurrentConversation);
-        PromptDraft = string.Empty;
-        Attachments.Clear();
-        OnPropertyChanged(nameof(AttachmentSummary));
-        StatusMessage = "已发送模拟提问，并保存到当前 PDF 的对话仓库。";
-    }
-
-    [RelayCommand]
-    private void CloseCurrentTab()
-    {
-        if (SelectedTab is null)
-        {
-            return;
-        }
-
-        var tab = SelectedTab;
-        var index = OpenTabs.IndexOf(tab);
-        OpenTabs.Remove(tab);
-
-        SelectedTab = OpenTabs.Count == 0
-            ? null
-            : OpenTabs[Math.Clamp(index - 1, 0, OpenTabs.Count - 1)];
-
-        if (SelectedTab is null)
-        {
-            ClearDocumentState();
-            StatusMessage = $"已关闭 {tab.Title}。";
-        }
-    }
-
-    [RelayCommand]
-    private void PreviousPage()
-    {
-        if (CurrentPageNumber > 1)
-        {
-            CurrentPageNumber--;
-        }
-    }
-
-    [RelayCommand]
-    private void NextPage()
-    {
-        if (CurrentPageNumber < CurrentPageCount)
-        {
-            CurrentPageNumber++;
-        }
-    }
-
-    private void OpenDocument(string documentId)
-    {
-        var document = workspace.Documents.FirstOrDefault(item => item.DocumentId == documentId);
-        if (document is null)
-        {
-            StatusMessage = "已选择文件夹。嵌套导航会在资料库持久化阶段实现。";
-            return;
-        }
-
-        var existing = OpenTabs.FirstOrDefault(item => item.DocumentId == document.DocumentId);
-        if (existing is null)
-        {
-            OpenTabs.Add(document);
-            existing = document;
-        }
-
-        SelectedTab = existing;
-    }
-
-    private void RefreshDocumentState(DocumentTab document)
-    {
-        PageChips.Clear();
-        foreach (var chip in document.PageChips)
-        {
-            PageChips.Add(chip);
-        }
-
-        CurrentOutline.Clear();
-        foreach (var item in document.Outline)
-        {
-            CurrentOutline.Add(item);
-        }
-        SelectedOutlineItem = null;
-
-        Attachments.Clear();
-        RefreshDocumentConversations(document.DocumentId);
-        OnPropertyChanged(nameof(SelectedDocumentTitle));
-        OnPropertyChanged(nameof(SelectedDocumentSubtitle));
-        OnPropertyChanged(nameof(ReaderHeading));
-        OnPropertyChanged(nameof(ReaderSubheading));
-        OnPropertyChanged(nameof(CurrentPageLabel));
-        OnPropertyChanged(nameof(PagePreviewText));
-        OnPropertyChanged(nameof(CurrentPageCount));
-        OnPropertyChanged(nameof(AttachmentSummary));
-
-        CurrentConversation = DocumentConversations.FirstOrDefault();
-        OnPropertyChanged(nameof(CurrentConversationScope));
-    }
-
-    private void RefreshMessages(ChatConversation? conversation)
-    {
-        CurrentMessages.Clear();
-
-        if (conversation is not null)
-        {
-            foreach (var message in conversation.Messages)
+            NavigationEntries.Add(new NavigationEntry
             {
-                CurrentMessages.Add(message);
+                Id = project.Id,
+                ProjectId = project.Id,
+                Kind = NavigationEntryKind.Project,
+                Title = project.Name,
+                Detail = project.UpdatedLabel
+            });
+
+            foreach (var session in sessions)
+            {
+                NavigationEntries.Add(new NavigationEntry
+                {
+                    Id = session.Id,
+                    ProjectId = project.Id,
+                    SessionId = session.Id,
+                    Kind = NavigationEntryKind.Session,
+                    Title = session.Title,
+                    Detail = session.UpdatedLabel
+                });
             }
         }
-
-        OnPropertyChanged(nameof(CurrentConversationScope));
     }
 
-    private void RefreshLibraryItems()
+    private void SelectProject(ProjectItem project, SessionItem? session = null)
     {
-        var query = LibrarySearchQuery.Trim();
-        var items = string.IsNullOrWhiteSpace(query)
-            ? workspace.LibraryItems
-            : new ObservableCollection<LibraryItem>(workspace.LibraryItems.Where(item =>
-                item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.Detail.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.ProgressText.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        SelectedProject = project;
+        SelectedSession = session ?? project.Sessions.FirstOrDefault();
+        SelectedNavigationEntry = NavigationEntries.FirstOrDefault(entry =>
+            entry.ProjectId == project.Id &&
+            (SelectedSession is null ? entry.Kind == NavigationEntryKind.Project : entry.SessionId == SelectedSession.Id));
+        RefreshActiveMaterials();
+        RefreshActivityStream();
+        NotifyActiveContext();
+    }
 
-        LibraryItems.Clear();
-        foreach (var item in items)
+    private void RefreshActiveMaterials()
+    {
+        ActiveMaterials.Clear();
+
+        if (SelectedProject is null)
         {
-            LibraryItems.Add(item);
+            return;
         }
 
-        OnPropertyChanged(nameof(LibrarySummary));
-    }
-
-    private void RefreshDocumentConversations(string documentId)
-    {
-        DocumentConversations.Clear();
-        foreach (var conversation in Conversations.Where(item => item.DocumentId == documentId))
+        foreach (var material in SelectedProject.Materials)
         {
-            DocumentConversations.Add(conversation);
+            ActiveMaterials.Add(material);
         }
+
+        OnPropertyChanged(nameof(MaterialsSummary));
     }
 
-    private void ClearDocumentState()
+    private void RefreshActivityStream()
     {
-        PageChips.Clear();
-        CurrentOutline.Clear();
-        DocumentConversations.Clear();
-        CurrentMessages.Clear();
-        Attachments.Clear();
-        CurrentConversation = null;
-        OnPropertyChanged(nameof(SelectedDocumentTitle));
-        OnPropertyChanged(nameof(SelectedDocumentSubtitle));
-        OnPropertyChanged(nameof(ReaderHeading));
-        OnPropertyChanged(nameof(ReaderSubheading));
-        OnPropertyChanged(nameof(CurrentPageLabel));
-        OnPropertyChanged(nameof(PagePreviewText));
-        OnPropertyChanged(nameof(CurrentPageCount));
-        OnPropertyChanged(nameof(CurrentConversationScope));
-        OnPropertyChanged(nameof(AttachmentSummary));
+        ActivityStream.Clear();
+
+        if (SelectedSession is null)
+        {
+            return;
+        }
+
+        foreach (var activity in SelectedSession.Activities)
+        {
+            ActivityStream.Add(activity);
+        }
     }
 
     private void NotifyLocalizedProperties()
     {
-        OnPropertyChanged(nameof(SelectedDocumentTitle));
-        OnPropertyChanged(nameof(SelectedDocumentSubtitle));
-        OnPropertyChanged(nameof(ReaderHeading));
-        OnPropertyChanged(nameof(ReaderSubheading));
-        OnPropertyChanged(nameof(CurrentPageLabel));
-        OnPropertyChanged(nameof(PagePreviewText));
-        OnPropertyChanged(nameof(CurrentConversationScope));
+        NotifyActiveContext();
         OnPropertyChanged(nameof(ActiveModelLabel));
-        OnPropertyChanged(nameof(AttachmentSummary));
-        OnPropertyChanged(nameof(LibrarySummary));
+        OnPropertyChanged(nameof(MaterialsSummary));
+    }
+
+    private void NotifyActiveContext()
+    {
+        OnPropertyChanged(nameof(ActiveTitle));
+        OnPropertyChanged(nameof(ActiveSubtitle));
     }
 }
