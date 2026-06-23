@@ -36,6 +36,20 @@ The first source pass has been added by hand because the Codex runner does not c
 
 After the first successful Visual Studio `F5` run, we can decide whether to keep the lean unpackaged setup for fast development or switch to the packaged Visual Studio template shape.
 
+## Current Interactive Surface
+
+The mock shell now supports these MVP interactions:
+
+- Search filters the library list by document name, folder name, detail, or progress text.
+- Import creates a new mock PDF, opens it, and gives it a starter conversation.
+- Tabs can be opened by selecting documents and closed with `Close Tab`.
+- Page slider and outline selection update the current page label.
+- Page mapping and outline buttons mutate the mock chips/outline instead of only changing status text.
+- Current page, page range, and region explanation add mock attachments.
+- Attachments can be cleared.
+- Conversation dropdown is scoped to the selected PDF.
+- `Send Mock Prompt` stores a user message and a mock ReadOS answer in the selected PDF conversation.
+
 ## First App Shell Acceptance Criteria
 
 - App launches as a WinUI desktop app.

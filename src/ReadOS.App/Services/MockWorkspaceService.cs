@@ -68,6 +68,7 @@ public sealed class MockWorkspaceService : IWorkspaceService
             Title = "Computer Networking.pdf",
             Subtitle = "AI page mapping and outline mock are active",
             PageLabel = "Book page 144",
+            PageLabelPrefix = "Book page",
             PageNumber = 144,
             PageCount = 328,
             PagePreviewText = "This placeholder represents the PDF surface. The first MVP proves the library, reader, outline, attachment, and chat workflow before the PDF engine is wired in."
@@ -79,10 +80,10 @@ public sealed class MockWorkspaceService : IWorkspaceService
         document.PageChips.Add("144");
         document.PageChips.Add("145");
 
-        document.Outline.Add(new OutlineItem { Title = "6.4 Network security", PageLabel = "Book page 170" });
-        document.Outline.Add(new OutlineItem { Title = "6.4.1 Cryptographic principles", PageLabel = "Book page 171" });
-        document.Outline.Add(new OutlineItem { Title = "6.4.2 Symmetric key algorithms", PageLabel = "Book page 172" });
-        document.Outline.Add(new OutlineItem { Title = "6.4.3 Public key cryptography", PageLabel = "Book page 176" });
+        document.Outline.Add(new OutlineItem { Title = "6.4 Network security", PageLabel = "Book page 170", PageNumber = 170 });
+        document.Outline.Add(new OutlineItem { Title = "6.4.1 Cryptographic principles", PageLabel = "Book page 171", PageNumber = 171 });
+        document.Outline.Add(new OutlineItem { Title = "6.4.2 Symmetric key algorithms", PageLabel = "Book page 172", PageNumber = 172 });
+        document.Outline.Add(new OutlineItem { Title = "6.4.3 Public key cryptography", PageLabel = "Book page 176", PageNumber = 176 });
 
         return document;
     }
@@ -95,6 +96,7 @@ public sealed class MockWorkspaceService : IWorkspaceService
             Title = "Abstract Algebra.pdf",
             Subtitle = "Per-PDF system prompt mock is ready",
             PageLabel = "Book page 37",
+            PageLabelPrefix = "Book page",
             PageNumber = 37,
             PageCount = 412,
             PagePreviewText = "This mock document shows how page labels, outline entries, and chat history will stay bound to each PDF."
@@ -106,9 +108,9 @@ public sealed class MockWorkspaceService : IWorkspaceService
         document.PageChips.Add("37");
         document.PageChips.Add("38");
 
-        document.Outline.Add(new OutlineItem { Title = "2.1 Groups and symmetries", PageLabel = "Book page 31" });
-        document.Outline.Add(new OutlineItem { Title = "2.2 Subgroups", PageLabel = "Book page 37" });
-        document.Outline.Add(new OutlineItem { Title = "2.3 Cyclic groups", PageLabel = "Book page 45" });
+        document.Outline.Add(new OutlineItem { Title = "2.1 Groups and symmetries", PageLabel = "Book page 31", PageNumber = 31 });
+        document.Outline.Add(new OutlineItem { Title = "2.2 Subgroups", PageLabel = "Book page 37", PageNumber = 37 });
+        document.Outline.Add(new OutlineItem { Title = "2.3 Cyclic groups", PageLabel = "Book page 45", PageNumber = 45 });
 
         return document;
     }
@@ -121,6 +123,7 @@ public sealed class MockWorkspaceService : IWorkspaceService
             Title = "Transformer Notes.pdf",
             Subtitle = "Outline generation is waiting for a vision model",
             PageLabel = "PDF page 12",
+            PageLabelPrefix = "PDF page",
             PageNumber = 12,
             PageCount = 64,
             PagePreviewText = "Later this area will render the real PDF. The MVP keeps the UX shape while services are still mocks."
@@ -131,9 +134,9 @@ public sealed class MockWorkspaceService : IWorkspaceService
         document.PageChips.Add("12");
         document.PageChips.Add("13");
 
-        document.Outline.Add(new OutlineItem { Title = "Attention overview", PageLabel = "PDF page 8" });
-        document.Outline.Add(new OutlineItem { Title = "Multi-head attention", PageLabel = "PDF page 12" });
-        document.Outline.Add(new OutlineItem { Title = "Position encodings", PageLabel = "PDF page 18" });
+        document.Outline.Add(new OutlineItem { Title = "Attention overview", PageLabel = "PDF page 8", PageNumber = 8 });
+        document.Outline.Add(new OutlineItem { Title = "Multi-head attention", PageLabel = "PDF page 12", PageNumber = 12 });
+        document.Outline.Add(new OutlineItem { Title = "Position encodings", PageLabel = "PDF page 18", PageNumber = 18 });
 
         return document;
     }

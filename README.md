@@ -88,3 +88,5 @@ Build only:
 ```powershell
 .\scripts\run.ps1 -BuildOnly
 ```
+
+Current MVP shell interactions include library search, mock import, document tabs, page/outline navigation, page-range attachments, region-explain attachments, per-PDF conversation filtering, and mock prompt sending.

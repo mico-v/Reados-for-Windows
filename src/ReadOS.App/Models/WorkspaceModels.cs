@@ -35,6 +35,8 @@ public sealed class DocumentTab
 
     public required string PagePreviewText { get; init; }
 
+    public string PageLabelPrefix { get; init; } = "Book page";
+
     public int PageNumber { get; init; }
 
     public int PageCount { get; init; }
@@ -49,6 +51,8 @@ public sealed class OutlineItem
     public required string Title { get; init; }
 
     public required string PageLabel { get; init; }
+
+    public int PageNumber { get; init; }
 }
 
 public sealed class ChatConversation
