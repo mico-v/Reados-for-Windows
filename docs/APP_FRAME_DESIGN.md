@@ -1,135 +1,84 @@
-# ReadOS App Frame Design
+# App Frame Design
 
-## Goal
+ReadOS currently uses a compact three-pane reader frame.
 
-ReadOS should use a compact Codex-like application frame instead of a dense PDF-tool dashboard. The first screen is a project/session workspace:
+## Regions
 
-- Left rail: global actions, projects, sessions, settings.
-- Main surface: active session stream.
-- Bottom composer: request input and quick actions.
-- Settings: focused overlay, not a permanent panel.
+### Top Toolbar
 
-The MVP should make the product feel like a durable study workspace where projects collect materials and sessions hold reading/AI work.
+- toggle library pane
+- import materials
+- previous and next page
+- jump to page number or mapped page label
+- toggle thumbnails
+- toggle outline
+- toggle chat
+- open settings
 
-## Layout
+### Library Pane
 
-```text
-+---------------------------------------------------------------+
-| title bar: back, forward, sync, menu, window controls          |
-+----------------------+----------------------------------------+
-| left navigation      | active session header                  |
-|                      +----------------------------------------+
-| global actions       | session stream                         |
-| - new session        | - command/result cards                 |
-| - search             | - imported materials                   |
-| - import material    | - notes and mock answers               |
-|                      |                                        |
-| projects             |                                        |
-| - project            |                                        |
-|   - sessions         |                                        |
-|                      +----------------------------------------+
-| settings             | composer                               |
-+----------------------+----------------------------------------+
-```
+- project/document navigation
+- project creation
+- file import
+- search across projects and documents
+- current document rename
+- open file location
+- delete current document into the ReadOS trash folder
 
-## Visual Direction
+### Reader Workspace
 
-- Dark, compact, quiet.
-- One left rail, one content column.
-- No nested cards inside cards.
-- Cards only for repeated stream items, imported materials, and status summaries.
-- Use 8px or smaller corner radii.
-- Use restrained borders and spacing.
-- Keep command labels short.
-- Default language is Chinese.
+- rendered PDF page
+- page navigation
+- zoom-width slider
+- page thumbnails
+- editable page label
+- automatic baseline page mapping
+- outline list
+- add/delete outline entries
+- document text search
+- red-box region selection layer
 
-## Navigation Model
+### Chat Pane
 
-### Project
+- per-document conversation list
+- persisted message stream
+- page/range/region attachment queue
+- prompt composer
+- OpenAI-compatible send path
+- offline reading response mode
 
-A project is the durable container for study work.
-
-Project contains:
-
-- name
-- description
-- materials
-- sessions
-- last updated label
-
-Primary actions:
-
-- create project
-- import material
-- start session
-- select project
-
-### Session
-
-A session is a focused reading/chat timeline within a project.
-
-Session contains:
-
-- title
-- relative time
-- activity stream
-- draft prompt
-
-Primary actions:
-
-- create session
-- select session
-- send mock prompt
-- attach/import material into the session
-
-### Material
-
-Material is a PDF, Markdown, note, or other imported source.
-
-MVP material actions:
-
-- import mock material
-- show material card
-- open method placeholder
-
-## Main Surface
-
-The main surface should not try to render real PDFs yet. It should show the future workflow:
-
-- Setup card: current branch/build command or project/session guidance.
-- Material card: imported files for the active project.
-- Activity card: mock edits, mock AI answer, or imported material summary.
-- Composer: prompt input, plus/import controls, model/status affordance, send button.
-
-## Settings
-
-Settings opens as an overlay panel.
-
-Settings MVP fields:
+### Settings Drawer
 
 - language
+- offline response toggle
 - provider name
 - base URL
 - API key
-- model
-- default attachment prompt
-- region explanation prompt
-- chapter explanation prompt
+- model name
+- default prompts
 - MinorU endpoint
-- use mock responses
+- workspace export/import
 
-Settings should not consume the main layout permanently.
+## Data Ownership
 
-## MVP Acceptance
+The ViewModel owns application state and commands. Services own external effects:
 
-- App launches into the compact project/session frame.
-- Left rail can create projects.
-- Left rail can start sessions.
-- Left rail can import material into the active project.
-- Selecting a project updates the project/session context.
-- Selecting a session updates the main stream.
-- Composer sends a mock prompt into the active session.
-- Settings opens and edits app configuration fields.
-- UI defaults to Chinese and can switch to English.
-- Build remains clean with `.\scripts\run.ps1 -BuildOnly`.
+- `WorkspaceStore`: JSON state, imported file copies, trash, export/import.
+- `PdfDocumentService`: PDF render, metadata inspection, text extraction, and search.
+- `FileDialogService`: WinUI file picker integration.
+- `AiChatService`: OpenAI-compatible chat calls and offline fallback.
 
+The window code-behind owns only window-specific behavior:
+
+- dependency wiring
+- pane resize thumbs
+- root loaded initialization
+- pointer handling for the red-box region overlay
+
+## Current Design Constraints
+
+- Keep the first screen as the actual reader workspace.
+- Avoid decorative page sections or marketing layout.
+- Keep controls dense and predictable for repeated reading work.
+- Use local data by default and make cloud/model access optional.
+- Do not commit workspace data, imported PDFs, or API keys.

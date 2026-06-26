@@ -8,354 +8,508 @@
     mc:Ignorable="d"
     Title="ReadOS">
 
-    <Grid x:Name="RootShell" Background="#111111">
+    <Grid x:Name="RootShell" Background="#101112">
         <Grid.RowDefinitions>
             <RowDefinition Height="52" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#1D1D1D" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
-            <Grid Padding="12,0" ColumnSpacing="18">
+        <Border Grid.Row="0" Background="#17191B" BorderBrush="#292D30" BorderThickness="0,0,0,1">
+            <Grid Padding="12,0" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Button Width="32" Height="32" Padding="0" Content="‹" FontSize="22" />
-                    <Button Width="32" Height="32" Padding="0" Content="›" FontSize="22" />
-                    <Button Width="32" Height="32" Padding="0" Content="↓" />
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Width="34" Height="34" Padding="0" Content="☰" ToolTipService.ToolTip="资料库" Command="{Binding ToggleLibraryCommand}" />
+                    <Button Width="34" Height="34" Padding="0" Content="＋" ToolTipService.ToolTip="导入资料" Command="{Binding ImportMaterialCommand}" />
+                    <Button Width="34" Height="34" Padding="0" Content="◁" ToolTipService.ToolTip="上一页" Command="{Binding PreviousPageCommand}" />
+                    <Button Width="34" Height="34" Padding="0" Content="▷" ToolTipService.ToolTip="下一页" Command="{Binding NextPageCommand}" />
+                    <TextBox Width="78" Text="{Binding PageJumpText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="页码" />
+                    <Button Padding="10,6" Content="跳转" Command="{Binding JumpToPageCommand}" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="28" VerticalAlignment="Center">
-                    <TextBlock Text="文件" Foreground="#D6D6D6" FontSize="16" />
-                    <TextBlock Text="编辑" Foreground="#9A9A9A" FontSize="16" />
-                    <TextBlock Text="视图" Foreground="#9A9A9A" FontSize="16" />
-                    <TextBlock Text="帮助" Foreground="#9A9A9A" FontSize="16" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{Binding ActiveTitle}" Foreground="#F4F4F4" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding ActiveSubtitle}" Foreground="#8E969E" FontSize="12" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <TextBlock Grid.Column="2"
-                           Text="{Binding Strings.AppSubtitle}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Foreground="#777777" />
-
-                <Button Grid.Column="3"
-                        Content="{Binding Strings.OpenLocation}"
-                        Padding="14,6"
-                        Command="{Binding OpenSettingsCommand}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Padding="10,6" Content="缩略图" Command="{Binding ToggleThumbnailsCommand}" />
+                    <Button Padding="10,6" Content="目录" Command="{Binding ToggleOutlineCommand}" />
+                    <Button Padding="10,6" Content="对话" Command="{Binding ToggleChatCommand}" />
+                    <Button Padding="10,6" Content="设置" Command="{Binding OpenSettingsCommand}" />
+                </StackPanel>
             </Grid>
         </Border>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarColumn" Width="320" />
-                <ColumnDefinition Width="1" />
+                <ColumnDefinition x:Name="SidebarSplitterColumn" Width="1" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ChatSplitterColumn" Width="1" />
+                <ColumnDefinition x:Name="ChatColumn" Width="380" />
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" Background="#1C1C1C">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+            <Border Grid.Column="0" Background="#191B1D" BorderBrush="#292D30" BorderThickness="0,0,1,0">
+                <Grid RowSpacing="10" Padding="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <StackPanel Padding="12,16,12,12" Spacing="8">
-                    <Button HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Padding="12,8"
-                            Content="{Binding Strings.NewSession}"
-                            Command="{Binding StartSessionCommand}" />
-                    <Button HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Padding="12,8"
-                            Content="{Binding Strings.ImportMaterial}"
-                            Command="{Binding ImportMaterialCommand}" />
-                    <TextBox Header="{Binding Strings.Search}"
-                             PlaceholderText="{Binding Strings.SearchPlaceholder}"
-                             Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
+                    <StackPanel Spacing="8">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="资料库" Foreground="#F2F2F2" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Width="32" Height="32" Padding="0" Content="＋" ToolTipService.ToolTip="新建项目" Command="{Binding CreateProjectCommand}" />
+                            <Button Grid.Column="2" Width="32" Height="32" Padding="0" Content="⇩" ToolTipService.ToolTip="导入资料" Command="{Binding ImportMaterialCommand}" />
+                        </Grid>
+                        <TextBox PlaceholderText="搜索项目和文件" Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="{Binding LibrarySummary}" Foreground="#8E969E" FontSize="12" />
+                    </StackPanel>
 
-                <ScrollViewer Grid.Row="1">
-                    <StackPanel Padding="12,4,12,12" Spacing="12">
-                        <Grid>
+                    <ListView Grid.Row="1"
+                              MaxHeight="210"
+                              ItemsSource="{Binding NavigationEntries}"
+                              SelectedItem="{Binding SelectedNavigationEntry, Mode=TwoWay}"
+                              Background="Transparent"
+                              BorderThickness="0">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="6,6" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Prefix}" Foreground="#8E969E" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Title}" Foreground="#E7EAED" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" Foreground="#7F878F" FontSize="11" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Grid Grid.Row="2" RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Strings.Projects}"
-                                       Foreground="#818181"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center" />
-                            <Button Grid.Column="1"
-                                    Width="30"
-                                    Height="30"
-                                    Padding="0"
-                                    Content="+"
-                                    Command="{Binding CreateProjectCommand}" />
+                            <TextBox PlaceholderText="文件名" Text="{Binding DocumentNameDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1" Padding="10,6" Content="重命名" Command="{Binding RenameDocumentCommand}" />
                         </Grid>
 
-                        <ListView ItemsSource="{Binding NavigationEntries}"
-                                  SelectedItem="{Binding SelectedNavigationEntry, Mode=TwoWay}"
-                                  SelectionMode="Single"
+                        <ListView Grid.Row="1"
+                                  ItemsSource="{Binding LibraryItems}"
+                                  SelectedItem="{Binding SelectedDocument, Mode=TwoWay}"
                                   Background="Transparent"
                                   BorderThickness="0">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Padding="8,7" ColumnSpacing="8">
+                                    <Grid Padding="8,8" ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="42" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Prefix}" Foreground="#AAAAAA" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Title}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="#E7E7E7" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding TimeLabel}"
-                                                   Foreground="#858585"
-                                                   FontSize="12" />
+                                        <Border Width="38" Height="42" CornerRadius="4" Background="#262B2F" BorderBrush="#394149" BorderThickness="1">
+                                            <TextBlock Text="{Binding KindLabel}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#DDE3EA" FontSize="11" FontWeight="SemiBold" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding Name}" Foreground="#F0F2F4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}" Foreground="#89929B" FontSize="12" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                    </Grid>
+
+                    <StackPanel Grid.Row="3" Spacing="8">
+                        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="打开文件位置" Command="{Binding OpenLocationCommand}" />
+                        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="删除当前文档" Command="{Binding DeleteDocumentCommand}" />
                     </StackPanel>
-                </ScrollViewer>
-
-                <Button Grid.Row="2"
-                        Margin="12,10,12,16"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Left"
-                        Padding="12,8"
-                        Content="{Binding Strings.Settings}"
-                        Command="{Binding OpenSettingsCommand}" />
-            </Grid>
-
-            <Border Grid.Column="1" Background="#303030">
-                <primitives:Thumb Width="8"
-                                  HorizontalAlignment="Center"
-                                  Background="Transparent"
-                                  DragDelta="SidebarResizeThumb_DragDelta" />
+                </Grid>
             </Border>
 
-            <Grid Grid.Column="2" Background="#121212">
+            <Border Grid.Column="1" Background="#2A2E32">
+                <primitives:Thumb Width="8" HorizontalAlignment="Center" Background="Transparent" DragDelta="SidebarResizeThumb_DragDelta" />
+            </Border>
+
+            <Grid Grid.Column="2" Background="#111315">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="68" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="150" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
-                    <Grid Padding="26,0" ColumnSpacing="16">
+                <Border Background="#17191B" BorderBrush="#292D30" BorderThickness="0,0,0,1" Padding="12,8">
+                    <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center" Spacing="2">
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <TextBlock Text="{Binding ActiveTitle}" Foreground="#F2F2F2" FontSize="18" FontWeight="SemiBold" />
-                                <TextBlock Text="..." Foreground="#858585" FontSize="18" />
-                            </StackPanel>
-                            <TextBlock Text="{Binding ActiveSubtitle}" Foreground="#818181" FontSize="12" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Button Content="{Binding Strings.OpenLocation}" Padding="14,6" />
-                            <Button Content="{Binding Strings.Review}" Padding="14,6" />
-                        </StackPanel>
+
+                        <Button Content="附加本页" Padding="10,6" Command="{Binding AttachCurrentPageCommand}" />
+                        <TextBox Grid.Column="1" Width="120" PlaceholderText="1-3, 8" Text="{Binding PageRangeDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="2" Content="附加范围" Padding="10,6" Command="{Binding AttachRangeCommand}" />
+                        <Button Grid.Column="3" Content="框选讲解" Padding="10,6" Command="{Binding StartRegionSelectionCommand}" />
+                        <Slider Grid.Column="4" Minimum="420" Maximum="1280" Value="{Binding ReaderImageWidth, Mode=TwoWay}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="5" Text="{Binding CurrentPageIndicator}" Foreground="#D2D7DC" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
 
-                <ScrollViewer Grid.Row="1">
-                    <ItemsControl ItemsSource="{Binding ActivityStream}"
-                                  MaxWidth="1120"
-                                  HorizontalAlignment="Center"
-                                  Margin="0,24,0,24">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Margin="0,0,0,18"
-                                        Padding="18"
-                                        CornerRadius="8"
-                                        BorderBrush="#343434"
-                                        BorderThickness="1"
-                                        Background="#202020">
-                                    <Grid ColumnSpacing="14">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="44" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="156" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="250" />
+                    </Grid.ColumnDefinitions>
 
-                                        <Border Width="40"
-                                                Height="40"
-                                                CornerRadius="8"
-                                                Background="#101010">
-                                            <TextBlock Text="□"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="#BEBEBE"
-                                                       FontSize="18" />
-                                        </Border>
-
-                                        <StackPanel Grid.Column="1" Spacing="10">
-                                            <StackPanel Spacing="2">
-                                                <TextBlock Text="{Binding Title}" Foreground="#F0F0F0" FontSize="16" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding Subtitle}" Foreground="#A0A0A0" FontSize="12" />
-                                            </StackPanel>
-
-                                            <TextBlock Text="{Binding Body}"
-                                                       Foreground="#D8D8D8"
-                                                       TextWrapping="WrapWholeWords"
-                                                       FontSize="14" />
-
-                                            <ItemsControl ItemsSource="{Binding Materials}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Grid Padding="0,8" ColumnSpacing="12">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="42" />
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <Border Width="38" Height="38" CornerRadius="7" Background="#111111">
-                                                                <TextBlock Text="{Binding KindLabel}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" Foreground="#CCCCCC" />
-                                                            </Border>
-                                                            <StackPanel Grid.Column="1">
-                                                                <TextBlock Text="{Binding Name}" Foreground="#F0F0F0" FontWeight="SemiBold" />
-                                                                <TextBlock Text="{Binding Detail}" Foreground="#9B9B9B" FontSize="12" />
-                                                            </StackPanel>
-                                                            <Button Grid.Column="2" Content="打开方式" Padding="12,5" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-
-                                            <ItemsControl ItemsSource="{Binding FileChanges}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Grid Padding="0,5" ColumnSpacing="12">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Path}" Foreground="#E0E0E0" />
-                                                            <TextBlock Grid.Column="1" Text="{Binding DeltaText}" Foreground="#49D17D" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                    <Border Grid.Column="0"
+                            Background="#151719"
+                            BorderBrush="#292D30"
+                            BorderThickness="0,0,1,0"
+                            Visibility="{Binding IsThumbnailsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ScrollViewer>
+                            <ListView ItemsSource="{Binding Thumbnails}"
+                                      SelectedItem="{Binding SelectedThumbnail, Mode=TwoWay}"
+                                      Background="Transparent"
+                                      BorderThickness="0"
+                                      Padding="8">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Spacing="5" Margin="0,0,0,10">
+                                            <Border Background="#24282C" Padding="3" BorderBrush="#3A4148" BorderThickness="1">
+                                                <Image Source="{Binding Image}" Width="112" Stretch="Uniform" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Label}" Foreground="#C8CDD2" FontSize="12" HorizontalAlignment="Center" />
                                         </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </ScrollViewer>
+                    </Border>
 
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding Badge}"
-                                                   Foreground="#D8D8D8" />
-                                    </Grid>
+                    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid Padding="24" HorizontalAlignment="Center">
+                            <Border Visibility="{Binding HasPageImage, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Inverse}"
+                                    Width="520"
+                                    MinHeight="360"
+                                    Padding="28"
+                                    Background="#1B1E21"
+                                    BorderBrush="#30363C"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <StackPanel Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="未打开 PDF" Foreground="#F3F5F7" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    <TextBlock Text="从左侧资料库导入并选择 PDF 后，页面会在这里渲染。" Foreground="#A0A8B0" TextWrapping="Wrap" TextAlignment="Center" />
+                                    <Button Content="导入 PDF" HorizontalAlignment="Center" Padding="14,8" Command="{Binding ImportMaterialCommand}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Visibility="{Binding HasPageImage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Border Background="#D8D8D8" Padding="10" CornerRadius="3">
+                                    <Image x:Name="PdfPageImage"
+                                           Source="{Binding CurrentPageImage}"
+                                           Width="{Binding ReaderImageWidth}"
+                                           Stretch="Uniform" />
                                 </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                                <Canvas x:Name="RegionCanvas"
+                                        Background="Transparent"
+                                        Visibility="{Binding IsRegionModeActive, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                        PointerPressed="RegionCanvas_PointerPressed"
+                                        PointerMoved="RegionCanvas_PointerMoved"
+                                        PointerReleased="RegionCanvas_PointerReleased">
+                                    <Rectangle x:Name="RegionRectangle"
+                                               Visibility="Collapsed"
+                                               Stroke="#FF3B30"
+                                               StrokeThickness="3"
+                                               Fill="#33FF3B30" />
+                                </Canvas>
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
 
-                <Border Grid.Row="2" Padding="0,0,0,22">
-                    <Border MaxWidth="1120"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            CornerRadius="20"
-                            Background="#2A2A2A"
-                            BorderBrush="#303030"
-                            BorderThickness="1"
-                            Padding="18,14">
-                        <Grid RowSpacing="12">
+                    <Border Grid.Column="2"
+                            Background="#151719"
+                            BorderBrush="#292D30"
+                            BorderThickness="1,0,0,0"
+                            Visibility="{Binding IsOutlineVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid Padding="10" RowSpacing="10">
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="120" />
                             </Grid.RowDefinitions>
-                            <TextBox PlaceholderText="{Binding Strings.ComposerPlaceholder}"
-                                     Text="{Binding ComposerDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     MinHeight="58" />
-                            <Grid Grid.Row="1">
+                            <TextBlock Text="页码与目录" Foreground="#F2F2F2" FontSize="16" FontWeight="SemiBold" />
+
+                            <Grid Grid.Row="1" ColumnSpacing="6">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Header="当前页标签" Text="{Binding CurrentPageLabelDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button Grid.Column="1" Content="保存" Padding="10,6" VerticalAlignment="Bottom" Command="{Binding SavePageLabelCommand}" />
+                            </Grid>
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+                                <Button Content="自动映射" Padding="10,6" Command="{Binding AutoMapPagesCommand}" />
+                                <Button Content="生成目录" Padding="10,6" Command="{Binding GenerateOutlineCommand}" />
+                            </StackPanel>
+
+                            <ListView Grid.Row="3"
+                                      ItemsSource="{Binding Outline}"
+                                      SelectedItem="{Binding SelectedOutlineItem, Mode=TwoWay}"
+                                      Background="Transparent"
+                                      BorderThickness="0">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="4,6" ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding IndentedTitle}" Foreground="#E4E7EA" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Page}" Foreground="#8D969F" FontSize="12" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <Grid Grid.Row="4" ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Button Width="34" Height="34" Padding="0" Content="+" Command="{Binding ImportMaterialCommand}" />
-                                <TextBlock Grid.Column="1"
-                                           Margin="14,0,0,0"
-                                           Text="{Binding Strings.FullAccess}"
-                                           Foreground="#FF8B3D"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="3"
-                                           Text="{Binding ActiveModelLabel}"
-                                           Foreground="#CFCFCF"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,14,0" />
-                                <Button Grid.Column="4"
-                                        Width="38"
-                                        Height="38"
-                                        Padding="0"
-                                        Content="↑"
-                                        Command="{Binding SendPromptCommand}" />
+                                <TextBox PlaceholderText="目录标题" Text="{Binding OutlineTitleDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button Grid.Column="1" Content="添加" Padding="8,6" Command="{Binding AddOutlineItemCommand}" />
+                                <Button Grid.Column="2" Content="删除" Padding="8,6" Command="{Binding DeleteOutlineItemCommand}" />
+                            </Grid>
+
+                            <Grid Grid.Row="5" RowSpacing="6">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox PlaceholderText="全文搜索" Text="{Binding DocumentSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1" Content="搜索" Padding="8,6" Command="{Binding SearchInDocumentCommand}" />
+                                </Grid>
+                                <ListView Grid.Row="1"
+                                          ItemsSource="{Binding DocumentSearchResults}"
+                                          SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                          Background="Transparent"
+                                          BorderThickness="0">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Padding="4,4">
+                                                <TextBlock Text="{Binding PageNumber}" Foreground="#D6DBE0" FontWeight="SemiBold" FontSize="12" />
+                                                <TextBlock Text="{Binding Preview}" Foreground="#9EA7AF" TextWrapping="Wrap" FontSize="12" MaxLines="3" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
                             </Grid>
                         </Grid>
                     </Border>
-                </Border>
-
-                <Border Width="460"
-                        HorizontalAlignment="Right"
-                        Background="#1E1E1E"
-                        BorderBrush="#303030"
-                        BorderThickness="1,0,0,0"
-                        Visibility="{Binding IsSettingsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid Padding="20" RowSpacing="16">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Strings.Settings}" FontSize="24" FontWeight="SemiBold" Foreground="#F1F1F1" />
-                            <Button Grid.Column="1" Content="{Binding Strings.CloseSettings}" Command="{Binding CloseSettingsCommand}" />
-                        </Grid>
-
-                        <ScrollViewer Grid.Row="1">
-                            <StackPanel Spacing="16">
-                                <ComboBox Header="{Binding Strings.Language}"
-                                          ItemsSource="{Binding LanguageOptions}"
-                                          SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay}"
-                                          DisplayMemberPath="DisplayName"
-                                          HorizontalAlignment="Stretch" />
-
-                                <TextBox Header="{Binding Strings.ProviderName}" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Header="{Binding Strings.BaseUrl}" Text="{Binding ProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Header="{Binding Strings.ApiKey}" Text="{Binding ProviderApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Header="{Binding Strings.ModelName}" Text="{Binding ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ToggleSwitch Header="{Binding Strings.UseMockResponses}" IsOn="{Binding UseMockResponses, Mode=TwoWay}" />
-                                <TextBox Header="{Binding Strings.AttachmentPrompt}" Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
-                                <TextBox Header="{Binding Strings.RegionPrompt}" Text="{Binding RegionExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
-                                <TextBox Header="{Binding Strings.ChapterPrompt}" Text="{Binding ChapterExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" />
-                                <TextBox Header="{Binding Strings.MinorUEndpoint}" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </ScrollViewer>
-
-                        <Button Grid.Row="2" Content="{Binding Strings.SaveSettings}" HorizontalAlignment="Stretch" Command="{Binding SaveSettingsCommand}" />
-                    </Grid>
-                </Border>
+                </Grid>
             </Grid>
+
+            <Border Grid.Column="3" Background="#2A2E32">
+                <primitives:Thumb Width="8" HorizontalAlignment="Center" Background="Transparent" DragDelta="ChatResizeThumb_DragDelta" />
+            </Border>
+
+            <Border Grid.Column="4" Background="#191B1D" BorderBrush="#292D30" BorderThickness="1,0,0,0">
+                <Grid Padding="12" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="对话仓库" Foreground="#F2F2F2" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ActiveModelLabel}" Foreground="#8E969E" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Width="32" Height="32" Padding="0" Content="＋" ToolTipService.ToolTip="新对话" Command="{Binding NewConversationCommand}" />
+                        <Button Grid.Column="2" Width="32" Height="32" Padding="0" Content="⌫" ToolTipService.ToolTip="清空当前对话" Command="{Binding ClearConversationCommand}" />
+                    </Grid>
+
+                    <ListView Grid.Row="1"
+                              MaxHeight="88"
+                              ItemsSource="{Binding Conversations}"
+                              SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                              Background="Transparent"
+                              BorderThickness="0">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Title}" Foreground="#E6EAEE" Padding="4,6" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <ScrollViewer Grid.Row="2">
+                        <ItemsControl ItemsSource="{Binding ChatMessages}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,10"
+                                            Padding="12"
+                                            CornerRadius="8"
+                                            Background="#24282C"
+                                            BorderBrush="#333A41"
+                                            BorderThickness="1">
+                                        <StackPanel Spacing="8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Author}" Foreground="#F1F3F5" FontWeight="SemiBold" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Timestamp}" Foreground="#828C95" FontSize="12" />
+                                            </Grid>
+                                            <ItemsControl ItemsSource="{Binding Attachments}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#151719" BorderBrush="#3B444C" BorderThickness="1" CornerRadius="5" Padding="8" Margin="0,0,0,5">
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Title}" Foreground="#DCE2E8" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding Detail}" Foreground="#8E969E" FontSize="12" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding Content}" Foreground="#DDE2E7" TextWrapping="WrapWholeWords" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Border Grid.Row="3" Background="#23272B" BorderBrush="#343B42" BorderThickness="1" CornerRadius="8" Padding="10">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding PendingAttachmentSummary}" Foreground="#AAB2BA" FontSize="12" />
+                                <Button Grid.Column="1" Content="清空附件" Padding="8,4" Command="{Binding ClearAttachmentsCommand}" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding PendingAttachments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Title}" Foreground="#DDE3EA" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBox MinHeight="86"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     PlaceholderText="询问当前 PDF..."
+                                     Text="{Binding ComposerDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button HorizontalAlignment="Stretch" Content="发送" Padding="12,8" Command="{Binding SendPromptCommand}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
+
+        <Border Grid.Row="2" Background="#17191B" BorderBrush="#292D30" BorderThickness="0,1,0,0">
+            <Grid Padding="10,0" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding StatusMessage}" Foreground="#A7B0B8" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <ProgressRing Grid.Column="1" Width="18" Height="18" IsActive="{Binding IsBusy}" />
+            </Grid>
+        </Border>
+
+        <Border Grid.RowSpan="3"
+                Width="460"
+                HorizontalAlignment="Right"
+                Background="#1D2023"
+                BorderBrush="#343A40"
+                BorderThickness="1,0,0,0"
+                Visibility="{Binding IsSettingsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid Padding="18" RowSpacing="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="设置" Foreground="#F2F2F2" FontSize="24" FontWeight="SemiBold" />
+                    <Button Grid.Column="1" Content="关闭" Command="{Binding CloseSettingsCommand}" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="1">
+                    <StackPanel Spacing="14">
+                        <ComboBox Header="语言"
+                                  ItemsSource="{Binding LanguageOptions}"
+                                  SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayName"
+                                  HorizontalAlignment="Stretch" />
+                        <ToggleSwitch Header="使用离线阅读回答" IsOn="{Binding UseOfflineResponses, Mode=TwoWay}" />
+                        <TextBox Header="服务商名称" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Header="Base URL" Text="{Binding ProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Header="API Key" Text="{Binding ProviderApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Header="模型名称" Text="{Binding ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Header="附件默认提示词" Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" TextWrapping="Wrap" />
+                        <TextBox Header="框选讲解提示词" Text="{Binding RegionExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" TextWrapping="Wrap" />
+                        <TextBox Header="章节讲解提示词" Text="{Binding ChapterExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" TextWrapping="Wrap" />
+                        <TextBox Header="MinorU 地址" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="导出工作区" Padding="10,6" Command="{Binding ExportWorkspaceCommand}" />
+                            <Button Content="导入工作区" Padding="10,6" Command="{Binding ImportWorkspaceCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Button Grid.Row="2" Content="保存设置" HorizontalAlignment="Stretch" Padding="12,8" Command="{Binding SaveSettingsCommand}" />
+            </Grid>
+        </Border>
     </Grid>
 </Window>

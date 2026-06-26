@@ -1,127 +1,333 @@
+using System;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text.Json.Serialization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace ReadOS.App.Models;
 
-public enum MaterialKind
+public enum LibraryItemKind
 {
+    Folder,
     Pdf,
     Markdown,
-    Note,
-    Folder
+    Note
 }
 
-public enum ActivityKind
+public enum ChatRole
 {
-    Text,
-    Code,
-    Materials,
-    Changes,
-    Answer
+    User,
+    Assistant,
+    System
 }
 
-public enum NavigationEntryKind
+public enum AttachmentKind
 {
-    Project,
-    Session
+    Page,
+    PageRange,
+    Region,
+    File
 }
 
-public sealed class NavigationEntry
+public sealed partial class WorkspaceState : ObservableObject
 {
-    public required string Id { get; init; }
+    [ObservableProperty]
+    public partial WorkspaceSettings Settings { get; set; } = new();
 
-    public required string ProjectId { get; init; }
-
-    public string? SessionId { get; init; }
-
-    public required NavigationEntryKind Kind { get; init; }
-
-    public required string Title { get; init; }
-
-    public required string Detail { get; init; }
-
-    public string Prefix => Kind == NavigationEntryKind.Project ? "▸" : "  ";
-
-    public string TimeLabel => Detail;
+    public ObservableCollection<ProjectItem> Projects { get; } = new();
 }
 
-public sealed class ProjectItem
+public sealed partial class WorkspaceSettings : ObservableObject
 {
-    public required string Id { get; init; }
+    [ObservableProperty]
+    public partial string LanguageCode { get; set; } = "zh-CN";
 
-    public required string Name { get; set; }
+    [ObservableProperty]
+    public partial string ProviderName { get; set; } = "OpenAI Compatible";
 
-    public required string Description { get; set; }
+    [ObservableProperty]
+    public partial string ProviderBaseUrl { get; set; } = "https://api.openai.com/v1";
 
-    public required string UpdatedLabel { get; set; }
+    [ObservableProperty]
+    public partial string ProviderApiKey { get; set; } = string.Empty;
 
-    public ObservableCollection<SessionItem> Sessions { get; } = new();
+    [ObservableProperty]
+    public partial string ModelName { get; set; } = "gpt-4.1-mini";
 
-    public ObservableCollection<MaterialItem> Materials { get; } = new();
+    [ObservableProperty]
+    public partial bool UseOfflineResponses { get; set; } = true;
+
+    [ObservableProperty]
+    public partial string AttachmentDefaultPrompt { get; set; } = "请按书本顺序解释我附加的页面。";
+
+    [ObservableProperty]
+    public partial string RegionExplainPrompt { get; set; } = "请结合上下文，重点讲解红框内容。";
+
+    [ObservableProperty]
+    public partial string ChapterExplainPrompt { get; set; } = "请围绕我附加的这一整节内容进行系统讲解。";
+
+    [ObservableProperty]
+    public partial string MinorUEndpoint { get; set; } = "https://mineru.net/api";
 }
 
-public sealed class SessionItem
+public sealed partial class ProjectItem : ObservableObject
 {
-    public required string Id { get; init; }
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    public required string ProjectId { get; init; }
+    [ObservableProperty]
+    public partial string Name { get; set; } = "未命名项目";
 
-    public required string Title { get; set; }
+    [ObservableProperty]
+    public partial string Description { get; set; } = "本地阅读项目";
 
-    public required string UpdatedLabel { get; set; }
+    [ObservableProperty]
+    public partial DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
 
-    public ObservableCollection<ActivityItem> Activities { get; } = new();
+    public ObservableCollection<LibraryItem> LibraryItems { get; } = new();
+
+    public ObservableCollection<ChatConversation> StandaloneConversations { get; } = new();
+
+    [JsonIgnore]
+    public string UpdatedLabel => UpdatedAt.ToLocalTime().ToString("MM-dd HH:mm");
 }
 
-public sealed class MaterialItem
+public sealed partial class LibraryItem : ObservableObject
 {
-    public required string Id { get; init; }
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    public required string Name { get; set; }
+    [ObservableProperty]
+    public partial string ProjectId { get; set; } = string.Empty;
 
-    public required MaterialKind Kind { get; init; }
+    [ObservableProperty]
+    public partial string? ParentId { get; set; }
 
-    public required string Detail { get; set; }
+    [ObservableProperty]
+    public partial LibraryItemKind Kind { get; set; }
 
+    [ObservableProperty]
+    public partial string Name { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string RelativePath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial long SizeBytes { get; set; }
+
+    [ObservableProperty]
+    public partial int Order { get; set; }
+
+    [ObservableProperty]
+    public partial int PageCount { get; set; }
+
+    [ObservableProperty]
+    public partial int CurrentPage { get; set; } = 1;
+
+    [ObservableProperty]
+    public partial DateTimeOffset ImportedAt { get; set; } = DateTimeOffset.Now;
+
+    [ObservableProperty]
+    public partial DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+
+    public ObservableCollection<PageLabelRule> PageLabels { get; } = new();
+
+    public ObservableCollection<OutlineItem> Outline { get; } = new();
+
+    public ObservableCollection<ChatConversation> Conversations { get; } = new();
+
+    [JsonIgnore]
     public string KindLabel => Kind switch
     {
-        MaterialKind.Pdf => "PDF",
-        MaterialKind.Markdown => "MD",
-        MaterialKind.Note => "NOTE",
+        LibraryItemKind.Pdf => "PDF",
+        LibraryItemKind.Markdown => "MD",
+        LibraryItemKind.Note => "NOTE",
         _ => "DIR"
+    };
+
+    [JsonIgnore]
+    public string Detail => Kind == LibraryItemKind.Pdf
+        ? $"{PageCount} 页 · {FormatSize(SizeBytes)}"
+        : Kind == LibraryItemKind.Folder
+            ? "文件夹"
+            : FormatSize(SizeBytes);
+
+    [JsonIgnore]
+    public string SearchText => $"{Name} {KindLabel}";
+
+    [JsonIgnore]
+    public string CurrentPageLabel => PageLabels.Count == 0
+        ? CurrentPage.ToString()
+        : PageLabels.FirstOrDefault(rule => rule.PdfPage == CurrentPage)?.Label ?? CurrentPage.ToString();
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 KB";
+        }
+
+        var units = new[] { "B", "KB", "MB", "GB" };
+        var value = (double)bytes;
+        var unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0 ? $"{value:0} {units[unitIndex]}" : $"{value:0.0} {units[unitIndex]}";
+    }
+}
+
+public sealed partial class PageLabelRule : ObservableObject
+{
+    [ObservableProperty]
+    public partial int PdfPage { get; set; }
+
+    [ObservableProperty]
+    public partial string Label { get; set; } = string.Empty;
+}
+
+public sealed partial class OutlineItem : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int Page { get; set; }
+
+    [ObservableProperty]
+    public partial int Level { get; set; }
+
+    [JsonIgnore]
+    public string IndentedTitle => $"{new string(' ', Math.Max(0, Level - 1) * 2)}{Title}";
+}
+
+public sealed partial class ChatConversation : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial string DocumentId { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = "新对话";
+
+    [ObservableProperty]
+    public partial DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+
+    public ObservableCollection<ChatMessage> Messages { get; } = new();
+}
+
+public sealed partial class ChatMessage : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial ChatRole Role { get; set; }
+
+    [ObservableProperty]
+    public partial string Author { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Content { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
+
+    public ObservableCollection<ChatAttachment> Attachments { get; } = new();
+
+    [JsonIgnore]
+    public string Timestamp => CreatedAt.ToLocalTime().ToString("HH:mm");
+
+    [JsonIgnore]
+    public bool IsAssistant => Role == ChatRole.Assistant;
+}
+
+public sealed partial class ChatAttachment : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial AttachmentKind Kind { get; set; }
+
+    [ObservableProperty]
+    public partial string DocumentId { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int StartPage { get; set; }
+
+    [ObservableProperty]
+    public partial int EndPage { get; set; }
+
+    [ObservableProperty]
+    public partial string? FilePath { get; set; }
+
+    [ObservableProperty]
+    public partial double RegionX { get; set; }
+
+    [ObservableProperty]
+    public partial double RegionY { get; set; }
+
+    [ObservableProperty]
+    public partial double RegionWidth { get; set; }
+
+    [ObservableProperty]
+    public partial double RegionHeight { get; set; }
+
+    [JsonIgnore]
+    public string Detail => Kind switch
+    {
+        AttachmentKind.Page => $"第 {StartPage} 页",
+        AttachmentKind.PageRange => $"第 {StartPage}-{EndPage} 页",
+        AttachmentKind.Region => $"第 {StartPage} 页框选区域",
+        _ => FilePath ?? string.Empty
     };
 }
 
-public sealed class ActivityItem
+public sealed partial class PageImageItem : ObservableObject
 {
-    public required string Id { get; init; }
+    [ObservableProperty]
+    public partial int PageNumber { get; set; }
 
-    public required ActivityKind Kind { get; init; }
+    [ObservableProperty]
+    public partial string Label { get; set; } = string.Empty;
 
-    public required string Title { get; set; }
-
-    public required string Subtitle { get; set; }
-
-    public string Body { get; set; } = string.Empty;
-
-    public string Badge { get; set; } = string.Empty;
-
-    public ObservableCollection<MaterialItem> Materials { get; } = new();
-
-    public ObservableCollection<FileChangeItem> FileChanges { get; } = new();
+    [ObservableProperty]
+    public partial BitmapImage? Image { get; set; }
 }
 
-public sealed class FileChangeItem
+public sealed partial class NavigationEntry : ObservableObject
 {
-    public required string Path { get; init; }
+    [ObservableProperty]
+    public partial string Id { get; set; } = string.Empty;
 
-    public required int Added { get; init; }
+    [ObservableProperty]
+    public partial string ProjectId { get; set; } = string.Empty;
 
-    public required int Removed { get; init; }
+    [ObservableProperty]
+    public partial string? DocumentId { get; set; }
 
-    public string DeltaText => $"+{Added} -{Removed}";
-}
+    [ObservableProperty]
+    public partial bool IsProject { get; set; }
 
-public sealed class WorkspaceSeed
-{
-    public ObservableCollection<ProjectItem> Projects { get; } = new();
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Detail { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Prefix { get; set; } = string.Empty;
 }

@@ -40,7 +40,7 @@ public sealed class AppStrings
     public required string Conversation { get; init; }
     public required string Clear { get; init; }
     public required string AskPlaceholder { get; init; }
-    public required string SendMockPrompt { get; init; }
+    public required string SendPrompt { get; init; }
     public required string Language { get; init; }
     public required string AiProvider { get; init; }
     public required string ProviderName { get; init; }
@@ -53,7 +53,7 @@ public sealed class AppStrings
     public required string ChapterPrompt { get; init; }
     public required string MinorU { get; init; }
     public required string MinorUEndpoint { get; init; }
-    public required string UseMockResponses { get; init; }
+    public required string UseOfflineResponses { get; init; }
     public required string SaveSettings { get; init; }
     public required string CloseSettings { get; init; }
     public required string DragHint { get; init; }
@@ -61,7 +61,7 @@ public sealed class AppStrings
     public required string ChooseDocument { get; init; }
     public required string ReaderPreview { get; init; }
     public required string NoPdfLoaded { get; init; }
-    public required string PdfEnginePlaceholder { get; init; }
+    public required string PdfEngineStatus { get; init; }
     public required string NoPage { get; init; }
     public required string OpenPdfToBegin { get; init; }
     public required string NoPdfSelected { get; init; }
@@ -113,7 +113,7 @@ public static class LocalizationCatalog
         Conversation = "对话",
         Clear = "清空",
         AskPlaceholder = "询问这份 PDF...",
-        SendMockPrompt = "发送模拟提问",
+        SendPrompt = "发送",
         Language = "语言",
         AiProvider = "AI 服务商",
         ProviderName = "服务商名称",
@@ -126,7 +126,7 @@ public static class LocalizationCatalog
         ChapterPrompt = "章节讲解提示词",
         MinorU = "MinorU",
         MinorUEndpoint = "MinorU 地址",
-        UseMockResponses = "使用模拟回答",
+        UseOfflineResponses = "使用离线阅读回答",
         SaveSettings = "保存设置",
         CloseSettings = "关闭",
         DragHint = "拖动分隔条可调整各区域宽度",
@@ -134,7 +134,7 @@ public static class LocalizationCatalog
         ChooseDocument = "从资料库选择一份文档",
         ReaderPreview = "阅读器预览",
         NoPdfLoaded = "未加载 PDF",
-        PdfEnginePlaceholder = "PDF 引擎占位",
+        PdfEngineStatus = "系统 PDF 引擎",
         NoPage = "无页面",
         OpenPdfToBegin = "打开 PDF 后开始阅读。",
         NoPdfSelected = "未选择 PDF",
@@ -179,7 +179,7 @@ public static class LocalizationCatalog
         Conversation = "Conversation",
         Clear = "Clear",
         AskPlaceholder = "Ask about this PDF...",
-        SendMockPrompt = "Send Mock Prompt",
+        SendPrompt = "Send",
         Language = "Language",
         AiProvider = "AI Provider",
         ProviderName = "Provider name",
@@ -192,7 +192,7 @@ public static class LocalizationCatalog
         ChapterPrompt = "Chapter prompt",
         MinorU = "MinorU",
         MinorUEndpoint = "MinorU endpoint",
-        UseMockResponses = "Use mock responses",
+        UseOfflineResponses = "Use offline reading responses",
         SaveSettings = "Save Settings",
         CloseSettings = "Close",
         DragHint = "Drag splitters to resize panes",
@@ -200,7 +200,7 @@ public static class LocalizationCatalog
         ChooseDocument = "Choose a document from the library",
         ReaderPreview = "Reader preview",
         NoPdfLoaded = "No PDF loaded",
-        PdfEnginePlaceholder = "PDF engine placeholder",
+        PdfEngineStatus = "System PDF engine",
         NoPage = "No page",
         OpenPdfToBegin = "Open a PDF to begin.",
         NoPdfSelected = "No PDF selected",

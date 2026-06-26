@@ -4,6 +4,36 @@
 
 This document turns the product goal into a practical WinUI development plan. The application should be built as a native Windows desktop reader first, with AI workflows integrated into the reading surface rather than treated as a side panel novelty.
 
+## Current Implementation Progress
+
+ReadOS now has a usable local desktop MVP rather than a static shell.
+
+Completed in the current app:
+
+- WinUI 3 app frame with resizable library and chat panes.
+- Local workspace persistence under `%LOCALAPPDATA%\ReadOS`.
+- Project/library model with import, rename, delete-to-trash, search, and open-location commands.
+- Real PDF import and page rendering using `Windows.Data.Pdf`.
+- PDF page count, text extraction, document search, and bookmark import using `PdfPig`.
+- Reader controls for previous/next, page jump, zoom width, thumbnails, page labels, and outline navigation.
+- Editable page labels and outline items.
+- Automatic baseline page mapping and heuristic outline generation.
+- Region selection workflow that creates a red-box attachment with context pages.
+- Per-document chat warehouse with persisted messages and attachments.
+- OpenAI-compatible chat service with configurable provider, base URL, API key, model, and prompts.
+- Offline reading response mode for use without an API key.
+- Workspace export/import as zip archives.
+
+Remaining product-level work:
+
+- PDF metadata writing for exported page labels and outlines.
+- Annotation editing beyond the region-explanation overlay.
+- Robust drag/drop folder tree, undo/redo, manual ordering UI, and restore UI for trash.
+- True scanned-book vision page mapping and table-of-contents extraction.
+- Cropped image attachments for selected regions.
+- MinorU parse/cache integration and precise chapter/section extraction.
+- Packaged installer, migration system, and automated tests.
+
 ## WinUI Template Research
 
 The current best starting options are:
@@ -38,7 +68,7 @@ Recommendation: start from Visual Studio's WinUI Blank App (Packaged) C# templat
 - Git is available.
 - GitHub CLI is installed at `C:\Program Files\GitHub CLI\gh.exe`, but `C:\Program Files\GitHub CLI` was not visible in the Codex runner PATH.
 - GitHub CLI is authenticated as `mico-v` with repository permissions.
-- .NET CLI (`dotnet`) was not found in PATH or in the common `C:\Program Files\dotnet` location.
+- .NET SDK 10.0.301 is available at `C:\Program Files\dotnet\dotnet.exe` and has been used to verify solution builds.
 - WinUI project creation is therefore expected to happen through Visual Studio until the local SDK/CLI path is installed or fixed.
 
 ## Proposed Solution Structure
@@ -138,47 +168,57 @@ If keeping a single project is faster for the first prototype, it is acceptable 
 - Create GitHub repository and push initial commit.
 - Install or document required local WinUI tooling.
 
-### Milestone 1: WinUI Shell
+### Milestone 1: WinUI Shell - complete
 
 - Scaffold WinUI 3 app.
 - Establish MVVM Toolkit.
-- Add main layout: library panel, PDF workspace placeholder, chat panel placeholder.
+- Add main layout: library panel, PDF workspace, chat panel, settings drawer, and panel resizing.
 - Add navigation and basic command structure.
 
-### Milestone 2: Library MVP
+### Milestone 2: Library MVP - mostly complete
 
 - Persist folders and documents.
 - Implement import, rename, delete, trash, restore, and manual ordering.
 - Add search.
 - Add keyboard shortcuts matching the product goal.
 
-### Milestone 3: Reader MVP
+Current status: local persistence, import, rename, delete-to-trash, search, and open-location are implemented. Folder restore UI, drag/drop, undo/redo, manual ordering UI, and shortcut polish remain.
+
+### Milestone 3: Reader MVP - mostly complete
 
 - Select PDF library after spike.
 - Render PDFs with page navigation and thumbnails.
 - Add tabs and panel hide/show.
 - Persist reading progress.
 
-### Milestone 4: AI Chat MVP
+Current status: PDF rendering, page navigation, thumbnails, search, imported bookmarks, editable outline entries, editable page labels, and reading progress are implemented. Multiple tabs and annotation tools remain.
+
+### Milestone 4: AI Chat MVP - mostly complete
 
 - Add provider/model settings.
 - Implement per-PDF chat warehouse.
 - Attach current page and page ranges.
 - Add prompt defaults and conversation persistence.
 
-### Milestone 5: Smart PDF Metadata
+Current status: provider settings, OpenAI-compatible chat calls, offline mode, per-document persisted conversations, page/range/region attachments, and prompt defaults are implemented. Conversation export and richer provider-specific options remain.
+
+### Milestone 5: Smart PDF Metadata - partial
 
 - Implement book page mapping workflow.
 - Implement manual page mapping editor.
 - Implement outline generation workflow.
 - Export PDFs with page labels and outlines.
 
-### Milestone 6: Precision Workflows
+Current status: manual page label editing, baseline page mapping, bookmark import, heuristic outline generation, and manual outline edits are implemented. Vision mapping and PDF metadata writing remain.
+
+### Milestone 6: Precision Workflows - partial
 
 - Region selection explanation.
 - Attachment page deletion/splitting/cropping.
 - MinorU-style parse cache integration.
 - Outline section explanation.
+
+Current status: red-box region selection creates context-page attachments and inserts the region prompt. Cropped image export, attachment crop/split editing, and MinorU integration remain.
 
 ## Key Technical Spikes
 
