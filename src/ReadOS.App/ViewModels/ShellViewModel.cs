@@ -27,6 +27,41 @@ public enum SettingsRoute
     Workspace
 }
 
+public enum WorkspaceLayoutMode
+{
+    ChatPrimary,
+    PresenterPrimary,
+    FocusChat,
+    FocusPresenter
+}
+
+public enum WorkspaceSidebarMode
+{
+    Conversations,
+    Materials
+}
+
+public enum InspectorTab
+{
+    Context,
+    Actions,
+    Evidence,
+    Attachments,
+    Outline,
+    Search
+}
+
+public enum PresenterKind
+{
+    None,
+    Pdf,
+    Markdown,
+    Text,
+    ImagePlaceholder,
+    VideoPlaceholder,
+    DocumentPlaceholder
+}
+
 public sealed partial class ShellViewModel : ObservableObject
 {
     private readonly IWorkspaceStore workspaceStore;
@@ -146,6 +181,15 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial bool IsSettingsOpen { get; set; }
 
     [ObservableProperty]
+    public partial WorkspaceLayoutMode WorkspaceLayout { get; set; } = WorkspaceLayoutMode.FocusChat;
+
+    [ObservableProperty]
+    public partial WorkspaceSidebarMode SidebarMode { get; set; } = WorkspaceSidebarMode.Conversations;
+
+    [ObservableProperty]
+    public partial InspectorTab SelectedInspectorTab { get; set; } = InspectorTab.Context;
+
+    [ObservableProperty]
     public partial bool IsLibraryVisible { get; set; } = true;
 
     [ObservableProperty]
@@ -167,6 +211,15 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial double ChatWidth { get; set; } = 324;
 
     [ObservableProperty]
+    public partial double PresenterWidth { get; set; } = 560;
+
+    [ObservableProperty]
+    public partial double InspectorWidth { get; set; } = 316;
+
+    [ObservableProperty]
+    public partial double PresenterDrawerWidth { get; set; } = 148;
+
+    [ObservableProperty]
     public partial double ReaderImageWidth { get; set; } = 760;
 
     [ObservableProperty]
@@ -174,6 +227,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial BitmapImage? CurrentPageImage { get; set; }
+
+    [ObservableProperty]
+    public partial string PresenterTextContent { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string ProviderName { get; set; } = "OpenAI Compatible";
@@ -221,6 +277,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool HasPageImage => CurrentPageImage is not null;
 
+    public bool HasTextPresenter => !string.IsNullOrWhiteSpace(PresenterTextContent) &&
+        CurrentPresenterKind is PresenterKind.Markdown or PresenterKind.Text;
+
+    public bool IsPresenterPlaceholderVisible => !HasPageImage && !HasTextPresenter;
+
     public string LibrarySummary => SelectedProject is null
         ? "0 个文件"
         : $"{SelectedProject.LibraryItems.Count} 个文件";
@@ -237,6 +298,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public string ThemeToggleLabel => IsDarkTheme ? "切换浅色" : "切换深色";
 
+    public bool IsWorkspaceRoute => CurrentRoute != ShellRoute.Settings;
+
     public bool IsHomeRoute => CurrentRoute == ShellRoute.Home;
 
     public bool IsReaderRoute => CurrentRoute == ShellRoute.Reader;
@@ -250,6 +313,60 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool IsPromptSettingsSelected => SelectedSettingsRoute == SettingsRoute.Prompts;
 
     public bool IsWorkspaceSettingsSelected => SelectedSettingsRoute == SettingsRoute.Workspace;
+
+    public bool IsConversationsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Conversations;
+
+    public bool IsMaterialsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Materials;
+
+    public bool IsContextInspectorSelected => SelectedInspectorTab == InspectorTab.Context;
+
+    public bool IsActionsInspectorSelected => SelectedInspectorTab == InspectorTab.Actions;
+
+    public bool IsEvidenceInspectorSelected => SelectedInspectorTab == InspectorTab.Evidence;
+
+    public bool IsAttachmentsInspectorSelected => SelectedInspectorTab == InspectorTab.Attachments;
+
+    public bool IsOutlineInspectorSelected => SelectedInspectorTab == InspectorTab.Outline;
+
+    public bool IsSearchInspectorSelected => SelectedInspectorTab == InspectorTab.Search;
+
+    public bool IsPresenterVisible => WorkspaceLayout != WorkspaceLayoutMode.FocusChat;
+
+    public bool IsChatWorkspaceVisible => WorkspaceLayout != WorkspaceLayoutMode.FocusPresenter;
+
+    public bool IsInspectorVisible => IsChatVisible && WorkspaceLayout != WorkspaceLayoutMode.FocusPresenter;
+
+    public string WorkspaceModeLabel => WorkspaceLayout switch
+    {
+        WorkspaceLayoutMode.PresenterPrimary => "演示器优先",
+        WorkspaceLayoutMode.FocusChat => "专注对话",
+        WorkspaceLayoutMode.FocusPresenter => "专注演示",
+        _ => "对话优先"
+    };
+
+    public PresenterKind CurrentPresenterKind => SelectedDocument?.Kind switch
+    {
+        LibraryItemKind.Pdf => PresenterKind.Pdf,
+        LibraryItemKind.Markdown => PresenterKind.Markdown,
+        LibraryItemKind.Note => PresenterKind.Text,
+        null => PresenterKind.None,
+        _ => PresenterKind.DocumentPlaceholder
+    };
+
+    public string PresenterKindLabel => CurrentPresenterKind switch
+    {
+        PresenterKind.Pdf => "PDF 演示器",
+        PresenterKind.Markdown => "Markdown 预览",
+        PresenterKind.Text => "文本预览",
+        PresenterKind.ImagePlaceholder => "图片预览",
+        PresenterKind.VideoPlaceholder => "视频预览",
+        PresenterKind.DocumentPlaceholder => "文档预览",
+        _ => "资料演示器"
+    };
+
+    public string ActiveWorkspaceScope => SelectedDocument is null
+        ? SelectedProject?.Name ?? "本地阅读工作台"
+        : $"{SelectedDocument.KindLabel} · {CurrentPageIndicator}";
 
     public void SetHostWindow(Window window)
     {
@@ -329,6 +446,7 @@ public sealed partial class ShellViewModel : ObservableObject
         if (value is null)
         {
             CurrentPageImage = null;
+            PresenterTextContent = string.Empty;
             CurrentPageNumber = 0;
             RefreshDocumentCollections();
             NotifyActiveContext();
@@ -389,6 +507,23 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    partial void OnCurrentPageNumberChanged(int value)
+    {
+        OnPropertyChanged(nameof(ActiveWorkspaceScope));
+    }
+
+    partial void OnCurrentPageImageChanged(BitmapImage? value)
+    {
+        OnPropertyChanged(nameof(HasPageImage));
+        OnPropertyChanged(nameof(IsPresenterPlaceholderVisible));
+    }
+
+    partial void OnPresenterTextContentChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasTextPresenter));
+        OnPropertyChanged(nameof(IsPresenterPlaceholderVisible));
+    }
+
     partial void OnUseOfflineResponsesChanged(bool value)
     {
         OnPropertyChanged(nameof(ActiveModelLabel));
@@ -412,6 +547,7 @@ public sealed partial class ShellViewModel : ObservableObject
     partial void OnCurrentRouteChanged(ShellRoute value)
     {
         IsSettingsOpen = value == ShellRoute.Settings;
+        OnPropertyChanged(nameof(IsWorkspaceRoute));
         OnPropertyChanged(nameof(IsHomeRoute));
         OnPropertyChanged(nameof(IsReaderRoute));
         OnPropertyChanged(nameof(IsSettingsRoute));
@@ -425,16 +561,46 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWorkspaceSettingsSelected));
     }
 
+    partial void OnWorkspaceLayoutChanged(WorkspaceLayoutMode value)
+    {
+        OnPropertyChanged(nameof(IsPresenterVisible));
+        OnPropertyChanged(nameof(IsChatWorkspaceVisible));
+        OnPropertyChanged(nameof(IsInspectorVisible));
+        OnPropertyChanged(nameof(WorkspaceModeLabel));
+    }
+
+    partial void OnSidebarModeChanged(WorkspaceSidebarMode value)
+    {
+        OnPropertyChanged(nameof(IsConversationsSidebarSelected));
+        OnPropertyChanged(nameof(IsMaterialsSidebarSelected));
+    }
+
+    partial void OnSelectedInspectorTabChanged(InspectorTab value)
+    {
+        OnPropertyChanged(nameof(IsContextInspectorSelected));
+        OnPropertyChanged(nameof(IsActionsInspectorSelected));
+        OnPropertyChanged(nameof(IsEvidenceInspectorSelected));
+        OnPropertyChanged(nameof(IsAttachmentsInspectorSelected));
+        OnPropertyChanged(nameof(IsOutlineInspectorSelected));
+        OnPropertyChanged(nameof(IsSearchInspectorSelected));
+    }
+
+    partial void OnIsChatVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsInspectorVisible));
+    }
+
     [RelayCommand]
     private void NavigateHome()
     {
-        CurrentRoute = ShellRoute.Home;
+        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusChat);
     }
 
     [RelayCommand]
     private void NavigateReader()
     {
-        CurrentRoute = ShellRoute.Reader;
+        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.PresenterPrimary);
+        SidebarMode = WorkspaceSidebarMode.Materials;
     }
 
     [RelayCommand]
@@ -456,6 +622,50 @@ public sealed partial class ShellViewModel : ObservableObject
     private void ToggleTheme()
     {
         IsDarkTheme = !IsDarkTheme;
+    }
+
+    [RelayCommand]
+    private void SetWorkspaceLayout(string mode)
+    {
+        if (!Enum.TryParse<WorkspaceLayoutMode>(mode, ignoreCase: true, out var layout))
+        {
+            return;
+        }
+
+        ApplyWorkspaceLayoutPreset(layout);
+    }
+
+    [RelayCommand]
+    private void SwapPrimaryPane()
+    {
+        var layout = WorkspaceLayout switch
+        {
+            WorkspaceLayoutMode.PresenterPrimary => WorkspaceLayoutMode.ChatPrimary,
+            WorkspaceLayoutMode.FocusPresenter => WorkspaceLayoutMode.FocusChat,
+            WorkspaceLayoutMode.FocusChat => WorkspaceLayoutMode.FocusPresenter,
+            _ => WorkspaceLayoutMode.PresenterPrimary
+        };
+        ApplyWorkspaceLayoutPreset(layout);
+    }
+
+    [RelayCommand]
+    private void SelectSidebarMode(string mode)
+    {
+        if (Enum.TryParse<WorkspaceSidebarMode>(mode, ignoreCase: true, out var sidebarMode))
+        {
+            SidebarMode = sidebarMode;
+            IsLibraryVisible = true;
+        }
+    }
+
+    [RelayCommand]
+    private void SelectInspectorTab(string tab)
+    {
+        if (Enum.TryParse<InspectorTab>(tab, ignoreCase: true, out var inspectorTab))
+        {
+            SelectedInspectorTab = inspectorTab;
+            IsChatVisible = true;
+        }
     }
 
     [RelayCommand]
@@ -745,7 +955,25 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void AttachCurrentPage()
     {
-        if (SelectedDocument is null || CurrentPageNumber <= 0)
+        if (SelectedDocument is null)
+        {
+            return;
+        }
+
+        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
+        {
+            PendingAttachments.Add(new ChatAttachment
+            {
+                Kind = AttachmentKind.File,
+                DocumentId = SelectedDocument.Id,
+                Title = $"{SelectedDocument.Name} · 全文",
+                FilePath = workspaceStore.GetAbsolutePath(SelectedDocument)
+            });
+            NotifyAttachmentState();
+            return;
+        }
+
+        if (CurrentPageNumber <= 0)
         {
             return;
         }
@@ -766,6 +994,13 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         if (SelectedDocument is null)
         {
+            return;
+        }
+
+        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
+        {
+            AttachCurrentPage();
+            StatusMessage = "文本资料已作为全文附件加入当前对话。";
             return;
         }
 
@@ -966,7 +1201,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void CloseSettings()
     {
-        CurrentRoute = ShellRoute.Home;
+        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusChat);
     }
 
     [RelayCommand]
@@ -985,6 +1220,8 @@ public sealed partial class ShellViewModel : ObservableObject
     private void ToggleOutline()
     {
         IsOutlineVisible = !IsOutlineVisible;
+        SelectedInspectorTab = InspectorTab.Outline;
+        IsChatVisible = IsOutlineVisible;
     }
 
     [RelayCommand]
@@ -1045,6 +1282,38 @@ public sealed partial class ShellViewModel : ObservableObject
         StatusMessage = "工作区已导入并重新加载。";
     }
 
+    public void ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode layout)
+    {
+        WorkspaceLayout = layout;
+        CurrentRoute = layout is WorkspaceLayoutMode.PresenterPrimary or WorkspaceLayoutMode.FocusPresenter
+            ? ShellRoute.Reader
+            : ShellRoute.Home;
+
+        switch (layout)
+        {
+            case WorkspaceLayoutMode.PresenterPrimary:
+                ChatWidth = 520;
+                PresenterWidth = 740;
+                InspectorWidth = 316;
+                break;
+            case WorkspaceLayoutMode.FocusPresenter:
+                ChatWidth = 520;
+                PresenterWidth = 760;
+                InspectorWidth = 316;
+                break;
+            case WorkspaceLayoutMode.FocusChat:
+                ChatWidth = 560;
+                PresenterWidth = 520;
+                InspectorWidth = 316;
+                break;
+            default:
+                ChatWidth = 560;
+                PresenterWidth = 520;
+                InspectorWidth = 316;
+                break;
+        }
+    }
+
     private async Task SelectProjectAsync(ProjectItem project, LibraryItem? document)
     {
         SelectedProject = project;
@@ -1074,13 +1343,31 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private async Task LoadCurrentPageAsync()
     {
-        if (SelectedDocument is null || SelectedDocument.Kind != LibraryItemKind.Pdf || SelectedDocument.PageCount == 0)
+        if (SelectedDocument is null)
         {
             CurrentPageImage = null;
+            PresenterTextContent = string.Empty;
             NotifyActiveContext();
             return;
         }
 
+        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
+        {
+            CurrentPageImage = null;
+            await LoadPresenterTextAsync(SelectedDocument);
+            NotifyActiveContext();
+            return;
+        }
+
+        if (SelectedDocument.Kind != LibraryItemKind.Pdf || SelectedDocument.PageCount == 0)
+        {
+            CurrentPageImage = null;
+            PresenterTextContent = string.Empty;
+            NotifyActiveContext();
+            return;
+        }
+
+        PresenterTextContent = string.Empty;
         try
         {
             CurrentPageImage = await pdfService.RenderPageAsync(
@@ -1097,6 +1384,22 @@ public sealed partial class ShellViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasPageImage));
         OnPropertyChanged(nameof(CurrentPageIndicator));
+    }
+
+    private async Task LoadPresenterTextAsync(LibraryItem document)
+    {
+        try
+        {
+            var path = workspaceStore.GetAbsolutePath(document);
+            PresenterTextContent = File.Exists(path)
+                ? await File.ReadAllTextAsync(path)
+                : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            PresenterTextContent = string.Empty;
+            StatusMessage = $"文本加载失败：{ex.Message}";
+        }
     }
 
     private async Task LoadThumbnailsAsync()
@@ -1336,7 +1639,26 @@ public sealed partial class ShellViewModel : ObservableObject
     private async Task<string> GetAttachmentTextAsync(ChatAttachment attachment)
     {
         var document = FindDocument(attachment.DocumentId);
-        if (document is null || document.Kind != LibraryItemKind.Pdf)
+        if (attachment.Kind == AttachmentKind.File)
+        {
+            var path = !string.IsNullOrWhiteSpace(attachment.FilePath)
+                ? attachment.FilePath
+                : document is null ? string.Empty : workspaceStore.GetAbsolutePath(document);
+            return File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
+        }
+
+        if (document is null)
+        {
+            return string.Empty;
+        }
+
+        if (document.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
+        {
+            var path = workspaceStore.GetAbsolutePath(document);
+            return File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
+        }
+
+        if (document.Kind != LibraryItemKind.Pdf)
         {
             return string.Empty;
         }
@@ -1487,6 +1809,10 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(HasPdfDocument));
         OnPropertyChanged(nameof(HasPageImage));
         OnPropertyChanged(nameof(CurrentPageIndicator));
+        OnPropertyChanged(nameof(PresenterKindLabel));
+        OnPropertyChanged(nameof(ActiveWorkspaceScope));
+        OnPropertyChanged(nameof(HasTextPresenter));
+        OnPropertyChanged(nameof(IsPresenterPlaceholderVisible));
     }
 
     private void NotifyAttachmentState()

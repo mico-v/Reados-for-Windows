@@ -24,6 +24,10 @@
 
   <ItemGroup>
     <Page Include="MainWindow.xaml" />
+    <Page Include="Views\ChatSurfaceView.xaml" />
+    <Page Include="Views\PresenterSurfaceView.xaml" />
+    <Page Include="Views\SettingsView.xaml" />
+    <Page Include="Views\WorkspaceSidebarView.xaml" />
   </ItemGroup>
 
   <ItemGroup>

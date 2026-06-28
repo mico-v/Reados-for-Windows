@@ -1,0 +1,135 @@
+<UserControl
+    x:Class="ReadOS.App.Views.WorkspaceSidebarView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border Background="{ThemeResource ReadOSSidebarBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="0,0,1,0">
+        <Grid Padding="12" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="36" />
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="116" />
+            </Grid.RowDefinitions>
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="34" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="1" VerticalAlignment="Center">
+                    <TextBlock Text="任务" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding LibrarySummary}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" />
+                </StackPanel>
+                <Button Grid.Column="1" Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="新对话" Command="{Binding NewConversationCommand}">
+                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="14" />
+                </Button>
+                <Button Grid.Column="2" Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="隐藏侧栏" Command="{Binding ToggleLibraryCommand}">
+                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BB;" FontSize="14" />
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ToggleButton Height="34" IsChecked="{Binding IsConversationsSidebarSelected, Mode=OneWay}" Command="{Binding SelectSidebarModeCommand}" CommandParameter="Conversations">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" FontSize="12" />
+                        <TextBlock Text="对话" />
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton Grid.Column="1" Height="34" IsChecked="{Binding IsMaterialsSidebarSelected, Mode=OneWay}" Command="{Binding SelectSidebarModeCommand}" CommandParameter="Materials">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A5;" FontSize="12" />
+                        <TextBlock Text="资料" />
+                    </StackPanel>
+                </ToggleButton>
+            </Grid>
+
+            <TextBox Grid.Row="2" Height="34" PlaceholderText="搜索对话、项目、文件" Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <Grid Grid.Row="3">
+                <ListView ItemsSource="{Binding Conversations}"
+                          SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          SelectionMode="Single"
+                          Visibility="{Binding IsConversationsSidebarSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="7,8" ColumnSpacing="9" MinHeight="56">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="30" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="30" Height="30" CornerRadius="7" Background="{ThemeResource ReadOSSubtleBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" FontSize="13" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="{Binding Title}" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding UpdatedAt}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <ListView ItemsSource="{Binding NavigationEntries}"
+                          SelectedItem="{Binding SelectedNavigationEntry, Mode=TwoWay}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          SelectionMode="Single"
+                          Visibility="{Binding IsMaterialsSidebarSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="7,8" ColumnSpacing="8" MinHeight="52">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Prefix}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="{Binding Title}" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Detail}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+
+            <Grid Grid.Row="4" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="34" />
+                    <RowDefinition Height="34" />
+                    <RowDefinition Height="34" />
+                </Grid.RowDefinitions>
+                <Button Height="34" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ImportMaterialCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8E5;" FontSize="13" />
+                        <TextBlock Text="导入资料" />
+                    </StackPanel>
+                </Button>
+                <Button Grid.Row="1" Height="34" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding CreateProjectCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8F4;" FontSize="13" />
+                        <TextBlock Text="新建项目" />
+                    </StackPanel>
+                </Button>
+                <Button Grid.Row="2" Height="34" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding OpenLocationCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE838;" FontSize="13" />
+                        <TextBlock Text="打开位置" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

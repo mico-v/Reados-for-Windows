@@ -1,0 +1,109 @@
+<UserControl
+    x:Class="ReadOS.App.Views.SettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ReadOSCanvasBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="248" />
+            <ColumnDefinition Width="1" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{ThemeResource ReadOSSidebarBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="0,0,1,0">
+            <Grid Padding="16" RowSpacing="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="设置" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" />
+                </StackPanel>
+                <StackPanel Grid.Row="1" Spacing="8">
+                    <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="General" Content="通用" />
+                    <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Provider" Content="模型服务" />
+                    <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Prompts" Content="提示词" />
+                    <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Workspace" Content="工作区" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Column="1" Background="{ThemeResource ReadOSBorderBrush}" />
+
+        <Border Grid.Column="2" Background="{ThemeResource ReadOSCanvasBrush}">
+            <Grid Padding="28" RowSpacing="18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="偏好设置" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="24" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Height="36" Padding="12,0" Command="{Binding NavigateHomeCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72B;" FontSize="13" />
+                            <TextBlock Text="返回工作台" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1">
+                    <Grid MaxWidth="720" HorizontalAlignment="Left">
+                        <StackPanel Spacing="18" Visibility="{Binding IsGeneralSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ComboBox Header="语言"
+                                      Width="360"
+                                      ItemsSource="{Binding LanguageOptions}"
+                                      SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName" />
+                            <ToggleSwitch Header="深色模式" IsOn="{Binding IsDarkTheme, Mode=TwoWay}" />
+                            <ToggleSwitch Header="使用离线阅读回答" IsOn="{Binding UseOfflineResponses, Mode=TwoWay}" />
+                            <TextBox Header="MinorU 地址" Width="520" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="18" Visibility="{Binding IsProviderSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBox Header="服务商名称" Width="420" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Header="Base URL" Width="560" Text="{Binding ProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Header="API Key" Width="560" Text="{Binding ProviderApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Header="模型名称" Width="420" Text="{Binding ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="18" Visibility="{Binding IsPromptSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBox Header="附件默认提示词" Width="640" Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="82" TextWrapping="Wrap" />
+                            <TextBox Header="框选讲解提示词" Width="640" Text="{Binding RegionExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="82" TextWrapping="Wrap" />
+                            <TextBox Header="章节讲解提示词" Width="640" Text="{Binding ChapterExplainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="82" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="18" Visibility="{Binding IsWorkspaceSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border Width="640" Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSSubtleBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="当前工作区" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding ActiveSubtitle}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Height="36" Padding="12,0" Content="导出工作区" Command="{Binding ExportWorkspaceCommand}" />
+                                <Button Height="36" Padding="12,0" Content="导入工作区" Command="{Binding ImportWorkspaceCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+                    <Button Height="36" Padding="14,0" Content="保存设置" Command="{Binding SaveSettingsCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
