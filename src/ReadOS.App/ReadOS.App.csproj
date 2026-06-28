@@ -25,4 +25,8 @@
   <ItemGroup>
     <Page Include="MainWindow.xaml" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReadOS.Msp\ReadOS.Msp.csproj" />
+  </ItemGroup>
 </Project>

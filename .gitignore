@@ -23,6 +23,7 @@ BundleArtifacts/
 TestResults/
 artifacts/
 publish/
+target/
 *.appx
 *.appxbundle
 *.msix
@@ -52,4 +53,3 @@ secrets.json
 Thumbs.db
 Desktop.ini
 .DS_Store
-

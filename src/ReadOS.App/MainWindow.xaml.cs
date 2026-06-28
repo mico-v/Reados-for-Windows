@@ -13,10 +13,10 @@ namespace ReadOS.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const double MinSidebarWidth = 260;
-    private const double MaxSidebarWidth = 460;
-    private const double MinChatWidth = 320;
-    private const double MaxChatWidth = 520;
+    private const double MinSidebarWidth = 248;
+    private const double MaxSidebarWidth = 360;
+    private const double MinChatWidth = 292;
+    private const double MaxChatWidth = 420;
     private bool selectingRegion;
     private Point regionStart;
 
@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
         RootShell.DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         RootShell.Loaded += MainWindow_Loaded;
+        ApplyTheme();
         ApplyPaneWidths();
     }
 
@@ -44,6 +45,7 @@ public sealed partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
+        ApplyTheme();
         ApplyPaneWidths();
     }
 
@@ -51,10 +53,17 @@ public sealed partial class MainWindow : Window
     {
         if (e.PropertyName is nameof(ViewModel.IsLibraryVisible)
             or nameof(ViewModel.IsChatVisible)
+            or nameof(ViewModel.IsThumbnailsVisible)
+            or nameof(ViewModel.IsOutlineVisible)
             or nameof(ViewModel.SidebarWidth)
             or nameof(ViewModel.ChatWidth))
         {
             ApplyPaneWidths();
+        }
+
+        if (e.PropertyName is nameof(ViewModel.IsDarkTheme))
+        {
+            ApplyTheme();
         }
     }
 
@@ -76,6 +85,13 @@ public sealed partial class MainWindow : Window
         SidebarSplitterColumn.Width = ViewModel.IsLibraryVisible ? new GridLength(1) : new GridLength(0);
         ChatColumn.Width = ViewModel.IsChatVisible ? new GridLength(ViewModel.ChatWidth) : new GridLength(0);
         ChatSplitterColumn.Width = ViewModel.IsChatVisible ? new GridLength(1) : new GridLength(0);
+        ReaderThumbnailColumn.Width = ViewModel.IsThumbnailsVisible ? new GridLength(164) : new GridLength(0);
+        ReaderOutlineColumn.Width = ViewModel.IsOutlineVisible ? new GridLength(270) : new GridLength(0);
+    }
+
+    private void ApplyTheme()
+    {
+        RootShell.RequestedTheme = ViewModel.IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
     }
 
     private void RegionCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)

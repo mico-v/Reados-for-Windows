@@ -59,6 +59,9 @@ public sealed partial class WorkspaceSettings : ObservableObject
     public partial bool UseOfflineResponses { get; set; } = true;
 
     [ObservableProperty]
+    public partial bool UseDarkTheme { get; set; }
+
+    [ObservableProperty]
     public partial string AttachmentDefaultPrompt { get; set; } = "请按书本顺序解释我附加的页面。";
 
     [ObservableProperty]

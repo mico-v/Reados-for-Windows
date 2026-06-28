@@ -7,8 +7,25 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
+using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Models;
 
 namespace ReadOS.App.ViewModels;
+
+public enum ShellRoute
+{
+    Home,
+    Reader,
+    Settings
+}
+
+public enum SettingsRoute
+{
+    General,
+    Provider,
+    Prompts,
+    Workspace
+}
 
 public sealed partial class ShellViewModel : ObservableObject
 {
@@ -16,6 +33,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IPdfDocumentService pdfService;
     private readonly IFileDialogService fileDialogService;
     private readonly IAiChatService aiChatService;
+    private readonly ReadOsMspHost mspHost;
     private WorkspaceState? workspace;
     private Window? hostWindow;
     private bool suppressNavigationSelection;
@@ -31,6 +49,11 @@ public sealed partial class ShellViewModel : ObservableObject
         this.pdfService = pdfService;
         this.fileDialogService = fileDialogService;
         this.aiChatService = aiChatService;
+        mspHost = new ReadOsMspHost(
+            workspaceStore,
+            pdfService,
+            () => workspace,
+            () => SelectedDocument);
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
@@ -114,6 +137,12 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
+    public partial ShellRoute CurrentRoute { get; set; } = ShellRoute.Home;
+
+    [ObservableProperty]
+    public partial SettingsRoute SelectedSettingsRoute { get; set; } = SettingsRoute.Provider;
+
+    [ObservableProperty]
     public partial bool IsSettingsOpen { get; set; }
 
     [ObservableProperty]
@@ -132,10 +161,10 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial bool IsRegionModeActive { get; set; }
 
     [ObservableProperty]
-    public partial double SidebarWidth { get; set; } = 320;
+    public partial double SidebarWidth { get; set; } = 280;
 
     [ObservableProperty]
-    public partial double ChatWidth { get; set; } = 380;
+    public partial double ChatWidth { get; set; } = 324;
 
     [ObservableProperty]
     public partial double ReaderImageWidth { get; set; } = 760;
@@ -160,6 +189,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool UseOfflineResponses { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsDarkTheme { get; set; }
 
     [ObservableProperty]
     public partial string AttachmentDefaultPrompt { get; set; } = "请按书本顺序解释我附加的页面。";
@@ -201,9 +233,35 @@ public sealed partial class ShellViewModel : ObservableObject
         ? "离线阅读模式"
         : $"{ProviderName} / {ModelName}";
 
+    public string ThemeLabel => IsDarkTheme ? "深色" : "浅色";
+
+    public string ThemeToggleLabel => IsDarkTheme ? "切换浅色" : "切换深色";
+
+    public bool IsHomeRoute => CurrentRoute == ShellRoute.Home;
+
+    public bool IsReaderRoute => CurrentRoute == ShellRoute.Reader;
+
+    public bool IsSettingsRoute => CurrentRoute == ShellRoute.Settings;
+
+    public bool IsGeneralSettingsSelected => SelectedSettingsRoute == SettingsRoute.General;
+
+    public bool IsProviderSettingsSelected => SelectedSettingsRoute == SettingsRoute.Provider;
+
+    public bool IsPromptSettingsSelected => SelectedSettingsRoute == SettingsRoute.Prompts;
+
+    public bool IsWorkspaceSettingsSelected => SelectedSettingsRoute == SettingsRoute.Workspace;
+
     public void SetHostWindow(Window window)
     {
         hostWindow = window;
+    }
+
+    public ValueTask<MspCommandResult> ExecuteMspCommandAsync(
+        string commandText,
+        string actor = "reados-agent",
+        CancellationToken cancellationToken = default)
+    {
+        return mspHost.ExecuteAsync(commandText, actor, cancellationToken);
     }
 
     public async Task InitializeAsync()
@@ -336,9 +394,69 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveModelLabel));
     }
 
+    partial void OnIsDarkThemeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ThemeLabel));
+        OnPropertyChanged(nameof(ThemeToggleLabel));
+        if (workspace is not null)
+        {
+            workspace.Settings.UseDarkTheme = value;
+            _ = SaveWorkspaceAsync();
+        }
+    }
+
     partial void OnProviderNameChanged(string value) => OnPropertyChanged(nameof(ActiveModelLabel));
 
     partial void OnModelNameChanged(string value) => OnPropertyChanged(nameof(ActiveModelLabel));
+
+    partial void OnCurrentRouteChanged(ShellRoute value)
+    {
+        IsSettingsOpen = value == ShellRoute.Settings;
+        OnPropertyChanged(nameof(IsHomeRoute));
+        OnPropertyChanged(nameof(IsReaderRoute));
+        OnPropertyChanged(nameof(IsSettingsRoute));
+    }
+
+    partial void OnSelectedSettingsRouteChanged(SettingsRoute value)
+    {
+        OnPropertyChanged(nameof(IsGeneralSettingsSelected));
+        OnPropertyChanged(nameof(IsProviderSettingsSelected));
+        OnPropertyChanged(nameof(IsPromptSettingsSelected));
+        OnPropertyChanged(nameof(IsWorkspaceSettingsSelected));
+    }
+
+    [RelayCommand]
+    private void NavigateHome()
+    {
+        CurrentRoute = ShellRoute.Home;
+    }
+
+    [RelayCommand]
+    private void NavigateReader()
+    {
+        CurrentRoute = ShellRoute.Reader;
+    }
+
+    [RelayCommand]
+    private void NavigateSettings()
+    {
+        CurrentRoute = ShellRoute.Settings;
+    }
+
+    [RelayCommand]
+    private void SelectSettingsCategory(string category)
+    {
+        if (Enum.TryParse<SettingsRoute>(category, ignoreCase: true, out var route))
+        {
+            SelectedSettingsRoute = route;
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        IsDarkTheme = !IsDarkTheme;
+    }
 
     [RelayCommand]
     private async Task CreateProjectAsync()
@@ -835,7 +953,6 @@ public sealed partial class ShellViewModel : ObservableObject
 
         workspace.Settings = BuildSettingsFromInputs();
         Strings = LocalizationCatalog.GetStrings(workspace.Settings.LanguageCode);
-        IsSettingsOpen = false;
         await SaveWorkspaceAsync();
         StatusMessage = "设置已保存。";
     }
@@ -843,13 +960,13 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void OpenSettings()
     {
-        IsSettingsOpen = true;
+        CurrentRoute = ShellRoute.Settings;
     }
 
     [RelayCommand]
     private void CloseSettings()
     {
-        IsSettingsOpen = false;
+        CurrentRoute = ShellRoute.Home;
     }
 
     [RelayCommand]
@@ -1328,6 +1445,7 @@ public sealed partial class ShellViewModel : ObservableObject
             ProviderApiKey = ProviderApiKey,
             ModelName = ModelName,
             UseOfflineResponses = UseOfflineResponses,
+            UseDarkTheme = IsDarkTheme,
             AttachmentDefaultPrompt = AttachmentDefaultPrompt,
             RegionExplainPrompt = RegionExplainPrompt,
             ChapterExplainPrompt = ChapterExplainPrompt,
@@ -1342,6 +1460,7 @@ public sealed partial class ShellViewModel : ObservableObject
         ProviderApiKey = settings.ProviderApiKey;
         ModelName = settings.ModelName;
         UseOfflineResponses = settings.UseOfflineResponses;
+        IsDarkTheme = settings.UseDarkTheme;
         AttachmentDefaultPrompt = settings.AttachmentDefaultPrompt;
         RegionExplainPrompt = settings.RegionExplainPrompt;
         ChapterExplainPrompt = settings.ChapterExplainPrompt;
