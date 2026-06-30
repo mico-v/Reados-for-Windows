@@ -355,6 +355,8 @@ public sealed class MspTranscriptEntry
 
     public string ArtifactsSummary { get; init; } = string.Empty;
 
+    public string PolicyPreview { get; init; } = string.Empty;
+
     public static MspTranscriptEntry FromRecord(MspCommandTranscriptRecord record)
     {
         return new MspTranscriptEntry
@@ -369,7 +371,8 @@ public sealed class MspTranscriptEntry
             Stderr = record.Stderr,
             Decision = record.Decision,
             Effects = record.Effects,
-            ArtifactsSummary = record.ArtifactsSummary
+            ArtifactsSummary = record.ArtifactsSummary,
+            PolicyPreview = record.PolicyPreview
         };
     }
 
@@ -387,7 +390,8 @@ public sealed class MspTranscriptEntry
             Stderr = Stderr,
             Decision = Decision,
             Effects = Effects,
-            ArtifactsSummary = ArtifactsSummary
+            ArtifactsSummary = ArtifactsSummary,
+            PolicyPreview = PolicyPreview
         };
     }
 
@@ -410,7 +414,9 @@ public sealed class MspTranscriptEntry
     {
         get
         {
-            var output = string.IsNullOrWhiteSpace(Stdout) ? Stderr : Stdout;
+            var output = IsApprovalRequired && !string.IsNullOrWhiteSpace(PolicyPreview)
+                ? PolicyPreview
+                : string.IsNullOrWhiteSpace(Stdout) ? Stderr : Stdout;
             if (string.IsNullOrWhiteSpace(output))
             {
                 return "(no output)";

@@ -16,6 +16,8 @@ public sealed record MspAuditRecord
 
     public MspCommandEffects Effects { get; init; } = MspCommandEffects.None;
 
+    public MspCommandPreview Preview { get; init; } = MspCommandPreview.Empty;
+
     public int ExitCode { get; init; }
 
     public string WorkingDirectory { get; init; } = "/";

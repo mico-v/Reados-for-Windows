@@ -61,11 +61,13 @@ Implemented:
 - `MspArtifact`
 - `MspAuditRecord`
 - `MspCommandTranscriptRecord`
+- `MspCommandPreview`
 - `MspCommandRegistry`
 - `MspRuntime`
 - parser and workspace path utility
 - request environment passed into policy
 - argument-specific command metadata through `IMspCommand.GetMetadata(arguments)`
+- command previews through `IMspCommand.GetPreview(arguments)`
 - read/write workspace abstraction
 - in-memory workspace
 - policy interface and allow-all policy
@@ -78,6 +80,7 @@ Implemented:
 - ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`, `attach`, `chat`
 - WinUI transcript approval actions using one-shot app-host approval tokens
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
+- policy/audit/transcript preview diagnostics for approval-gated commands
 
 Next:
 
@@ -132,7 +135,7 @@ All mutating commands should support:
 - audit record;
 - rollback note or recovery guidance where practical.
 
-Current status: generic mutating-command confirmation is wired into the workbench transcript, and `page-label`, `outline`, `artifact write`, `attach page/range`, and `chat ask` all run through the same policy/audit path. Per-command preview text and recovery guidance are still pending.
+Current status: generic mutating-command confirmation is wired into the workbench transcript, and `page-label`, `outline`, `artifact write`, `attach page/range`, and `chat ask` all run through the same policy/audit path. Per-command preview text is now present in policy/audit/transcripts; recovery guidance is still pending.
 
 ## Phase 4: Artifact And Workspace Contracts
 
@@ -165,6 +168,7 @@ Every command added to MSP must have:
 - parser coverage when it depends on quoting or argument shape;
 - runtime coverage for success and failure exit codes;
 - argument-specific metadata coverage when subcommands have different side effects;
+- preview coverage for approval-gated commands;
 - audit coverage;
 - policy behavior if it can mutate user state;
 - artifact coverage if it creates durable output;

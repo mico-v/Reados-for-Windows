@@ -24,6 +24,8 @@ public sealed record MspPolicyRequest
         "unknown",
         "No command metadata was supplied.");
 
+    public MspCommandPreview Preview { get; init; } = MspCommandPreview.Empty;
+
     public MspCommandEffects Effects => CommandMetadata.Effects;
 
     public IReadOnlyList<string> Capabilities => CommandMetadata.Capabilities;

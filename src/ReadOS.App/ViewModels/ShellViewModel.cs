@@ -480,7 +480,8 @@ public sealed partial class ShellViewModel : ObservableObject
             Stderr = "Operator denied MSP command.",
             Decision = "Deny",
             Effects = entry.Effects,
-            ArtifactsSummary = entry.ArtifactsSummary
+            ArtifactsSummary = entry.ArtifactsSummary,
+            PolicyPreview = entry.PolicyPreview
         });
 
         var insertIndex = Math.Max(0, index);
@@ -2024,7 +2025,8 @@ public sealed partial class ShellViewModel : ObservableObject
             Stderr = result.Stderr,
             Decision = auditRecord?.Decision.ToString() ?? "Allow",
             Effects = auditRecord?.Effects.ToString() ?? "None",
-            ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path))
+            ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path)),
+            PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? string.Empty
         };
         var entry = MspTranscriptEntry.FromRecord(transcriptRecord);
         MspTranscript.Insert(0, entry);

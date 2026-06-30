@@ -21,6 +21,7 @@ Implemented:
 - Core transcript record contract, persisted workbench transcript state, and `/transcripts` virtual workspace projection.
 - Approval-gated `attach page` and `attach range` commands for queueing evidence into the active chat.
 - Approval-gated `chat ask` command for writing model answers into the active document conversation.
+- Command preview diagnostics that flow through policy requests, audit records, and persisted transcript entries.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
@@ -151,7 +152,6 @@ Mutating or approval-gated:
 
 ## Immediate Backlog
 
-- Add target-path and provenance diagnostics to policy/audit records.
 - Add artifact provenance fields beyond path/media type/content.
 - Add cancellation/progress event surfaces for long-running commands.
 - Add richer previews and recovery guidance for approval-gated commands.

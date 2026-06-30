@@ -62,6 +62,7 @@ public sealed class MspRuntime
         }
 
         var commandMetadata = command.GetMetadata(parsed.Arguments);
+        var commandPreview = command.GetPreview(parsed.Arguments);
         var decision = await requestContext.Policy.AuthorizeAsync(new MspPolicyRequest
         {
             CommandName = parsed.Name,
@@ -71,13 +72,14 @@ public sealed class MspRuntime
             DryRun = request.DryRun,
             Environment = request.Environment,
             Arguments = parsed.Arguments,
-            CommandMetadata = commandMetadata
+            CommandMetadata = commandMetadata,
+            Preview = commandPreview
         }, cancellationToken);
 
         if (decision != MspPolicyDecision.Allow)
         {
             var denied = MspCommandResult.Failure($"Policy decision: {decision}", exitCode: 126);
-            var deniedAuditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, decision, denied, cancellationToken);
+            var deniedAuditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, denied, cancellationToken);
             return denied with { AuditRecords = new[] { deniedAuditRecord } };
         }
 
@@ -97,7 +99,7 @@ public sealed class MspRuntime
             result = MspCommandResult.Failure(ex.Message);
         }
 
-        var auditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, decision, result, cancellationToken);
+        var auditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, result, cancellationToken);
         return result with { AuditRecords = result.AuditRecords.Concat(new[] { auditRecord }).ToArray() };
     }
 
@@ -106,6 +108,7 @@ public sealed class MspRuntime
         MspCommandContext context,
         string commandName,
         MspCommandMetadata commandMetadata,
+        MspCommandPreview commandPreview,
         MspPolicyDecision decision,
         MspCommandResult result,
         CancellationToken cancellationToken)
@@ -117,6 +120,7 @@ public sealed class MspRuntime
             CommandText = request.CommandText,
             Decision = decision,
             Effects = commandMetadata.Effects,
+            Preview = commandPreview,
             ExitCode = result.ExitCode,
             WorkingDirectory = context.WorkingDirectory,
             Message = result.Succeeded ? null : result.Stderr

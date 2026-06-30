@@ -23,4 +23,6 @@ public sealed record MspCommandTranscriptRecord
     public string Effects { get; init; } = "None";
 
     public string ArtifactsSummary { get; init; } = string.Empty;
+
+    public string PolicyPreview { get; init; } = string.Empty;
 }

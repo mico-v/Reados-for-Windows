@@ -15,6 +15,11 @@ public interface IMspCommand
         return Metadata;
     }
 
+    MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        return MspCommandPreview.Empty;
+    }
+
     ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

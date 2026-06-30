@@ -37,6 +37,29 @@ public sealed class ArtifactCommand : IMspCommand
             new[] { "msp.artifact.read" });
     }
 
+    public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count == 0)
+        {
+            return MspCommandPreview.Create("Inspect or modify MSP artifacts.");
+        }
+
+        return arguments[0].ToLowerInvariant() switch
+        {
+            "write" => MspCommandPreview.Create(
+                "Write a text artifact into the virtual workspace.",
+                arguments.Count > 1 ? new[] { arguments[1] } : Array.Empty<string>(),
+                arguments.Count > 2 ? new[] { $"contentLength: {string.Join(' ', arguments.Skip(2)).Length}" } : Array.Empty<string>()),
+            "show" => MspCommandPreview.Create(
+                "Read a text artifact.",
+                arguments.Count > 1 ? new[] { arguments[1] } : Array.Empty<string>()),
+            "list" => MspCommandPreview.Create(
+                "List artifact entries.",
+                arguments.Count > 1 ? new[] { arguments[1] } : new[] { "/artifacts" }),
+            _ => MspCommandPreview.Create("Inspect or modify MSP artifacts.")
+        };
+    }
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

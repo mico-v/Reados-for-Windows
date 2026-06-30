@@ -201,6 +201,7 @@ Policy requests should include:
 - target paths;
 - dry-run flag.
 - host-controlled environment values such as approval tokens.
+- command previews with summary, targets, and details.
 
 The current app host uses effect-based confirmation plus one-shot approval tokens. `AllowAllMspPolicy` should remain limited to tests and explicitly trusted local experiments.
 
@@ -215,10 +216,11 @@ Audit records should answer:
 - what workspace path or document it touched;
 - whether it succeeded;
 - what artifacts were created.
+- what pre-execution preview the operator saw.
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available.
 
 ## Artifact Model
 

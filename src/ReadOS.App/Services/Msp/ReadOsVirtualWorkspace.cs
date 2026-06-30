@@ -501,7 +501,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.Stderr,
             record.Decision,
             record.Effects,
-            record.ArtifactsSummary
+            record.ArtifactsSummary,
+            record.PolicyPreview
         };
     }
 }

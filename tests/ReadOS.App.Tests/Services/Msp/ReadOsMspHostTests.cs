@@ -18,7 +18,11 @@ public sealed class ReadOsMspHostTests
         var pending = await host.ExecuteAsync("attach page current 3", "test-agent");
 
         Assert.Empty(attachments);
-        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Contains("Queue a PDF page", pendingAudit.Preview.Summary);
+        Assert.Contains(document.Id, Assert.Single(pendingAudit.Preview.Targets));
+        Assert.Contains("page: 3", pendingAudit.Preview.Details);
 
         var approved = await host.ExecuteApprovedAsync("attach page current 3", "test-agent");
 
@@ -80,7 +84,12 @@ public sealed class ReadOsMspHostTests
 
         Assert.Empty(document.Conversations);
         Assert.Single(pendingAttachments);
-        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Contains("configured chat model", pendingAudit.Preview.Summary);
+        Assert.Contains(document.Id, Assert.Single(pendingAudit.Preview.Targets));
+        Assert.Contains("prompt: explain attached page", pendingAudit.Preview.Details);
+        Assert.Contains("queuedAttachments: 1", pendingAudit.Preview.Details);
 
         var approved = await host.ExecuteApprovedAsync("chat ask current \"explain attached page\"", "test-agent");
 

@@ -102,9 +102,12 @@ public sealed class MspRuntimeTests
         Assert.True(policy.LastRequest.RequiresConfirmation);
         Assert.Equal("msp.test.write", Assert.Single(policy.LastRequest.Capabilities));
         Assert.Empty(policy.LastRequest.Environment);
+        Assert.Equal("Mutate test preview.", policy.LastRequest.Preview.Summary);
+        Assert.Equal("/target", Assert.Single(policy.LastRequest.Preview.Targets));
 
         var record = Assert.Single(result.AuditRecords);
         Assert.Equal(policy.LastRequest.Effects, record.Effects);
+        Assert.Equal(policy.LastRequest.Preview, record.Preview);
     }
 
     [Fact]
@@ -235,6 +238,14 @@ public sealed class MspRuntimeTests
             "mutate",
             MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
             new[] { "msp.test.write" });
+
+        public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+        {
+            return MspCommandPreview.Create(
+                "Mutate test preview.",
+                new[] { "/target" },
+                new[] { "detail: test" });
+        }
 
         public ValueTask<MspCommandResult> ExecuteAsync(
             MspCommandContext context,

@@ -371,6 +371,23 @@ internal sealed class ReadOsPageLabelCommand : IMspCommand
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
         new[] { "reados.pdf.write" });
 
+    public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 4 || !string.Equals(arguments[0], "set", StringComparison.OrdinalIgnoreCase))
+        {
+            return MspCommandPreview.Create("Set a PDF page label.");
+        }
+
+        return MspCommandPreview.Create(
+            "Set a PDF page label.",
+            new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[1], selectedDocumentProvider) },
+            new[]
+            {
+                $"page: {arguments[2]}",
+                $"label: {string.Join(' ', arguments.Skip(3)).Trim()}"
+            });
+    }
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,
@@ -444,6 +461,21 @@ internal sealed class ReadOsOutlineCommand : IMspCommand
         "outline add [current|documentId] <page> <title> [--level N] | outline delete [current|documentId] <id|title>",
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
         new[] { "reados.pdf.write" });
+
+    public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count == 0)
+        {
+            return MspCommandPreview.Create("Modify PDF outline entries.");
+        }
+
+        return arguments[0].ToLowerInvariant() switch
+        {
+            "add" => PreviewAdd(arguments.Skip(1).ToArray()),
+            "delete" => PreviewDelete(arguments.Skip(1).ToArray()),
+            _ => MspCommandPreview.Create("Modify PDF outline entries.")
+        };
+    }
 
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
@@ -523,6 +555,51 @@ internal sealed class ReadOsOutlineCommand : IMspCommand
         return MspCommandResult.Success($"outline-added\t{document.Id}\t{item.Id}\t{page}\t{item.Level}\t{title}{Environment.NewLine}");
     }
 
+    private MspCommandPreview PreviewAdd(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 3)
+        {
+            return MspCommandPreview.Create("Add a PDF outline entry.");
+        }
+
+        var titleParts = new List<string>();
+        var level = "1";
+        for (var index = 2; index < arguments.Count; index++)
+        {
+            if (string.Equals(arguments[index], "--level", StringComparison.OrdinalIgnoreCase) && index + 1 < arguments.Count)
+            {
+                level = arguments[index + 1];
+                index++;
+                continue;
+            }
+
+            titleParts.Add(arguments[index]);
+        }
+
+        return MspCommandPreview.Create(
+            "Add a PDF outline entry.",
+            new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[0], selectedDocumentProvider) },
+            new[]
+            {
+                $"page: {arguments[1]}",
+                $"level: {level}",
+                $"title: {string.Join(' ', titleParts).Trim()}"
+            });
+    }
+
+    private MspCommandPreview PreviewDelete(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 2)
+        {
+            return MspCommandPreview.Create("Delete a PDF outline entry.");
+        }
+
+        return MspCommandPreview.Create(
+            "Delete a PDF outline entry.",
+            new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[0], selectedDocumentProvider) },
+            new[] { $"selector: {string.Join(' ', arguments.Skip(1)).Trim()}" });
+    }
+
     private async ValueTask<MspCommandResult> DeleteAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         if (arguments.Count < 2)
@@ -589,6 +666,27 @@ internal sealed class ReadOsAttachCommand : IMspCommand
         "attach page [current|documentId] <page> | attach range [current|documentId] <startPage> <endPage>",
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
         new[] { "reados.attach.write" });
+
+    public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count == 0)
+        {
+            return MspCommandPreview.Create("Queue evidence for the current chat.");
+        }
+
+        return arguments[0].ToLowerInvariant() switch
+        {
+            "page" when arguments.Count >= 3 => MspCommandPreview.Create(
+                "Queue a PDF page as chat evidence.",
+                new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[1], selectedDocumentProvider) },
+                new[] { $"page: {arguments[2]}" }),
+            "range" when arguments.Count >= 4 => MspCommandPreview.Create(
+                "Queue a PDF page range as chat evidence.",
+                new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[1], selectedDocumentProvider) },
+                new[] { $"pages: {arguments[2]}-{arguments[3]}" }),
+            _ => MspCommandPreview.Create("Queue evidence for the current chat.")
+        };
+    }
 
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
@@ -750,6 +848,26 @@ internal sealed class ReadOsChatCommand : IMspCommand
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.ExternalModel,
         new[] { "reados.chat.ask" });
 
+    public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 3 || !string.Equals(arguments[0], "ask", StringComparison.OrdinalIgnoreCase))
+        {
+            return MspCommandPreview.Create("Ask the configured chat model.");
+        }
+
+        var attachments = pendingAttachmentsProvider();
+        return MspCommandPreview.Create(
+            "Ask the configured chat model and write the exchange to the document conversation.",
+            new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[1], selectedDocumentProvider) },
+            new[]
+            {
+                $"prompt: {string.Join(' ', arguments.Skip(2)).Trim()}",
+                $"queuedAttachments: {attachments.Count}",
+                $"provider: {settingsProvider().ProviderName}",
+                $"model: {settingsProvider().ModelName}"
+            });
+    }
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,
@@ -870,6 +988,19 @@ internal sealed class ReadOsChatCommand : IMspCommand
 
 internal static class ReadOsMspCommandHelpers
 {
+    public static string DescribePdfTarget(
+        WorkspaceState? workspace,
+        string value,
+        Func<LibraryItem?> selectedDocumentProvider)
+    {
+        var document = workspace is null
+            ? null
+            : ResolvePdfDocument(workspace, value, selectedDocumentProvider);
+        return document is null
+            ? value
+            : $"{document.Name} ({document.Id})";
+    }
+
     public static LibraryItem? ResolvePdfDocument(
         WorkspaceState workspace,
         string value,
