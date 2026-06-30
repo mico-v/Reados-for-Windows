@@ -8,6 +8,8 @@ public sealed record MspAuditRecord
 
     public string Actor { get; init; } = "agent";
 
+    public string SessionId { get; init; } = "default";
+
     public required string CommandName { get; init; }
 
     public required string CommandText { get; init; }

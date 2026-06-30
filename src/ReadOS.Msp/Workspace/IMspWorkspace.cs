@@ -1,3 +1,5 @@
+using ReadOS.Msp.Models;
+
 namespace ReadOS.Msp.Workspace;
 
 public interface IMspWorkspace
@@ -11,4 +13,13 @@ public interface IMspWorkspace
     ValueTask<string?> TryReadTextAsync(string path, CancellationToken cancellationToken = default);
 
     ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default);
+
+    ValueTask WriteTextAsync(
+        string path,
+        string content,
+        MspArtifact? artifact,
+        CancellationToken cancellationToken = default)
+    {
+        return WriteTextAsync(path, content, cancellationToken);
+    }
 }

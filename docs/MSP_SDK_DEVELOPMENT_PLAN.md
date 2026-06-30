@@ -64,8 +64,10 @@ Implemented:
 - `MspCommandPreview`
 - `MspCommandRegistry`
 - `MspRuntime`
+- `MspCommandInvocation`
 - parser and workspace path utility
 - request environment passed into policy
+- request session ID passed into policy, audit, and command execution context
 - argument-specific command metadata through `IMspCommand.GetMetadata(arguments)`
 - command previews through `IMspCommand.GetPreview(arguments)`
 - read/write workspace abstraction
@@ -81,11 +83,12 @@ Implemented:
 - WinUI transcript approval actions using one-shot app-host approval tokens
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
 - policy/audit/transcript preview diagnostics for approval-gated commands
+- artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
 
 Next:
 
 - richer command result diagnostics;
-- artifact provenance beyond the first persisted content fields;
+- automatic source document/page provenance for generated workflow artifacts;
 - more ReadOS virtual workspace tests.
 
 ## Phase 2: Hosting Layer
@@ -147,6 +150,8 @@ Required behavior:
 - artifact manifests contain provenance;
 - commands can return artifact references;
 - artifacts can be listed, shown, exported, and reused by later commands.
+
+Current status: `artifact write` creates durable text artifacts and returns provenance-rich `MspArtifact` records. The ReadOS workspace persists source command, actor, session, timestamps, preview, and source reference fields, and exposes manifest JSON sidecars beside artifact content.
 
 ## Phase 5: Native Core Extraction
 

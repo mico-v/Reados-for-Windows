@@ -11,6 +11,8 @@ public sealed record MspPolicyRequest
 
     public string Actor { get; init; } = "agent";
 
+    public string SessionId { get; init; } = "default";
+
     public string WorkingDirectory { get; init; } = "/";
 
     public bool DryRun { get; init; }

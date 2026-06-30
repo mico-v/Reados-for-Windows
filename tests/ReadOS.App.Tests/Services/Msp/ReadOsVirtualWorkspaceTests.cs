@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Models;
 
 namespace ReadOS.App.Tests.Services.Msp;
 
@@ -36,6 +37,53 @@ public sealed class ReadOsVirtualWorkspaceTests
         Assert.Contains("\"commandText\": \"workspace info\"", content);
         Assert.Contains("\"decision\": \"Allow\"", content);
         Assert.Contains("\"effects\": \"ReadWorkspace\"", content);
+    }
+
+    [Fact]
+    public async Task Virtual_workspace_persists_artifact_provenance_and_manifest()
+    {
+        var workspace = new WorkspaceState();
+        var virtualWorkspace = new ReadOsVirtualWorkspace(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            () => workspace);
+
+        await virtualWorkspace.WriteTextAsync(
+            "/artifacts/report.md",
+            "# Report",
+            new MspArtifact
+            {
+                Path = "/artifacts/report.md",
+                MediaType = "text/markdown",
+                Description = "Generated report",
+                SourceCommand = "artifact write /artifacts/report.md report",
+                Actor = "test-agent",
+                SessionId = "session-7",
+                SourceDocuments = new[] { "doc-1" },
+                SourcePages = new[] { "doc-1:2-3" },
+                Preview = "contentLength: 8"
+            });
+
+        var artifact = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/report.md", artifact.Path);
+        Assert.Equal("text/markdown", artifact.MediaType);
+        Assert.Equal("Generated report", artifact.Description);
+        Assert.Equal("artifact write /artifacts/report.md report", artifact.SourceCommand);
+        Assert.Equal("test-agent", artifact.Actor);
+        Assert.Equal("session-7", artifact.SessionId);
+        Assert.Equal("doc-1", Assert.Single(artifact.SourceDocuments));
+        Assert.Equal("doc-1:2-3", Assert.Single(artifact.SourcePages));
+
+        var entries = await virtualWorkspace.ListAsync("/artifacts");
+        Assert.Contains(entries, entry => entry.Path == "/artifacts/report.md");
+        Assert.Contains(entries, entry => entry.Path == "/artifacts/report.md.manifest.json" && entry.MediaType == "application/json");
+
+        var manifest = await virtualWorkspace.TryReadTextAsync("/artifacts/report.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"sourceCommand\": \"artifact write /artifacts/report.md report\"", manifest);
+        Assert.Contains("\"actor\": \"test-agent\"", manifest);
+        Assert.Contains("\"sessionId\": \"session-7\"", manifest);
+        Assert.Contains("\"sourceDocuments\": [", manifest);
     }
 
     private sealed class TestWorkspaceStore : IWorkspaceStore

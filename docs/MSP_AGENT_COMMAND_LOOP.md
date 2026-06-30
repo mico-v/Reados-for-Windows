@@ -18,6 +18,7 @@ pdf text current 1 3
 artifact write /artifacts/summary.md "summary"
 artifact list /artifacts
 artifact show /artifacts/summary.md
+artifact show /artifacts/summary.md.manifest.json
 page-label set current 12 "iii"
 outline add current 42 "Chapter 3" --level 1
 attach page current 12
@@ -47,7 +48,7 @@ Each non-empty line is parsed as one MSP command. Comment lines beginning with `
 MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries. The current translation layer maps commands into controlled ReadOS services:
 
 - `workspace`, `library`, and `pdf` commands translate to workspace/PDF services.
-- `artifact list/show` read durable `/artifacts/...` workspace files; `artifact write` creates them behind policy approval.
+- `artifact list/show` read durable `/artifacts/...` workspace files and their `.manifest.json` provenance sidecars; `artifact write` creates them behind policy approval.
 - `/transcripts/{id}.json` exposes prior MSP command records for later inspection.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `attach page/range` queues page evidence into the current chat after operator approval.

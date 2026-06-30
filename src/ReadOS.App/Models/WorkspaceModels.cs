@@ -322,6 +322,24 @@ public sealed partial class WorkspaceArtifact : ObservableObject
     public partial string Description { get; set; } = "MSP artifact";
 
     [ObservableProperty]
+    public partial string SourceCommand { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Actor { get; set; } = "agent";
+
+    [ObservableProperty]
+    public partial string SessionId { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Preview { get; set; } = string.Empty;
+
+    public ObservableCollection<string> SourcePaths { get; } = new();
+
+    public ObservableCollection<string> SourceDocuments { get; } = new();
+
+    public ObservableCollection<string> SourcePages { get; } = new();
+
+    [ObservableProperty]
     public partial DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
     [ObservableProperty]

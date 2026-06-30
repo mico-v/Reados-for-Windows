@@ -10,6 +10,7 @@ namespace ReadOS.App.Services.Msp;
 public sealed class ReadOsMspHost
 {
     private const string ApprovalTokenKey = "reados.msp.approvalToken";
+    private const string DefaultSessionId = "reados-workbench";
 
     private readonly MspRuntime runtime;
     private readonly OperatorApprovalMspPolicy policy;
@@ -65,6 +66,7 @@ public sealed class ReadOsMspHost
         return runtime.ExecuteAsync(new MspCommandRequest
         {
             Actor = actor,
+            SessionId = DefaultSessionId,
             CommandText = commandText
         }, cancellationToken);
     }
@@ -80,6 +82,7 @@ public sealed class ReadOsMspHost
             return await runtime.ExecuteAsync(new MspCommandRequest
             {
                 Actor = actor,
+                SessionId = DefaultSessionId,
                 CommandText = commandText,
                 Environment = new Dictionary<string, string>
                 {

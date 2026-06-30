@@ -111,6 +111,40 @@ public sealed class ReadOsMspHostTests
         Assert.Single(chatService.LastAttachments);
     }
 
+    [Fact]
+    public async Task Artifact_write_persists_provenance_after_approval()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var host = CreateHost(workspace, document);
+        const string commandText = "artifact write /artifacts/notes.md \"agent notes\"";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Contains("/artifacts/notes.md", Assert.Single(pendingAudit.Preview.Targets));
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(approved.AuditRecords).Decision);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/notes.md", resultArtifact.Path);
+        Assert.Equal("test-agent", resultArtifact.Actor);
+        Assert.Equal("reados-workbench", resultArtifact.SessionId);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/notes.md", persisted.Path);
+        Assert.Equal("agent notes", persisted.Content);
+        Assert.Equal("text/markdown", persisted.MediaType);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal("reados-workbench", persisted.SessionId);
+        Assert.Equal("contentLength: 11", persisted.Preview);
+    }
+
     private static ReadOsMspHost CreateHost(
         WorkspaceState workspace,
         LibraryItem document,

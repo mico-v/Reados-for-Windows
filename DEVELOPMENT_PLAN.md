@@ -22,10 +22,12 @@ Implemented:
 - Approval-gated `attach page` and `attach range` commands for queueing evidence into the active chat.
 - Approval-gated `chat ask` command for writing model answers into the active document conversation.
 - Command preview diagnostics that flow through policy requests, audit records, and persisted transcript entries.
+- Runtime command invocation metadata for actor, command text, dry-run state, session ID, and start time.
+- Artifact provenance fields, result metadata, and `.manifest.json` sidecar projections under `/artifacts`.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
-The main gap is not another reader feature. The main gap is the service layer: sessions, command metadata, policy enforcement, command transcript, artifact persistence, and an agent bridge that can safely drive vertical workflows.
+The main gap is not another reader feature. The remaining service-layer gaps are durable sessions, cancellation/progress events, richer diagnostics, and workflow orchestration that can safely drive vertical document work.
 
 ## Target Solution Shape
 
@@ -97,7 +99,7 @@ Status: started.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
 
-Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, and replayable through one-shot approval tokens for approved mutating commands.
+Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, and replayable through one-shot approval tokens for approved mutating commands. Runtime requests now carry a session ID into policy, audit, and command execution context.
 
 ### Milestone 3: Artifact System
 
@@ -108,7 +110,7 @@ Status: started.
 - Attach provenance: command text, source paths, document IDs, page ranges, timestamps, and actor.
 - Add `artifact list`, `artifact show`, and `artifact write`.
 
-Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and only `artifact write` is treated as a mutating artifact operation by policy.
+Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and only `artifact write` is treated as a mutating artifact operation by policy. Artifact results and persisted records now include source command, actor, session ID, timestamps, preview, media type, and source reference fields, with readable sidecar manifests such as `/artifacts/summary.md.manifest.json`.
 
 ### Milestone 4: Vertical Document Commands
 
@@ -152,9 +154,9 @@ Mutating or approval-gated:
 
 ## Immediate Backlog
 
-- Add artifact provenance fields beyond path/media type/content.
 - Add cancellation/progress event surfaces for long-running commands.
 - Add richer previews and recovery guidance for approval-gated commands.
+- Populate source document/page provenance automatically from future document workflow commands.
 
 ## Verification
 

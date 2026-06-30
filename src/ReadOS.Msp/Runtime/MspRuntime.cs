@@ -55,7 +55,16 @@ public sealed class MspRuntime
             return MspCommandResult.Failure(ex.Message, exitCode: 2);
         }
 
-        var requestContext = context.WithWorkingDirectory(request.WorkingDirectory);
+        var requestContext = context
+            .WithWorkingDirectory(request.WorkingDirectory)
+            .WithInvocation(new MspCommandInvocation
+            {
+                Actor = request.Actor,
+                CommandText = request.CommandText,
+                SessionId = request.SessionId,
+                DryRun = request.DryRun,
+                StartedAt = DateTimeOffset.UtcNow
+            });
         if (!requestContext.Registry.TryGet(parsed.Name, out var command))
         {
             return MspCommandResult.Failure($"Command not found: {parsed.Name}", exitCode: 127);
@@ -68,6 +77,7 @@ public sealed class MspRuntime
             CommandName = parsed.Name,
             CommandText = request.CommandText,
             Actor = request.Actor,
+            SessionId = request.SessionId,
             WorkingDirectory = requestContext.WorkingDirectory,
             DryRun = request.DryRun,
             Environment = request.Environment,
@@ -116,6 +126,7 @@ public sealed class MspRuntime
         var record = new MspAuditRecord
         {
             Actor = request.Actor,
+            SessionId = request.SessionId,
             CommandName = commandName,
             CommandText = request.CommandText,
             Decision = decision,

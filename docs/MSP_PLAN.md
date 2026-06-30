@@ -138,8 +138,8 @@ Current and target path shape:
 /documents/{documentId}/pages/{page}.txt
 /documents/{documentId}/conversations/{conversationId}.json
 /artifacts
-/artifacts/{artifactId}/manifest.json
-/artifacts/{artifactId}/content.md
+/artifacts/{path}
+/artifacts/{path}.manifest.json
 /transcripts
 /transcripts/{transcriptId}.json
 ```
@@ -220,7 +220,7 @@ Audit records should answer:
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
 
 ## Artifact Model
 
@@ -242,6 +242,8 @@ Each artifact should have:
 - source document/page references;
 - creation time;
 - actor/session.
+
+Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`. Source document/page fields are present in the contract and will be populated by richer document workflow commands.
 
 ## Workflow Model
 

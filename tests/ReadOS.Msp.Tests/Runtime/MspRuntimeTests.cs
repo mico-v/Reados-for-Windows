@@ -59,6 +59,8 @@ public sealed class MspRuntimeTests
 
         var write = await runtime.ExecuteAsync(new MspCommandRequest
         {
+            Actor = "artifact-agent",
+            SessionId = "session-42",
             CommandText = "artifact write /artifacts/summary.md \"hello artifacts\""
         });
         var list = await runtime.ExecuteAsync(new MspCommandRequest
@@ -71,11 +73,24 @@ public sealed class MspRuntimeTests
         });
 
         Assert.True(write.Succeeded, write.Stderr);
-        Assert.Equal("/artifacts/summary.md", Assert.Single(write.Artifacts).Path);
+        var artifact = Assert.Single(write.Artifacts);
+        Assert.Equal("/artifacts/summary.md", artifact.Path);
+        Assert.Equal("text/markdown", artifact.MediaType);
+        Assert.Equal("artifact-agent", artifact.Actor);
+        Assert.Equal("session-42", artifact.SessionId);
+        Assert.Equal("artifact write /artifacts/summary.md \"hello artifacts\"", artifact.SourceCommand);
+        Assert.Equal("contentLength: 15", artifact.Preview);
         Assert.True(list.Succeeded, list.Stderr);
         Assert.Contains("/artifacts/summary.md", list.Stdout);
+        Assert.Contains("/artifacts/summary.md.manifest.json", list.Stdout);
         Assert.True(show.Succeeded, show.Stderr);
         Assert.Equal("hello artifacts" + Environment.NewLine, show.Stdout);
+
+        var manifest = await workspace.TryReadTextAsync("/artifacts/summary.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"actor\": \"artifact-agent\"", manifest);
+        Assert.Contains("\"sessionId\": \"session-42\"", manifest);
+        Assert.Contains("\"sourceCommand\": \"artifact write /artifacts/summary.md", manifest);
     }
 
     [Fact]
@@ -93,6 +108,7 @@ public sealed class MspRuntimeTests
         var result = await runtime.ExecuteAsync(new MspCommandRequest
         {
             Actor = "metadata-test",
+            SessionId = "metadata-session",
             CommandText = "mutate"
         });
 
@@ -104,8 +120,10 @@ public sealed class MspRuntimeTests
         Assert.Empty(policy.LastRequest.Environment);
         Assert.Equal("Mutate test preview.", policy.LastRequest.Preview.Summary);
         Assert.Equal("/target", Assert.Single(policy.LastRequest.Preview.Targets));
+        Assert.Equal("metadata-session", policy.LastRequest.SessionId);
 
         var record = Assert.Single(result.AuditRecords);
+        Assert.Equal("metadata-session", record.SessionId);
         Assert.Equal(policy.LastRequest.Effects, record.Effects);
         Assert.Equal(policy.LastRequest.Preview, record.Preview);
     }

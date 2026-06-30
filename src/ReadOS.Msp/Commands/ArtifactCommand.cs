@@ -145,10 +145,25 @@ public sealed class ArtifactCommand : IMspCommand
 
         var path = NormalizeArtifactPath(context, arguments[0]);
         var content = string.Join(' ', arguments.Skip(1));
-        await context.Workspace.WriteTextAsync(path, content, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var artifact = new MspArtifact
+        {
+            Path = path,
+            MediaType = GuessMediaType(path),
+            SizeBytes = content.Length,
+            Description = "Text artifact created by MSP.",
+            SourceCommand = context.Invocation.CommandText,
+            Actor = context.Invocation.Actor,
+            SessionId = context.Invocation.SessionId,
+            CreatedAt = now,
+            UpdatedAt = now,
+            Preview = $"contentLength: {content.Length}"
+        };
+
+        await context.Workspace.WriteTextAsync(path, content, artifact, cancellationToken);
         return MspCommandResult.Success(
             $"wrote\t{path}{Environment.NewLine}",
-            new[] { new MspArtifact { Path = path, Description = "Text artifact created by MSP." } });
+            new[] { artifact });
     }
 
     private static string NormalizeArtifactPath(MspCommandContext context, string path)
@@ -170,5 +185,17 @@ public sealed class ArtifactCommand : IMspCommand
     private static string Usage()
     {
         return "Usage: artifact list [path] | artifact show <path> | artifact write <path> <content...>";
+    }
+
+    private static string GuessMediaType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "application/json",
+            ".md" or ".markdown" => "text/markdown",
+            ".txt" => "text/plain",
+            ".csv" => "text/csv",
+            _ => "text/plain"
+        };
     }
 }

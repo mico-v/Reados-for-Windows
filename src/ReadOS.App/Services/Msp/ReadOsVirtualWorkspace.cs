@@ -1,11 +1,14 @@
 using System.Text.Json;
 using ReadOS.App.Models;
+using ReadOS.Msp.Models;
 using ReadOS.Msp.Workspace;
 
 namespace ReadOS.App.Services.Msp;
 
 internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
 {
+    private const string ArtifactManifestSuffix = ".manifest.json";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -93,6 +96,13 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
 
         if (normalized.StartsWith("/artifacts/", StringComparison.Ordinal))
         {
+            if (TryResolveArtifactManifestPath(normalized, out var artifactPath))
+            {
+                var manifestArtifact = workspace.Artifacts.FirstOrDefault(item =>
+                    string.Equals(item.Path, artifactPath, StringComparison.OrdinalIgnoreCase));
+                return manifestArtifact is null ? null : JsonSerializer.Serialize(ProjectArtifact(manifestArtifact), JsonOptions);
+            }
+
             var artifact = workspace.Artifacts.FirstOrDefault(item =>
                 string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
             return artifact?.Content;
@@ -184,7 +194,16 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         return null;
     }
 
-    public async ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
+    public ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
+    {
+        return WriteTextAsync(path, content, artifact: null, cancellationToken);
+    }
+
+    public async ValueTask WriteTextAsync(
+        string path,
+        string content,
+        MspArtifact? artifact,
+        CancellationToken cancellationToken = default)
     {
         var workspace = workspaceProvider();
         if (workspace is null)
@@ -200,21 +219,38 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         }
 
         var now = DateTimeOffset.Now;
-        var artifact = workspace.Artifacts.FirstOrDefault(item =>
+        var workspaceArtifact = workspace.Artifacts.FirstOrDefault(item =>
             string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
-        if (artifact is null)
+        if (workspaceArtifact is null)
         {
-            artifact = new WorkspaceArtifact
+            workspaceArtifact = new WorkspaceArtifact
             {
                 Path = normalized,
-                CreatedAt = now
+                CreatedAt = artifact is null || artifact.CreatedAt == default ? now : artifact.CreatedAt
             };
-            workspace.Artifacts.Add(artifact);
+            workspace.Artifacts.Add(workspaceArtifact);
         }
 
-        artifact.Content = content;
-        artifact.MediaType = GuessMediaType(normalized);
-        artifact.UpdatedAt = now;
+        workspaceArtifact.Content = content;
+        workspaceArtifact.MediaType = string.IsNullOrWhiteSpace(artifact?.MediaType)
+            ? GuessMediaType(normalized)
+            : artifact.MediaType;
+        workspaceArtifact.Description = string.IsNullOrWhiteSpace(artifact?.Description)
+            ? workspaceArtifact.Description
+            : artifact.Description;
+        workspaceArtifact.UpdatedAt = artifact is null || artifact.UpdatedAt == default ? now : artifact.UpdatedAt;
+
+        if (artifact is not null)
+        {
+            workspaceArtifact.SourceCommand = artifact.SourceCommand ?? string.Empty;
+            workspaceArtifact.Actor = string.IsNullOrWhiteSpace(artifact.Actor) ? "agent" : artifact.Actor;
+            workspaceArtifact.SessionId = artifact.SessionId ?? string.Empty;
+            workspaceArtifact.Preview = artifact.Preview ?? string.Empty;
+            ReplaceValues(workspaceArtifact.SourcePaths, artifact.SourcePaths);
+            ReplaceValues(workspaceArtifact.SourceDocuments, artifact.SourceDocuments);
+            ReplaceValues(workspaceArtifact.SourcePages, artifact.SourcePages);
+        }
+
         await workspaceStore.SaveAsync(workspace, cancellationToken);
     }
 
@@ -305,15 +341,26 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         var prefix = normalized == "/artifacts" ? "/artifacts/" : normalized.TrimEnd('/') + "/";
         foreach (var artifact in workspace.Artifacts)
         {
-            if (!artifact.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            AddArtifactEntry(artifact.Path, artifact.SizeBytes, artifact.MediaType);
+            AddArtifactEntry(GetArtifactManifestPath(artifact.Path), EstimateArtifactManifestSize(artifact), "application/json");
+        }
+
+        return entries.Values
+            .OrderBy(item => item.IsDirectory ? 0 : 1)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        void AddArtifactEntry(string path, long? sizeBytes, string mediaType)
+        {
+            if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                return;
             }
 
-            var remainder = artifact.Path[prefix.Length..];
+            var remainder = path[prefix.Length..];
             if (string.IsNullOrWhiteSpace(remainder))
             {
-                continue;
+                return;
             }
 
             var slashIndex = remainder.IndexOf('/');
@@ -325,18 +372,13 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             }
             else
             {
-                entries.TryAdd(artifact.Path, File(
-                    artifact.Path,
-                    Path.GetFileName(artifact.Path),
-                    artifact.SizeBytes,
-                    artifact.MediaType));
+                entries.TryAdd(path, File(
+                    path,
+                    Path.GetFileName(path),
+                    sizeBytes,
+                    mediaType));
             }
         }
-
-        return entries.Values
-            .OrderBy(item => item.IsDirectory ? 0 : 1)
-            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private static IEnumerable<LibraryItem> Documents(WorkspaceState workspace)
@@ -383,6 +425,44 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             entry.Stderr.Length +
             entry.ArtifactsSummary.Length +
             256;
+    }
+
+    private static long EstimateArtifactManifestSize(WorkspaceArtifact artifact)
+    {
+        return artifact.Path.Length +
+            artifact.Description.Length +
+            artifact.SourceCommand.Length +
+            artifact.Actor.Length +
+            artifact.SessionId.Length +
+            artifact.Preview.Length +
+            512;
+    }
+
+    private static string GetArtifactManifestPath(string artifactPath)
+    {
+        return artifactPath + ArtifactManifestSuffix;
+    }
+
+    private static bool TryResolveArtifactManifestPath(string path, out string artifactPath)
+    {
+        if (path.StartsWith("/artifacts/", StringComparison.Ordinal) &&
+            path.EndsWith(ArtifactManifestSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            artifactPath = path[..^ArtifactManifestSuffix.Length];
+            return artifactPath.Length > "/artifacts/".Length;
+        }
+
+        artifactPath = string.Empty;
+        return false;
+    }
+
+    private static void ReplaceValues(ICollection<string> target, IEnumerable<string> values)
+    {
+        target.Clear();
+        foreach (var value in values.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            target.Add(value);
+        }
     }
 
     private static string GuessMediaType(string path)
@@ -483,6 +563,27 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
                     attachment.RegionHeight
                 })
             })
+        };
+    }
+
+    private static object ProjectArtifact(WorkspaceArtifact artifact)
+    {
+        return new
+        {
+            artifact.Id,
+            artifact.Path,
+            artifact.MediaType,
+            artifact.Description,
+            artifact.SizeBytes,
+            artifact.SourceCommand,
+            artifact.Actor,
+            artifact.SessionId,
+            SourcePaths = artifact.SourcePaths.ToArray(),
+            SourceDocuments = artifact.SourceDocuments.ToArray(),
+            SourcePages = artifact.SourcePages.ToArray(),
+            artifact.CreatedAt,
+            artifact.UpdatedAt,
+            artifact.Preview
         };
     }
 

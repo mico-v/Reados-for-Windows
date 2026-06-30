@@ -10,6 +10,8 @@ public sealed record MspCommandRequest
 
     public string Actor { get; init; } = "agent";
 
+    public string SessionId { get; init; } = "default";
+
     public bool DryRun { get; init; }
 
     public IReadOnlyDictionary<string, string> Environment { get; init; } =
