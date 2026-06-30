@@ -19,6 +19,7 @@ Implemented:
 - Domain commands: `workspace info`, `library list`, `pdf inspect`, `pdf text`, `pdf search`.
 - Argument-specific command metadata, effect-based policy checks, and operator approval retry for mutating MSP commands.
 - Core transcript record contract, persisted workbench transcript state, and `/transcripts` virtual workspace projection.
+- Approval-gated `attach page` and `attach range` commands for queueing evidence into the active chat.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
@@ -152,7 +153,7 @@ Mutating or approval-gated:
 - Add target-path and provenance diagnostics to policy/audit records.
 - Add artifact provenance fields beyond path/media type/content.
 - Add cancellation/progress event surfaces for long-running commands.
-- Add `attach` and `chat` commands behind the same policy/audit flow.
+- Add `chat ask` behind the same policy/audit flow.
 
 ## Verification
 

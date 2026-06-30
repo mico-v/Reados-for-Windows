@@ -75,7 +75,7 @@ Implemented:
 - artifact commands: `artifact list`, `artifact show`, `artifact write`
 - ReadOS host adapter
 - ReadOS virtual workspace
-- ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`
+- ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`, `attach`
 - WinUI transcript approval actions using one-shot app-host approval tokens
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
 
@@ -132,7 +132,7 @@ All mutating commands should support:
 - audit record;
 - rollback note or recovery guidance where practical.
 
-Current status: generic mutating-command confirmation is wired into the workbench transcript. Per-command preview text and recovery guidance are still pending.
+Current status: generic mutating-command confirmation is wired into the workbench transcript, and `page-label`, `outline`, `artifact write`, and `attach page/range` all run through the same policy/audit path. Per-command preview text, recovery guidance, and `chat ask` are still pending.
 
 ## Phase 4: Artifact And Workspace Contracts
 

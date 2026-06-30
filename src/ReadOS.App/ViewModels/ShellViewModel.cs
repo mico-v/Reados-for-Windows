@@ -91,7 +91,8 @@ public sealed partial class ShellViewModel : ObservableObject
             workspaceStore,
             pdfService,
             () => workspace,
-            () => SelectedDocument);
+            () => SelectedDocument,
+            QueueMspAttachment);
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
@@ -1960,6 +1961,14 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(PendingAttachmentSummary));
     }
 
+    private void QueueMspAttachment(ChatAttachment attachment)
+    {
+        PendingAttachments.Add(attachment);
+        NotifyAttachmentState();
+        SelectedInspectorTab = InspectorTab.Attachments;
+        StatusMessage = $"MSP 已加入附件：{attachment.Title}";
+    }
+
     private async Task<MspTranscriptEntry> ExecuteAndRecordMspCommandAsync(
         string commandText,
         string actor,
@@ -2104,6 +2113,8 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("artifact show /artifacts/summary.md");
         builder.AppendLine("page-label set current 12 \"iii\"");
         builder.AppendLine("outline add current 42 \"Chapter 3\" --level 1");
+        builder.AppendLine("attach page current 12");
+        builder.AppendLine("attach range current 12 18");
         builder.AppendLine("windows info");
         builder.AppendLine("windows path current");
         builder.AppendLine("```");

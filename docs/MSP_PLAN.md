@@ -109,7 +109,6 @@ ReadOS document pack:
 
 Planned packs:
 
-- attachment commands;
 - chat commands;
 - workflow commands.
 
@@ -118,6 +117,7 @@ Started packs:
 - artifact commands;
 - page label commands;
 - outline commands;
+- attachment commands;
 
 ### Virtual Workspace
 

@@ -18,7 +18,8 @@ public sealed class ReadOsMspHost
         IWorkspaceStore workspaceStore,
         IPdfDocumentService pdfService,
         Func<WorkspaceState?> workspaceProvider,
-        Func<LibraryItem?> selectedDocumentProvider)
+        Func<LibraryItem?> selectedDocumentProvider,
+        Action<ChatAttachment> attachmentSink)
     {
         var registry = MspRuntime.CreateDefaultRegistry();
         var workspace = new ReadOsVirtualWorkspace(workspaceStore, pdfService, workspaceProvider);
@@ -28,7 +29,8 @@ public sealed class ReadOsMspHost
             .Register(new ReadOsPdfCommand(workspaceStore, pdfService, workspaceProvider, selectedDocumentProvider))
             .Register(new ReadOsWindowsCommand(workspaceStore, selectedDocumentProvider))
             .Register(new ReadOsPageLabelCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
-            .Register(new ReadOsOutlineCommand(workspaceStore, workspaceProvider, selectedDocumentProvider));
+            .Register(new ReadOsOutlineCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
+            .Register(new ReadOsAttachCommand(workspaceProvider, selectedDocumentProvider, attachmentSink));
 
         policy = new OperatorApprovalMspPolicy();
         var context = new MspCommandContext(

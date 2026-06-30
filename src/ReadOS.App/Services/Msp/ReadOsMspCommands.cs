@@ -563,6 +563,148 @@ internal sealed class ReadOsOutlineCommand : IMspCommand
     }
 }
 
+internal sealed class ReadOsAttachCommand : IMspCommand
+{
+    private readonly Func<WorkspaceState?> workspaceProvider;
+    private readonly Func<LibraryItem?> selectedDocumentProvider;
+    private readonly Action<ChatAttachment> attachmentSink;
+
+    public ReadOsAttachCommand(
+        Func<WorkspaceState?> workspaceProvider,
+        Func<LibraryItem?> selectedDocumentProvider,
+        Action<ChatAttachment> attachmentSink)
+    {
+        this.workspaceProvider = workspaceProvider;
+        this.selectedDocumentProvider = selectedDocumentProvider;
+        this.attachmentSink = attachmentSink;
+    }
+
+    public string Name => "attach";
+
+    public string Summary => "Queue ReadOS evidence attachments for the current chat.";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "attach page [current|documentId] <page> | attach range [current|documentId] <startPage> <endPage>",
+        MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
+        new[] { "reados.attach.write" });
+
+    public ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        if (arguments.Count == 0)
+        {
+            return ValueTask.FromResult(MspCommandResult.Failure(Usage(), exitCode: 2));
+        }
+
+        return ValueTask.FromResult(arguments[0].ToLowerInvariant() switch
+        {
+            "page" => AttachPage(arguments.Skip(1).ToArray()),
+            "range" => AttachRange(arguments.Skip(1).ToArray()),
+            _ => MspCommandResult.Failure(Usage(), exitCode: 2)
+        });
+    }
+
+    private MspCommandResult AttachPage(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 2)
+        {
+            return MspCommandResult.Failure("Usage: attach page [current|documentId] <page>", exitCode: 2);
+        }
+
+        var resolved = ResolvePdfDocument(arguments[0]);
+        if (resolved is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        if (!TryParsePage(arguments[1], resolved, out var page, out var error))
+        {
+            return MspCommandResult.Failure(error, exitCode: 2);
+        }
+
+        QueueAttachment(resolved, page, page);
+        return MspCommandResult.Success($"attached-page\t{resolved.Id}\t{page}{Environment.NewLine}");
+    }
+
+    private MspCommandResult AttachRange(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count < 3)
+        {
+            return MspCommandResult.Failure("Usage: attach range [current|documentId] <startPage> <endPage>", exitCode: 2);
+        }
+
+        var resolved = ResolvePdfDocument(arguments[0]);
+        if (resolved is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        if (!TryParsePage(arguments[1], resolved, out var startPage, out var startError))
+        {
+            return MspCommandResult.Failure(startError, exitCode: 2);
+        }
+
+        if (!TryParsePage(arguments[2], resolved, out var endPage, out var endError))
+        {
+            return MspCommandResult.Failure(endError, exitCode: 2);
+        }
+
+        var start = Math.Min(startPage, endPage);
+        var end = Math.Max(startPage, endPage);
+        QueueAttachment(resolved, start, end);
+        return MspCommandResult.Success($"attached-range\t{resolved.Id}\t{start}\t{end}{Environment.NewLine}");
+    }
+
+    private LibraryItem? ResolvePdfDocument(string value)
+    {
+        var workspace = workspaceProvider();
+        return workspace is null
+            ? null
+            : ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, value, selectedDocumentProvider);
+    }
+
+    private void QueueAttachment(LibraryItem document, int startPage, int endPage)
+    {
+        attachmentSink(new ChatAttachment
+        {
+            Kind = startPage == endPage ? AttachmentKind.Page : AttachmentKind.PageRange,
+            DocumentId = document.Id,
+            Title = startPage == endPage
+                ? $"{document.Name} · 第 {startPage} 页"
+                : $"{document.Name} · 第 {startPage}-{endPage} 页",
+            StartPage = startPage,
+            EndPage = endPage
+        });
+    }
+
+    private static bool TryParsePage(string value, LibraryItem document, out int page, out string error)
+    {
+        if (!int.TryParse(value, out page))
+        {
+            error = "page must be a number.";
+            return false;
+        }
+
+        if (page < 1 || page > document.PageCount)
+        {
+            error = $"page must be between 1 and {document.PageCount}.";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
+    private static string Usage()
+    {
+        return "Usage: attach page [current|documentId] <page> | attach range [current|documentId] <startPage> <endPage>";
+    }
+}
+
 internal static class ReadOsMspCommandHelpers
 {
     public static LibraryItem? ResolvePdfDocument(
