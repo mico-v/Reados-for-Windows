@@ -2451,6 +2451,7 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("library list");
         builder.AppendLine("pdf inspect current");
         builder.AppendLine("pdf search current \"关键词\"");
+        builder.AppendLine("pdf search current \"关键词\" --artifact /artifacts/search.tsv");
         builder.AppendLine("pdf text current 1 3");
         builder.AppendLine("pdf text current 1 3 --artifact /artifacts/excerpt.txt");
         builder.AppendLine("artifact write /artifacts/summary.md \"摘要内容\"");

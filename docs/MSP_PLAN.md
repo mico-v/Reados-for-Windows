@@ -112,6 +112,7 @@ ReadOS document pack:
 - `pdf text`
 - `pdf text ... --artifact /artifacts/excerpt.txt`
 - `pdf search`
+- `pdf search ... --artifact /artifacts/search.tsv`
 
 Planned packs:
 
@@ -285,7 +286,7 @@ Each artifact should have:
 - creation time;
 - actor/session.
 
-Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`.
+Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. `pdf search ... --artifact <path>` creates tab-separated hit artifacts and records the matched page paths and page references. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`.
 
 ## Workflow Model
 

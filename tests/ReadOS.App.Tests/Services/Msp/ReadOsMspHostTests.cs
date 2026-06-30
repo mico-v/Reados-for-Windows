@@ -227,6 +227,61 @@ public sealed class ReadOsMspHostTests
         Assert.Contains("contentLength: 23", persisted.Preview);
     }
 
+    [Fact]
+    public async Task Pdf_search_artifact_requires_approval_and_persists_hit_page_provenance()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var pdfService = new TestPdfDocumentService
+        {
+            SearchHits = new[]
+            {
+                new PdfTextHit(2, "alpha hit"),
+                new PdfTextHit(5, "beta hit"),
+                new PdfTextHit(2, "second alpha hit")
+            }
+        };
+        var host = CreateHost(workspace, document, pdfService: pdfService);
+        const string commandText = "pdf search current alpha --artifact /artifacts/search/alpha.tsv";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, pendingAudit.Effects);
+        Assert.Contains("/artifacts/search/alpha.tsv", pendingAudit.Preview.Targets);
+        Assert.Contains(document.Id, pendingAudit.Preview.Targets);
+        Assert.Contains("query: alpha", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("artifact\t/artifacts/search/alpha.tsv\t3", approved.Stdout);
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("text/tab-separated-values", resultArtifact.MediaType);
+        Assert.Equal(new[]
+        {
+            $"/documents/{document.Id}/pages/2.txt",
+            $"/documents/{document.Id}/pages/5.txt"
+        }, resultArtifact.SourcePaths);
+        Assert.Equal(new[]
+        {
+            $"{document.Id}:2",
+            $"{document.Id}:5"
+        }, resultArtifact.SourcePages);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/search/alpha.tsv", persisted.Path);
+        Assert.Contains("2\talpha hit", persisted.Content);
+        Assert.Contains("5\tbeta hit", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal("reados-workbench", persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal(new[] { $"{document.Id}:2", $"{document.Id}:5" }, persisted.SourcePages);
+        Assert.Contains("hits: 3", persisted.Preview);
+    }
+
     private static ReadOsMspHost CreateHost(
         WorkspaceState workspace,
         LibraryItem document,
@@ -334,6 +389,8 @@ public sealed class ReadOsMspHostTests
     {
         public string ExtractedText { get; init; } = string.Empty;
 
+        public IReadOnlyList<PdfTextHit> SearchHits { get; init; } = Array.Empty<PdfTextHit>();
+
         public Task<PdfDocumentInfo> InspectAsync(string path, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
@@ -351,7 +408,7 @@ public sealed class ReadOsMspHostTests
 
         public Task<IReadOnlyList<PdfTextHit>> SearchAsync(string path, string query, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException();
+            return Task.FromResult(SearchHits);
         }
 
         public Task<string> ExtractPageTextAsync(string path, int startPage, int endPage, CancellationToken cancellationToken = default)

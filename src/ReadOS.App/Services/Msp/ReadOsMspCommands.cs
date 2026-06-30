@@ -154,15 +154,24 @@ internal sealed class ReadOsPdfCommand : IMspCommand
     public MspCommandMetadata GetMetadata(IReadOnlyList<string> arguments)
     {
         if (arguments.Count > 0 &&
-            string.Equals(arguments[0], "text", StringComparison.OrdinalIgnoreCase) &&
             HasArtifactOutput(arguments.Skip(1)))
         {
-            return MspCommandMetadata.Create(
-                Name,
-                "Extract PDF text into a durable artifact.",
-                "pdf text [current|documentId] <startPage> [endPage] --artifact <path>",
-                MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
-                new[] { "reados.pdf.read", "msp.artifact.write" });
+            return arguments[0].ToLowerInvariant() switch
+            {
+                "text" => MspCommandMetadata.Create(
+                    Name,
+                    "Extract PDF text into a durable artifact.",
+                    "pdf text [current|documentId] <startPage> [endPage] --artifact <path>",
+                    MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
+                    new[] { "reados.pdf.read", "msp.artifact.write" }),
+                "search" => MspCommandMetadata.Create(
+                    Name,
+                    "Write PDF search results into a durable artifact.",
+                    "pdf search [current|documentId] <query> --artifact <path>",
+                    MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
+                    new[] { "reados.pdf.read", "msp.artifact.write" }),
+                _ => Metadata
+            };
         }
 
         return Metadata;
@@ -170,9 +179,27 @@ internal sealed class ReadOsPdfCommand : IMspCommand
 
     public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
     {
-        if (arguments.Count == 0 ||
-            !string.Equals(arguments[0], "text", StringComparison.OrdinalIgnoreCase) ||
-            !TryParsePdfTextArguments(arguments.Skip(1).ToArray(), out var parsed, out _) ||
+        if (arguments.Count == 0)
+        {
+            return MspCommandPreview.Empty;
+        }
+
+        if (string.Equals(arguments[0], "text", StringComparison.OrdinalIgnoreCase))
+        {
+            return PreviewTextArtifact(arguments.Skip(1).ToArray());
+        }
+
+        if (string.Equals(arguments[0], "search", StringComparison.OrdinalIgnoreCase))
+        {
+            return PreviewSearchArtifact(arguments.Skip(1).ToArray());
+        }
+
+        return MspCommandPreview.Empty;
+    }
+
+    private MspCommandPreview PreviewTextArtifact(IReadOnlyList<string> arguments)
+    {
+        if (!TryParsePdfTextArguments(arguments, out var parsed, out _) ||
             string.IsNullOrWhiteSpace(parsed.ArtifactPath))
         {
             return MspCommandPreview.Empty;
@@ -191,6 +218,31 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         };
         return MspCommandPreview.Create(
             "Extract PDF text into a durable artifact with source page provenance.",
+            targets,
+            details);
+    }
+
+    private MspCommandPreview PreviewSearchArtifact(IReadOnlyList<string> arguments)
+    {
+        if (!TryParsePdfSearchArguments(arguments, out var parsed, out _) ||
+            string.IsNullOrWhiteSpace(parsed.ArtifactPath))
+        {
+            return MspCommandPreview.Empty;
+        }
+
+        var document = ResolveDocument(parsed.DocumentSelector);
+        var targets = new[]
+        {
+            NormalizeArtifactPath(parsed.ArtifactPath),
+            document?.Id ?? parsed.DocumentSelector
+        };
+        var details = new[]
+        {
+            $"query: {parsed.Query}",
+            document is null ? "document: unresolved until execution" : $"document: {document.Name}"
+        };
+        return MspCommandPreview.Create(
+            "Write PDF search results into a durable artifact with source page provenance.",
             targets,
             details);
     }
@@ -268,7 +320,7 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         if (!string.IsNullOrWhiteSpace(parsed.ArtifactPath))
         {
             var artifactPath = NormalizeArtifactPath(parsed.ArtifactPath);
-            if (!artifactPath.StartsWith("/artifacts/", StringComparison.Ordinal))
+            if (!IsArtifactFilePath(artifactPath))
             {
                 return MspCommandResult.Failure("pdf text --artifact must target a file under /artifacts.", exitCode: 2);
             }
@@ -304,23 +356,22 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 2)
+        if (!TryParsePdfSearchArguments(arguments, out var parsed, out var parseError))
         {
-            return MspCommandResult.Failure("Usage: pdf search [current|documentId] <query>", exitCode: 2);
+            return MspCommandResult.Failure(parseError, exitCode: 2);
         }
 
-        var document = ResolveDocument(arguments[0]);
+        var document = ResolveDocument(parsed.DocumentSelector);
         if (document is null)
         {
             return MspCommandResult.Failure("PDF document not found.");
         }
 
-        var query = string.Join(' ', arguments.Skip(1));
         await context.ReportProgressAsync(
-            $"Searching {document.Name} for \"{query}\".",
+            $"Searching {document.Name} for \"{parsed.Query}\".",
             20,
             cancellationToken);
-        var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(document), query, cancellationToken);
+        var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(document), parsed.Query, cancellationToken);
         await context.ReportProgressAsync(
             $"Found {hits.Count} matching PDF pages.",
             90,
@@ -333,7 +384,45 @@ internal sealed class ReadOsPdfCommand : IMspCommand
             builder.AppendLine(hit.Preview);
         }
 
-        return MspCommandResult.Success(builder.ToString());
+        var content = builder.ToString();
+        if (!string.IsNullOrWhiteSpace(parsed.ArtifactPath))
+        {
+            var artifactPath = NormalizeArtifactPath(parsed.ArtifactPath);
+            if (!IsArtifactFilePath(artifactPath))
+            {
+                return MspCommandResult.Failure("pdf search --artifact must target a file under /artifacts.", exitCode: 2);
+            }
+
+            var sourcePages = hits
+                .Select(hit => hit.PageNumber)
+                .Distinct()
+                .OrderBy(page => page)
+                .ToArray();
+            var artifact = new MspArtifact
+            {
+                Path = artifactPath,
+                MediaType = "text/tab-separated-values",
+                SizeBytes = content.Length,
+                Description = $"PDF search results for \"{parsed.Query}\" in {document.Name}.",
+                SourceCommand = context.Invocation.CommandText,
+                Actor = context.Invocation.Actor,
+                SessionId = context.Invocation.SessionId,
+                SourcePaths = sourcePages
+                    .Select(page => $"/documents/{document.Id}/pages/{page}.txt")
+                    .ToArray(),
+                SourceDocuments = new[] { document.Id },
+                SourcePages = sourcePages
+                    .Select(page => $"{document.Id}:{page}")
+                    .ToArray(),
+                Preview = $"document: {document.Name}; query: {parsed.Query}; hits: {hits.Count}; contentLength: {content.Length}"
+            };
+            await context.Workspace.WriteTextAsync(artifactPath, content, artifact, cancellationToken);
+            return MspCommandResult.Success(
+                $"artifact\t{artifactPath}\t{hits.Count}{Environment.NewLine}",
+                new[] { artifact });
+        }
+
+        return MspCommandResult.Success(content);
     }
 
     private LibraryItem? ResolveDocument(string value)
@@ -363,6 +452,66 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         return arguments.Any(argument =>
             string.Equals(argument, "--artifact", StringComparison.OrdinalIgnoreCase) ||
             argument.StartsWith("--artifact=", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryParsePdfSearchArguments(
+        IReadOnlyList<string> arguments,
+        out PdfSearchArguments parsed,
+        out string error)
+    {
+        parsed = new PdfSearchArguments(string.Empty, string.Empty, null);
+        error = string.Empty;
+        if (arguments.Count < 2)
+        {
+            error = "Usage: pdf search [current|documentId] <query> [--artifact <path>]";
+            return false;
+        }
+
+        var queryParts = new List<string>();
+        string? artifactPath = null;
+        var index = 1;
+        while (index < arguments.Count)
+        {
+            var argument = arguments[index];
+            if (string.Equals(argument, "--artifact", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index + 1]))
+                {
+                    error = "--artifact requires a path.";
+                    return false;
+                }
+
+                artifactPath = arguments[index + 1];
+                index += 2;
+                continue;
+            }
+
+            if (argument.StartsWith("--artifact=", StringComparison.OrdinalIgnoreCase))
+            {
+                artifactPath = argument["--artifact=".Length..];
+                if (string.IsNullOrWhiteSpace(artifactPath))
+                {
+                    error = "--artifact requires a path.";
+                    return false;
+                }
+
+                index++;
+                continue;
+            }
+
+            queryParts.Add(argument);
+            index++;
+        }
+
+        var query = string.Join(' ', queryParts).Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            error = "query must not be empty.";
+            return false;
+        }
+
+        parsed = new PdfSearchArguments(arguments[0], query, artifactPath);
+        return true;
     }
 
     private static bool TryParsePdfTextArguments(
@@ -445,6 +594,11 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         return "/artifacts/" + path.TrimStart('/');
     }
 
+    private static bool IsArtifactFilePath(string path)
+    {
+        return path.StartsWith("/artifacts/", StringComparison.Ordinal);
+    }
+
     private static IEnumerable<int> GetSourcePages(int startPage, int endPage)
     {
         var start = Math.Min(startPage, endPage);
@@ -456,6 +610,11 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         string DocumentSelector,
         int StartPage,
         int EndPage,
+        string? ArtifactPath);
+
+    private sealed record PdfSearchArguments(
+        string DocumentSelector,
+        string Query,
         string? ArtifactPath);
 }
 
