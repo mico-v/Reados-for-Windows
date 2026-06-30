@@ -90,9 +90,15 @@ public sealed partial class ShellViewModel : ObservableObject
         mspHost = new ReadOsMspHost(
             workspaceStore,
             pdfService,
+            aiChatService,
             () => workspace,
+            BuildSettingsFromInputs,
             () => SelectedDocument,
-            QueueMspAttachment);
+            () => PendingAttachments.Select(CloneAttachment).ToArray(),
+            GetAttachmentTextAsync,
+            QueueMspAttachment,
+            ClearMspAttachments,
+            ApplyMspChatResult);
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
@@ -1969,6 +1975,24 @@ public sealed partial class ShellViewModel : ObservableObject
         StatusMessage = $"MSP 已加入附件：{attachment.Title}";
     }
 
+    private void ClearMspAttachments()
+    {
+        PendingAttachments.Clear();
+        NotifyAttachmentState();
+    }
+
+    private void ApplyMspChatResult(LibraryItem document, ChatConversation conversation)
+    {
+        if (SelectedDocument?.Id == document.Id)
+        {
+            RefreshConversations();
+            SelectedConversation = Conversations.FirstOrDefault(item => item.Id == conversation.Id) ?? SelectedConversation;
+            RefreshChatMessages();
+        }
+
+        StatusMessage = $"MSP chat 已写入：{conversation.Title}";
+    }
+
     private async Task<MspTranscriptEntry> ExecuteAndRecordMspCommandAsync(
         string commandText,
         string actor,
@@ -2115,6 +2139,7 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("outline add current 42 \"Chapter 3\" --level 1");
         builder.AppendLine("attach page current 12");
         builder.AppendLine("attach range current 12 18");
+        builder.AppendLine("chat ask current \"解释已附加页面\"");
         builder.AppendLine("windows info");
         builder.AppendLine("windows path current");
         builder.AppendLine("```");

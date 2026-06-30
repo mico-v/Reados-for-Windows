@@ -705,6 +705,169 @@ internal sealed class ReadOsAttachCommand : IMspCommand
     }
 }
 
+internal sealed class ReadOsChatCommand : IMspCommand
+{
+    private readonly IWorkspaceStore workspaceStore;
+    private readonly IAiChatService aiChatService;
+    private readonly Func<WorkspaceState?> workspaceProvider;
+    private readonly Func<WorkspaceSettings> settingsProvider;
+    private readonly Func<LibraryItem?> selectedDocumentProvider;
+    private readonly Func<IReadOnlyList<ChatAttachment>> pendingAttachmentsProvider;
+    private readonly Func<ChatAttachment, Task<string>> attachmentTextProvider;
+    private readonly Action clearAttachments;
+    private readonly Action<LibraryItem, ChatConversation> chatResultSink;
+
+    public ReadOsChatCommand(
+        IWorkspaceStore workspaceStore,
+        IAiChatService aiChatService,
+        Func<WorkspaceState?> workspaceProvider,
+        Func<WorkspaceSettings> settingsProvider,
+        Func<LibraryItem?> selectedDocumentProvider,
+        Func<IReadOnlyList<ChatAttachment>> pendingAttachmentsProvider,
+        Func<ChatAttachment, Task<string>> attachmentTextProvider,
+        Action clearAttachments,
+        Action<LibraryItem, ChatConversation> chatResultSink)
+    {
+        this.workspaceStore = workspaceStore;
+        this.aiChatService = aiChatService;
+        this.workspaceProvider = workspaceProvider;
+        this.settingsProvider = settingsProvider;
+        this.selectedDocumentProvider = selectedDocumentProvider;
+        this.pendingAttachmentsProvider = pendingAttachmentsProvider;
+        this.attachmentTextProvider = attachmentTextProvider;
+        this.clearAttachments = clearAttachments;
+        this.chatResultSink = chatResultSink;
+    }
+
+    public string Name => "chat";
+
+    public string Summary => "Ask the ReadOS chat model using current evidence attachments.";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "chat ask [current|documentId] <prompt...>",
+        MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.ExternalModel,
+        new[] { "reados.chat.ask" });
+
+    public async ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        if (arguments.Count < 3 || !string.Equals(arguments[0], "ask", StringComparison.OrdinalIgnoreCase))
+        {
+            return MspCommandResult.Failure("Usage: chat ask [current|documentId] <prompt...>", exitCode: 2);
+        }
+
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            return MspCommandResult.Failure("ReadOS workspace is not loaded.");
+        }
+
+        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, arguments[1], selectedDocumentProvider);
+        if (document is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        var prompt = string.Join(' ', arguments.Skip(2)).Trim();
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return MspCommandResult.Failure("prompt must not be empty.", exitCode: 2);
+        }
+
+        var existingConversation = FindConversation(document);
+        var history = existingConversation?.Messages.ToArray() ?? Array.Empty<ChatMessage>();
+        var attachments = pendingAttachmentsProvider()
+            .Select(CloneAttachment)
+            .ToArray();
+        var answer = await aiChatService.SendAsync(
+            settingsProvider(),
+            document,
+            history,
+            prompt,
+            attachments,
+            attachmentTextProvider,
+            allowMspCommandRequests: false,
+            cancellationToken: cancellationToken);
+
+        var conversation = existingConversation ?? CreateConversation(document);
+        var userMessage = new ChatMessage
+        {
+            Role = ChatRole.User,
+            Author = "MSP",
+            Content = prompt,
+            CreatedAt = DateTimeOffset.Now
+        };
+        foreach (var attachment in attachments)
+        {
+            userMessage.Attachments.Add(attachment);
+        }
+
+        var assistantMessage = new ChatMessage
+        {
+            Role = ChatRole.Assistant,
+            Author = "ReadOS",
+            Content = answer,
+            CreatedAt = DateTimeOffset.Now
+        };
+
+        conversation.Messages.Add(userMessage);
+        conversation.Messages.Add(assistantMessage);
+        conversation.UpdatedAt = DateTimeOffset.Now;
+        document.UpdatedAt = DateTimeOffset.Now;
+        clearAttachments();
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
+        chatResultSink(document, conversation);
+
+        var builder = new StringBuilder();
+        builder.Append("chat-answer\t");
+        builder.Append(document.Id);
+        builder.Append('\t');
+        builder.Append(conversation.Id);
+        builder.Append('\t');
+        builder.AppendLine(assistantMessage.Id);
+        builder.AppendLine(answer);
+        return MspCommandResult.Success(builder.ToString());
+    }
+
+    private static ChatAttachment CloneAttachment(ChatAttachment source)
+    {
+        return new ChatAttachment
+        {
+            Kind = source.Kind,
+            DocumentId = source.DocumentId,
+            Title = source.Title,
+            StartPage = source.StartPage,
+            EndPage = source.EndPage,
+            FilePath = source.FilePath,
+            RegionX = source.RegionX,
+            RegionY = source.RegionY,
+            RegionWidth = source.RegionWidth,
+            RegionHeight = source.RegionHeight
+        };
+    }
+
+    private static ChatConversation? FindConversation(LibraryItem document)
+    {
+        return document.Conversations.OrderByDescending(item => item.UpdatedAt).FirstOrDefault();
+    }
+
+    private static ChatConversation CreateConversation(LibraryItem document)
+    {
+        var conversation = new ChatConversation
+        {
+            DocumentId = document.Id,
+            Title = "MSP 问答",
+            UpdatedAt = DateTimeOffset.Now
+        };
+        document.Conversations.Insert(0, conversation);
+        return conversation;
+    }
+}
+
 internal static class ReadOsMspCommandHelpers
 {
     public static LibraryItem? ResolvePdfDocument(

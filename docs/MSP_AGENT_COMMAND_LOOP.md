@@ -22,6 +22,7 @@ page-label set current 12 "iii"
 outline add current 42 "Chapter 3" --level 1
 attach page current 12
 attach range current 12 18
+chat ask current "explain attached pages"
 windows info
 windows path current
 ```
@@ -50,6 +51,7 @@ MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries
 - `/transcripts/{id}.json` exposes prior MSP command records for later inspection.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `attach page/range` queues page evidence into the current chat after operator approval.
+- `chat ask` calls the configured chat service with queued evidence and writes the exchange to the document conversation after operator approval.
 - `windows info` and `windows path ...` translate to safe .NET/Windows host metadata and local ReadOS paths.
 - raw host filesystem access remains hidden behind virtual workspace paths and app services.
 

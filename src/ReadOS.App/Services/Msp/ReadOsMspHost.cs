@@ -17,9 +17,15 @@ public sealed class ReadOsMspHost
     public ReadOsMspHost(
         IWorkspaceStore workspaceStore,
         IPdfDocumentService pdfService,
+        IAiChatService aiChatService,
         Func<WorkspaceState?> workspaceProvider,
+        Func<WorkspaceSettings> settingsProvider,
         Func<LibraryItem?> selectedDocumentProvider,
-        Action<ChatAttachment> attachmentSink)
+        Func<IReadOnlyList<ChatAttachment>> pendingAttachmentsProvider,
+        Func<ChatAttachment, Task<string>> attachmentTextProvider,
+        Action<ChatAttachment> attachmentSink,
+        Action clearAttachments,
+        Action<LibraryItem, ChatConversation> chatResultSink)
     {
         var registry = MspRuntime.CreateDefaultRegistry();
         var workspace = new ReadOsVirtualWorkspace(workspaceStore, pdfService, workspaceProvider);
@@ -30,7 +36,17 @@ public sealed class ReadOsMspHost
             .Register(new ReadOsWindowsCommand(workspaceStore, selectedDocumentProvider))
             .Register(new ReadOsPageLabelCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
             .Register(new ReadOsOutlineCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
-            .Register(new ReadOsAttachCommand(workspaceProvider, selectedDocumentProvider, attachmentSink));
+            .Register(new ReadOsAttachCommand(workspaceProvider, selectedDocumentProvider, attachmentSink))
+            .Register(new ReadOsChatCommand(
+                workspaceStore,
+                aiChatService,
+                workspaceProvider,
+                settingsProvider,
+                selectedDocumentProvider,
+                pendingAttachmentsProvider,
+                attachmentTextProvider,
+                clearAttachments,
+                chatResultSink));
 
         policy = new OperatorApprovalMspPolicy();
         var context = new MspCommandContext(

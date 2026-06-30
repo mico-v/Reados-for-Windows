@@ -13,12 +13,7 @@ public sealed class ReadOsMspHostTests
     {
         var workspace = CreateWorkspace(out var document);
         var attachments = new List<ChatAttachment>();
-        var host = new ReadOsMspHost(
-            new TestWorkspaceStore(workspace),
-            new TestPdfDocumentService(),
-            () => workspace,
-            () => document,
-            attachments.Add);
+        var host = CreateHost(workspace, document, attachmentSink: attachments.Add);
 
         var pending = await host.ExecuteAsync("attach page current 3", "test-agent");
 
@@ -42,12 +37,7 @@ public sealed class ReadOsMspHostTests
     {
         var workspace = CreateWorkspace(out var document);
         var attachments = new List<ChatAttachment>();
-        var host = new ReadOsMspHost(
-            new TestWorkspaceStore(workspace),
-            new TestPdfDocumentService(),
-            () => workspace,
-            () => document,
-            attachments.Add);
+        var host = CreateHost(workspace, document, attachmentSink: attachments.Add);
 
         var result = await host.ExecuteApprovedAsync($"attach range {document.Id} 7 4", "test-agent");
 
@@ -59,6 +49,80 @@ public sealed class ReadOsMspHostTests
         Assert.Equal(document.Id, attachment.DocumentId);
         Assert.Equal(4, attachment.StartPage);
         Assert.Equal(7, attachment.EndPage);
+    }
+
+    [Fact]
+    public async Task Chat_ask_requires_approval_before_writing_conversation()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var pendingAttachments = new List<ChatAttachment>
+        {
+            new()
+            {
+                Kind = AttachmentKind.Page,
+                DocumentId = document.Id,
+                Title = "guide.pdf · 第 2 页",
+                StartPage = 2,
+                EndPage = 2
+            }
+        };
+        var chatUpdates = new List<ChatConversation>();
+        var chatService = new TestAiChatService("answer from model");
+        var host = CreateHost(
+            workspace,
+            document,
+            chatService,
+            pendingAttachmentsProvider: () => pendingAttachments.ToArray(),
+            clearAttachments: pendingAttachments.Clear,
+            chatResultSink: (_, conversation) => chatUpdates.Add(conversation));
+
+        var pending = await host.ExecuteAsync("chat ask current \"explain attached page\"", "test-agent");
+
+        Assert.Empty(document.Conversations);
+        Assert.Single(pendingAttachments);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+
+        var approved = await host.ExecuteApprovedAsync("chat ask current \"explain attached page\"", "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(approved.AuditRecords).Decision);
+        Assert.Contains("answer from model", approved.Stdout);
+        Assert.Empty(pendingAttachments);
+
+        var conversation = Assert.Single(document.Conversations);
+        Assert.Same(conversation, Assert.Single(chatUpdates));
+        Assert.Equal(2, conversation.Messages.Count);
+        Assert.Equal(ChatRole.User, conversation.Messages[0].Role);
+        Assert.Equal("MSP", conversation.Messages[0].Author);
+        Assert.Equal("explain attached page", conversation.Messages[0].Content);
+        Assert.Equal(2, Assert.Single(conversation.Messages[0].Attachments).StartPage);
+        Assert.Equal(ChatRole.Assistant, conversation.Messages[1].Role);
+        Assert.Equal("answer from model", conversation.Messages[1].Content);
+        Assert.Equal("explain attached page", chatService.LastPrompt);
+        Assert.Single(chatService.LastAttachments);
+    }
+
+    private static ReadOsMspHost CreateHost(
+        WorkspaceState workspace,
+        LibraryItem document,
+        IAiChatService? chatService = null,
+        Func<IReadOnlyList<ChatAttachment>>? pendingAttachmentsProvider = null,
+        Action<ChatAttachment>? attachmentSink = null,
+        Action? clearAttachments = null,
+        Action<LibraryItem, ChatConversation>? chatResultSink = null)
+    {
+        return new ReadOsMspHost(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            chatService ?? new TestAiChatService("unused"),
+            () => workspace,
+            () => workspace.Settings,
+            () => document,
+            pendingAttachmentsProvider ?? (() => Array.Empty<ChatAttachment>()),
+            _ => Task.FromResult("attachment text"),
+            attachmentSink ?? (_ => { }),
+            clearAttachments ?? (() => { }),
+            chatResultSink ?? ((_, _) => { }));
     }
 
     private static WorkspaceState CreateWorkspace(out LibraryItem document)
@@ -165,6 +229,37 @@ public sealed class ReadOsMspHostTests
         public Task<string> ExtractPageTextAsync(string path, int startPage, int endPage, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class TestAiChatService : IAiChatService
+    {
+        private readonly string response;
+
+        public TestAiChatService(string response)
+        {
+            this.response = response;
+        }
+
+        public string? LastPrompt { get; private set; }
+
+        public IReadOnlyList<ChatAttachment> LastAttachments { get; private set; } = Array.Empty<ChatAttachment>();
+
+        public Task<string> SendAsync(
+            WorkspaceSettings settings,
+            LibraryItem? document,
+            IEnumerable<ChatMessage> history,
+            string userPrompt,
+            IEnumerable<ChatAttachment> attachments,
+            Func<ChatAttachment, Task<string>> attachmentTextProvider,
+            string? mspInstruction = null,
+            string? mspExecutionContext = null,
+            bool allowMspCommandRequests = true,
+            CancellationToken cancellationToken = default)
+        {
+            LastPrompt = userPrompt;
+            LastAttachments = attachments.ToArray();
+            return Task.FromResult(response);
         }
     }
 }

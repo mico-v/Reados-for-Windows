@@ -7,7 +7,7 @@ tests/ReadOS.Msp.Tests
 tests/ReadOS.App.Tests
 ```
 
-They currently cover MSP parser/runtime behavior, audit records, app virtual workspace projections, and approval-gated host commands. New MSP work should add tests close to the layer being changed:
+They currently cover MSP parser/runtime behavior, audit records, app virtual workspace projections, approval-gated host commands, and chat command persistence. New MSP work should add tests close to the layer being changed:
 
 - parser tests for quoting, argument shape, and invalid command text;
 - runtime tests for success, failure, unknown commands, dry runs, and exit codes;
