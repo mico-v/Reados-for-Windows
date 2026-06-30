@@ -76,8 +76,8 @@ public sealed class MspRuntime
         if (decision != MspPolicyDecision.Allow)
         {
             var denied = MspCommandResult.Failure($"Policy decision: {decision}", exitCode: 126);
-            await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, decision, denied, cancellationToken);
-            return denied;
+            var deniedAuditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, decision, denied, cancellationToken);
+            return denied with { AuditRecords = new[] { deniedAuditRecord } };
         }
 
         MspCommandResult result;

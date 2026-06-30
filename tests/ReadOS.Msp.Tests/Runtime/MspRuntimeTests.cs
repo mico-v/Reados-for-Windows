@@ -106,6 +106,55 @@ public sealed class MspRuntimeTests
         Assert.Equal(policy.LastRequest.Effects, record.Effects);
     }
 
+    [Fact]
+    public async Task Effect_policy_requires_confirmation_for_mutating_commands_and_returns_audit()
+    {
+        var registry = new MspCommandRegistry().Register(new MutatingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new EffectBasedMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "policy-test",
+            CommandText = "mutate"
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(126, result.ExitCode);
+        Assert.Contains(nameof(MspPolicyDecision.RequireConfirmation), result.Stderr);
+
+        var record = Assert.Single(result.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, record.Decision);
+        Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, record.Effects);
+        Assert.Equal(126, record.ExitCode);
+    }
+
+    [Fact]
+    public async Task Effect_policy_allows_mutating_dry_runs()
+    {
+        var registry = new MspCommandRegistry().Register(new MutatingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new EffectBasedMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "mutate",
+            DryRun = true
+        });
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("dry-run: mutate", result.Stdout);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(result.AuditRecords).Decision);
+    }
+
     private sealed class CapturingPolicy : IMspPolicy
     {
         public MspPolicyRequest? LastRequest { get; private set; }

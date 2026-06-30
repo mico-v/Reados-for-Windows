@@ -66,6 +66,7 @@ Implemented:
 - read/write workspace abstraction
 - in-memory workspace
 - policy interface and allow-all policy
+- effect-based policy for mutating/external command confirmation
 - audit sink interface and in-memory sink
 - core commands: `help`, `pwd`, `echo`, `ls`, `cat`
 - artifact commands: `artifact list`, `artifact show`, `artifact write`

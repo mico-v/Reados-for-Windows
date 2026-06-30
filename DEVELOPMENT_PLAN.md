@@ -84,11 +84,15 @@ Status: in progress.
 
 ### Milestone 2: Service Host Layer
 
+Status: started.
+
 - Introduce session IDs and command transcript records.
 - Add cancellation and progress event surfaces.
 - Replace app-level allow-all execution with a policy service.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
+
+Current status: command transcripts are visible in the workbench, MSP metadata reaches policy/audit, and `EffectBasedMspPolicy` can require confirmation for mutating commands. The app still uses allow-all until an approval UI is added.
 
 ### Milestone 3: Artifact System
 
@@ -150,7 +154,7 @@ Mutating or approval-gated:
 - Add tests for `ReadOsVirtualWorkspace`.
 - Add an operator transcript panel to the WinUI shell.
 - Add artifact provenance fields beyond path/media type/content.
-- Add an approval policy implementation for write commands.
+- Add an approval UI that can resume commands after `RequireConfirmation`.
 
 ## Verification
 
