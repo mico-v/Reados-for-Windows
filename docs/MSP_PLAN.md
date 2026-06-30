@@ -144,6 +144,8 @@ Current and target path shape:
 /artifacts
 /artifacts/{path}
 /artifacts/{path}.manifest.json
+/sessions
+/sessions/{sessionId}.json
 /transcripts
 /transcripts/{transcriptId}.json
 ```
@@ -172,6 +174,16 @@ Minimum fields:
 - `artifacts`
 - `auditRecords`
 - `diagnostics`
+
+### Session Record
+
+Session records group command transcripts and artifacts for a single agent/workbench execution context. Each record includes:
+
+- session ID, title, actor, start and update times;
+- last command text, decision, exit code, and progress message;
+- command and approval counts;
+- transcript IDs;
+- artifact paths.
 
 ### Command Events
 
@@ -236,7 +248,7 @@ Audit records should answer:
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index before reading individual transcript files. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
 
 ## Artifact Model
 

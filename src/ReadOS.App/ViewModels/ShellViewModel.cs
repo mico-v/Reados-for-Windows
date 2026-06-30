@@ -495,6 +495,7 @@ public sealed partial class ShellViewModel : ObservableObject
         var deniedEntry = MspTranscriptEntry.FromRecord(new MspCommandTranscriptRecord
         {
             Actor = entry.Actor,
+            SessionId = entry.SessionId,
             CommandText = entry.CommandText,
             StartedAt = entry.StartedAt,
             CompletedAt = DateTimeOffset.Now,
@@ -2044,6 +2045,7 @@ public sealed partial class ShellViewModel : ObservableObject
         var entry = new MspTranscriptEntry
         {
             Actor = actor,
+            SessionId = ReadOsMspHost.DefaultSessionId,
             CommandText = commandText,
             StartedAt = startedAt,
             CompletedAt = startedAt,
@@ -2100,6 +2102,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void ApplyMspCommandEvent(MspTranscriptEntry entry, MspCommandEvent commandEvent)
     {
+        if (!string.IsNullOrWhiteSpace(commandEvent.SessionId))
+        {
+            entry.SessionId = commandEvent.SessionId;
+        }
+
         if (!string.IsNullOrWhiteSpace(commandEvent.Message))
         {
             entry.ProgressMessage = commandEvent.Message;
@@ -2182,8 +2189,15 @@ public sealed partial class ShellViewModel : ObservableObject
         workspace.MspTranscript.Clear();
         foreach (var entry in MspTranscript)
         {
+            if (string.IsNullOrWhiteSpace(entry.SessionId))
+            {
+                entry.SessionId = ReadOsMspHost.DefaultSessionId;
+            }
+
             workspace.MspTranscript.Add(entry);
         }
+
+        RebuildAllMspSessions();
 
         OnPropertyChanged(nameof(MspTranscriptSummary));
     }
@@ -2195,11 +2209,29 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        RemoveWorkspaceTranscriptEntry(entry);
+        entry.SessionId = NormalizeMspSessionId(entry.SessionId);
+        var affectedSessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            entry.SessionId
+        };
+        var existing = workspace.MspTranscript.FirstOrDefault(item => item.Id == entry.Id);
+        if (existing is not null)
+        {
+            affectedSessionIds.Add(NormalizeMspSessionId(existing.SessionId));
+            workspace.MspTranscript.Remove(existing);
+        }
+
         workspace.MspTranscript.Insert(Math.Clamp(index, 0, workspace.MspTranscript.Count), entry);
         while (workspace.MspTranscript.Count > MaxMspTranscriptEntries)
         {
+            var removed = workspace.MspTranscript[^1];
+            affectedSessionIds.Add(NormalizeMspSessionId(removed.SessionId));
             workspace.MspTranscript.RemoveAt(workspace.MspTranscript.Count - 1);
+        }
+
+        foreach (var sessionId in affectedSessionIds)
+        {
+            RebuildMspSession(sessionId);
         }
     }
 
@@ -2214,6 +2246,123 @@ public sealed partial class ShellViewModel : ObservableObject
         if (existing is not null)
         {
             workspace.MspTranscript.Remove(existing);
+            RebuildMspSession(NormalizeMspSessionId(existing.SessionId));
+        }
+    }
+
+    private void RebuildAllMspSessions()
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        EnsureTranscriptSessionIds();
+        var sessionIds = workspace.MspTranscript
+            .Select(entry => NormalizeMspSessionId(entry.SessionId))
+            .Concat(workspace.Artifacts.Select(artifact => artifact.SessionId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var staleSessions = workspace.MspSessions
+            .Where(session => !sessionIds.Contains(session.Id))
+            .ToArray();
+        foreach (var staleSession in staleSessions)
+        {
+            workspace.MspSessions.Remove(staleSession);
+        }
+
+        foreach (var sessionId in sessionIds)
+        {
+            RebuildMspSession(sessionId);
+        }
+    }
+
+    private void RebuildMspSession(string? sessionId)
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        EnsureTranscriptSessionIds();
+        var resolvedSessionId = NormalizeMspSessionId(sessionId);
+
+        var sessionTranscripts = workspace.MspTranscript
+            .Where(entry => string.Equals(entry.SessionId, resolvedSessionId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.StartedAt)
+            .ToArray();
+        var sessionArtifacts = workspace.Artifacts
+            .Where(artifact => string.Equals(artifact.SessionId, resolvedSessionId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(artifact => artifact.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var session = workspace.MspSessions.FirstOrDefault(item =>
+            string.Equals(item.Id, resolvedSessionId, StringComparison.OrdinalIgnoreCase));
+        if (sessionTranscripts.Length == 0 && sessionArtifacts.Length == 0)
+        {
+            if (session is not null)
+            {
+                workspace.MspSessions.Remove(session);
+            }
+
+            return;
+        }
+
+        var firstTranscript = sessionTranscripts.FirstOrDefault();
+        var lastTranscript = sessionTranscripts.LastOrDefault();
+        if (session is null)
+        {
+            session = new MspSessionEntry
+            {
+                Id = resolvedSessionId,
+                Title = resolvedSessionId == ReadOsMspHost.DefaultSessionId
+                    ? "ReadOS Workbench MSP Session"
+                    : $"MSP Session {resolvedSessionId}",
+                StartedAt = firstTranscript?.StartedAt ?? DateTimeOffset.Now
+            };
+            workspace.MspSessions.Add(session);
+        }
+
+        session.Actor = lastTranscript?.Actor ?? firstTranscript?.Actor ?? session.Actor;
+        session.StartedAt = firstTranscript?.StartedAt ?? session.StartedAt;
+        session.UpdatedAt = lastTranscript?.CompletedAt ?? DateTimeOffset.Now;
+        session.LastCommandText = lastTranscript?.CommandText ?? string.Empty;
+        session.LastDecision = lastTranscript?.Decision ?? "Allow";
+        session.LastExitCode = lastTranscript?.ExitCode ?? 0;
+        session.LastProgressMessage = lastTranscript?.ProgressMessage ?? string.Empty;
+        session.CommandCount = sessionTranscripts.Length;
+        session.ApprovalCount = sessionTranscripts.Count(entry =>
+            string.Equals(entry.Decision, "RequireConfirmation", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entry.Decision, "Deny", StringComparison.OrdinalIgnoreCase));
+        ReplaceValues(session.TranscriptIds, sessionTranscripts.Select(entry => entry.Id));
+        ReplaceValues(session.ArtifactPaths, sessionArtifacts.Select(artifact => artifact.Path));
+    }
+
+    private void EnsureTranscriptSessionIds()
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        foreach (var entry in workspace.MspTranscript.Where(entry => string.IsNullOrWhiteSpace(entry.SessionId)))
+        {
+            entry.SessionId = ReadOsMspHost.DefaultSessionId;
+        }
+    }
+
+    private static string NormalizeMspSessionId(string? sessionId)
+    {
+        return string.IsNullOrWhiteSpace(sessionId)
+            ? ReadOsMspHost.DefaultSessionId
+            : sessionId;
+    }
+
+    private static void ReplaceValues(ICollection<string> target, IEnumerable<string> values)
+    {
+        target.Clear();
+        foreach (var value in values.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            target.Add(value);
         }
     }
 

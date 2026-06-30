@@ -41,6 +41,8 @@ public sealed partial class WorkspaceState : ObservableObject
     public ObservableCollection<WorkspaceArtifact> Artifacts { get; } = new();
 
     public ObservableCollection<MspTranscriptEntry> MspTranscript { get; } = new();
+
+    public ObservableCollection<MspSessionEntry> MspSessions { get; } = new();
 }
 
 public sealed partial class WorkspaceSettings : ObservableObject
@@ -358,6 +360,9 @@ public sealed partial class MspTranscriptEntry : ObservableObject
     public partial string Actor { get; set; } = "agent";
 
     [ObservableProperty]
+    public partial string SessionId { get; set; } = "default";
+
+    [ObservableProperty]
     public partial string CommandText { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -405,6 +410,7 @@ public sealed partial class MspTranscriptEntry : ObservableObject
         {
             Id = record.Id,
             Actor = record.Actor,
+            SessionId = record.SessionId,
             CommandText = record.CommandText,
             StartedAt = record.StartedAt,
             CompletedAt = record.CompletedAt,
@@ -427,6 +433,7 @@ public sealed partial class MspTranscriptEntry : ObservableObject
         {
             Id = Id,
             Actor = Actor,
+            SessionId = SessionId,
             CommandText = CommandText,
             StartedAt = StartedAt,
             CompletedAt = CompletedAt,
@@ -550,6 +557,99 @@ public sealed partial class MspTranscriptEntry : ObservableObject
         OnPropertyChanged(nameof(IsApprovalRequired));
         OnPropertyChanged(nameof(StatusLabel));
     }
+}
+
+public sealed partial class MspSessionEntry : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = "default";
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = "MSP session";
+
+    [ObservableProperty]
+    public partial string Actor { get; set; } = "agent";
+
+    [ObservableProperty]
+    public partial DateTimeOffset StartedAt { get; set; } = DateTimeOffset.Now;
+
+    [ObservableProperty]
+    public partial DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+
+    [ObservableProperty]
+    public partial string LastCommandText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string LastDecision { get; set; } = "Allow";
+
+    [ObservableProperty]
+    public partial int LastExitCode { get; set; }
+
+    [ObservableProperty]
+    public partial string LastProgressMessage { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int CommandCount { get; set; }
+
+    [ObservableProperty]
+    public partial int ApprovalCount { get; set; }
+
+    public ObservableCollection<string> TranscriptIds { get; } = new();
+
+    public ObservableCollection<string> ArtifactPaths { get; } = new();
+
+    public static MspSessionEntry FromRecord(MspSessionRecord record)
+    {
+        var entry = new MspSessionEntry
+        {
+            Id = record.Id,
+            Title = record.Title,
+            Actor = record.Actor,
+            StartedAt = record.StartedAt,
+            UpdatedAt = record.UpdatedAt,
+            LastCommandText = record.LastCommandText,
+            LastDecision = record.LastDecision,
+            LastExitCode = record.LastExitCode,
+            LastProgressMessage = record.LastProgressMessage,
+            CommandCount = record.CommandCount,
+            ApprovalCount = record.ApprovalCount
+        };
+
+        foreach (var transcriptId in record.TranscriptIds)
+        {
+            entry.TranscriptIds.Add(transcriptId);
+        }
+
+        foreach (var artifactPath in record.ArtifactPaths)
+        {
+            entry.ArtifactPaths.Add(artifactPath);
+        }
+
+        return entry;
+    }
+
+    public MspSessionRecord ToRecord()
+    {
+        return new MspSessionRecord
+        {
+            Id = Id,
+            Title = Title,
+            Actor = Actor,
+            StartedAt = StartedAt,
+            UpdatedAt = UpdatedAt,
+            LastCommandText = LastCommandText,
+            LastDecision = LastDecision,
+            LastExitCode = LastExitCode,
+            LastProgressMessage = LastProgressMessage,
+            CommandCount = CommandCount,
+            ApprovalCount = ApprovalCount,
+            TranscriptIds = TranscriptIds.ToArray(),
+            ArtifactPaths = ArtifactPaths.ToArray()
+        };
+    }
+
+    [JsonIgnore]
+    public string Summary => $"{CommandCount} commands · {ArtifactPaths.Count} artifacts";
 }
 
 public sealed partial class PageImageItem : ObservableObject

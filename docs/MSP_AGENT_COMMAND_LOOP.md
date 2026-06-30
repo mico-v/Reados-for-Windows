@@ -51,6 +51,7 @@ MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries
 
 - `workspace`, `library`, and `pdf` commands translate to workspace/PDF services.
 - `artifact list/show` read durable `/artifacts/...` workspace files and their `.manifest.json` provenance sidecars; `artifact write` creates them behind policy approval.
+- `/sessions/{id}.json` exposes durable MSP session summaries that group transcripts, artifacts, approvals, and last command state.
 - `/transcripts/{id}.json` exposes prior MSP command records for later inspection.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `attach page/range` queues page evidence into the current chat after operator approval.

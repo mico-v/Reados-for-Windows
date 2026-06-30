@@ -61,6 +61,7 @@ Implemented:
 - `MspArtifact`
 - `MspAuditRecord`
 - `MspCommandTranscriptRecord`
+- `MspSessionRecord`
 - `MspCommandPreview`
 - `MspCommandRegistry`
 - `MspRuntime`
@@ -84,6 +85,7 @@ Implemented:
 - ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`, `attach`, `chat`
 - WinUI transcript approval actions using one-shot app-host approval tokens
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
+- durable session state and `/sessions/{id}.json` workspace projection
 - policy/audit/transcript preview diagnostics for approval-gated commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
 - streaming execution events for command start, policy decision, progress, completion, and cancellation
@@ -92,7 +94,6 @@ Implemented:
 Next:
 
 - richer command result diagnostics;
-- durable MSP session records above individual transcript entries;
 - automatic source document/page provenance for generated workflow artifacts;
 - more ReadOS virtual workspace tests.
 
@@ -109,7 +110,7 @@ Responsibilities:
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
 
-Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, live transcript progress/cancel UI, and durable workspace-backed transcript records. It still needs durable session records before it should become a separate `ReadOS.Msp.Hosting` project.
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, live transcript progress/cancel UI, durable workspace-backed transcript records, and durable session records. It still needs richer diagnostics and workflow grouping before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 
@@ -184,6 +185,7 @@ Every command added to MSP must have:
 - audit coverage;
 - policy behavior if it can mutate user state;
 - artifact coverage if it creates durable output;
+- session coverage if it affects transcript grouping, artifacts, approvals, or persisted host state;
 - at least one ReadOS host integration check if it touches workspace, PDF, chat, or artifacts.
 
 ## Verification

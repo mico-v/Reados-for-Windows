@@ -11,7 +11,8 @@ namespace ReadOS.App.Services.Msp;
 public sealed class ReadOsMspHost
 {
     private const string ApprovalTokenKey = "reados.msp.approvalToken";
-    private const string DefaultSessionId = "reados-workbench";
+
+    public const string DefaultSessionId = "reados-workbench";
 
     private readonly MspRuntime runtime;
     private readonly OperatorApprovalMspPolicy policy;

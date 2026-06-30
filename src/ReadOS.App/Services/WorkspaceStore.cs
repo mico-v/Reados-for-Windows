@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ReadOS.App.Models;
 
 namespace ReadOS.App.Services;
@@ -9,6 +10,7 @@ public sealed class WorkspaceStore : IWorkspaceStore
     private const string StateFileName = "workspace.json";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
+        PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate,
         WriteIndented = true
     };
 

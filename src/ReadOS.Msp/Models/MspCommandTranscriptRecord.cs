@@ -6,6 +6,8 @@ public sealed record MspCommandTranscriptRecord
 
     public string Actor { get; init; } = "agent";
 
+    public string SessionId { get; init; } = "default";
+
     public required string CommandText { get; init; }
 
     public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.UtcNow;

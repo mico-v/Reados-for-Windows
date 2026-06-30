@@ -26,10 +26,11 @@ Implemented:
 - Artifact provenance fields, result metadata, and `.manifest.json` sidecar projections under `/artifacts`.
 - Streaming MSP command events for started, policy decision, progress, completed, and canceled states.
 - Workbench transcript progress display and operator cancellation for running MSP commands.
+- Durable MSP session records that group transcript entries, artifacts, approvals, and last command state.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
-The main gap is not another reader feature. The remaining service-layer gaps are durable sessions, richer diagnostics, and workflow orchestration that can safely drive vertical document work.
+The main gap is not another reader feature. The remaining service-layer gaps are richer diagnostics, automatic evidence provenance, and workflow orchestration that can safely drive vertical document work.
 
 ## Target Solution Shape
 
@@ -101,7 +102,7 @@ Status: started.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
 
-Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, and replayable through one-shot approval tokens for approved mutating commands. Runtime requests now carry a session ID into policy, audit, and command execution context. `MspRuntime.ExecuteStreamingAsync` and `ReadOsMspHost.ExecuteStreamingAsync` publish command lifecycle/progress events, and `pdf text`, `pdf search`, and `chat ask` report progress during long-running work. The workbench consumes those events to update transcript progress and cancel the active MSP command.
+Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, grouped into durable session records under `/sessions`, and replayable through one-shot approval tokens for approved mutating commands. Runtime requests now carry a session ID into policy, audit, command execution context, transcripts, artifacts, and sessions. `MspRuntime.ExecuteStreamingAsync` and `ReadOsMspHost.ExecuteStreamingAsync` publish command lifecycle/progress events, and `pdf text`, `pdf search`, and `chat ask` report progress during long-running work. The workbench consumes those events to update transcript progress and cancel the active MSP command.
 
 ### Milestone 3: Artifact System
 
@@ -160,7 +161,7 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 
 - Add richer previews and recovery guidance for approval-gated commands.
 - Populate source document/page provenance automatically from future document workflow commands.
-- Add durable MSP session records that group transcript entries, progress, artifacts, and approvals.
+- Add richer session diagnostics such as failure summaries, retry hints, and workflow grouping.
 
 ## Verification
 
