@@ -16,6 +16,6 @@ They currently cover MSP parser/runtime behavior, audit records, structured diag
 - workspace tests for virtual path normalization, listing, file reads, and ReadOS projections such as `/sessions` and `/transcripts`;
 - session/transcript tests for grouping, diagnostics, recovery hints, progress/cancel state, and stale record cleanup surfaced in the workbench;
 - policy tests for mutating command allow/confirm/deny behavior and approval previews;
-- artifact tests when commands create durable outputs, including returned artifact metadata, automatic source provenance, and `/artifacts/*.manifest.json` projections.
+- artifact tests when commands create durable outputs, including returned artifact metadata, automatic source provenance from PDF/chat evidence, and `/artifacts/*.manifest.json` projections.
 
 Future app-level tests should expand into workflow state transitions, richer service-host diagnostics, command transcript persistence, and approval flows before UI automation is added.

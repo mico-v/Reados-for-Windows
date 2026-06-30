@@ -2462,6 +2462,7 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("attach page current 12");
         builder.AppendLine("attach range current 12 18");
         builder.AppendLine("chat ask current \"解释已附加页面\"");
+        builder.AppendLine("chat ask current \"解释已附加页面\" --artifact /artifacts/chat/answer.md");
         builder.AppendLine("windows info");
         builder.AppendLine("windows path current");
         builder.AppendLine("```");

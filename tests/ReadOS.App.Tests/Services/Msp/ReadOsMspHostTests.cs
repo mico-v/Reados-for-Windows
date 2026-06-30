@@ -113,6 +113,95 @@ public sealed class ReadOsMspHostTests
     }
 
     [Fact]
+    public async Task Chat_ask_artifact_requires_approval_and_persists_attachment_provenance()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var pendingAttachments = new List<ChatAttachment>
+        {
+            new()
+            {
+                Kind = AttachmentKind.PageRange,
+                DocumentId = document.Id,
+                Title = "guide.pdf · pages 2-4",
+                StartPage = 2,
+                EndPage = 4
+            }
+        };
+        var chatUpdates = new List<ChatConversation>();
+        var chatService = new TestAiChatService("artifact answer");
+        var host = CreateHost(
+            workspace,
+            document,
+            chatService,
+            pendingAttachmentsProvider: () => pendingAttachments.ToArray(),
+            clearAttachments: pendingAttachments.Clear,
+            chatResultSink: (_, conversation) => chatUpdates.Add(conversation));
+        const string commandText = "chat ask current \"write notes\" --artifact /artifacts/chat/notes.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact |
+            MspCommandEffects.ExternalModel,
+            pendingAudit.Effects);
+        Assert.Contains("/artifacts/chat/notes.md", pendingAudit.Preview.Targets);
+        Assert.Contains("queuedAttachments: 1", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("artifact\t/artifacts/chat/notes.md", approved.Stdout);
+        Assert.Empty(pendingAttachments);
+        Assert.Single(chatUpdates);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/chat/notes.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:2-4", Assert.Single(resultArtifact.SourcePages));
+        Assert.Equal(new[]
+        {
+            $"/documents/{document.Id}/pages/2.txt",
+            $"/documents/{document.Id}/pages/3.txt",
+            $"/documents/{document.Id}/pages/4.txt"
+        }, resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/chat/notes.md", persisted.Path);
+        Assert.Contains("# MSP Chat Answer", persisted.Content);
+        Assert.Contains("Question: write notes", persisted.Content);
+        Assert.Contains("artifact answer", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal("reados-workbench", persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:2-4", Assert.Single(persisted.SourcePages));
+        Assert.Contains("attachments: 1", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Chat_ask_artifact_validates_artifact_path_before_model_call()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var chatService = new TestAiChatService("unused answer");
+        var host = CreateHost(workspace, document, chatService);
+
+        var result = await host.ExecuteApprovedAsync("chat ask current \"write notes\" --artifact /artifacts", "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("under /artifacts", result.Stderr);
+        Assert.Null(chatService.LastPrompt);
+        Assert.Empty(document.Conversations);
+        Assert.Empty(workspace.Artifacts);
+    }
+
+    [Fact]
     public async Task Chat_ask_streams_progress_events_after_approval()
     {
         var workspace = CreateWorkspace(out var document);

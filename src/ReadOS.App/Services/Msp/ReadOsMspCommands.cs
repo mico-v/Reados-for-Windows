@@ -1193,6 +1193,26 @@ internal sealed class ReadOsChatCommand : IMspCommand
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.ExternalModel,
         new[] { "reados.chat.ask" });
 
+    public MspCommandMetadata GetMetadata(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count > 0 &&
+            string.Equals(arguments[0], "ask", StringComparison.OrdinalIgnoreCase) &&
+            HasArtifactOutput(arguments.Skip(1)))
+        {
+            return MspCommandMetadata.Create(
+                Name,
+                "Ask the ReadOS chat model and write the answer into a durable artifact.",
+                "chat ask [current|documentId] <prompt...> --artifact <path>",
+                MspCommandEffects.ReadWorkspace |
+                MspCommandEffects.WriteWorkspace |
+                MspCommandEffects.CreateArtifact |
+                MspCommandEffects.ExternalModel,
+                new[] { "reados.chat.ask", "msp.artifact.write" });
+        }
+
+        return Metadata;
+    }
+
     public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
     {
         if (arguments.Count < 3 || !string.Equals(arguments[0], "ask", StringComparison.OrdinalIgnoreCase))
@@ -1200,13 +1220,29 @@ internal sealed class ReadOsChatCommand : IMspCommand
             return MspCommandPreview.Create("Ask the configured chat model.");
         }
 
+        if (!TryParseChatAskArguments(arguments.Skip(1).ToArray(), out var parsed, out _))
+        {
+            return MspCommandPreview.Create("Ask the configured chat model.");
+        }
+
         var attachments = pendingAttachmentsProvider();
+        var targets = new List<string>
+        {
+            ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), parsed.DocumentSelector, selectedDocumentProvider)
+        };
+        if (!string.IsNullOrWhiteSpace(parsed.ArtifactPath))
+        {
+            targets.Add(NormalizeArtifactPath(parsed.ArtifactPath));
+        }
+
         return MspCommandPreview.Create(
-            "Ask the configured chat model and write the exchange to the document conversation.",
-            new[] { ReadOsMspCommandHelpers.DescribePdfTarget(workspaceProvider(), arguments[1], selectedDocumentProvider) },
+            string.IsNullOrWhiteSpace(parsed.ArtifactPath)
+                ? "Ask the configured chat model and write the exchange to the document conversation."
+                : "Ask the configured chat model, write the exchange, and save the answer as an artifact.",
+            targets,
             new[]
             {
-                $"prompt: {string.Join(' ', arguments.Skip(2)).Trim()}",
+                $"prompt: {parsed.Prompt}",
                 $"queuedAttachments: {attachments.Count}",
                 $"provider: {settingsProvider().ProviderName}",
                 $"model: {settingsProvider().ModelName}"
@@ -1220,7 +1256,7 @@ internal sealed class ReadOsChatCommand : IMspCommand
     {
         if (arguments.Count < 3 || !string.Equals(arguments[0], "ask", StringComparison.OrdinalIgnoreCase))
         {
-            return MspCommandResult.Failure("Usage: chat ask [current|documentId] <prompt...>", exitCode: 2);
+            return MspCommandResult.Failure("Usage: chat ask [current|documentId] <prompt...> [--artifact <path>]", exitCode: 2);
         }
 
         var workspace = workspaceProvider();
@@ -1229,16 +1265,25 @@ internal sealed class ReadOsChatCommand : IMspCommand
             return MspCommandResult.Failure("ReadOS workspace is not loaded.");
         }
 
-        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, arguments[1], selectedDocumentProvider);
+        if (!TryParseChatAskArguments(arguments.Skip(1).ToArray(), out var parsed, out var parseError))
+        {
+            return MspCommandResult.Failure(parseError, exitCode: 2);
+        }
+
+        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, parsed.DocumentSelector, selectedDocumentProvider);
         if (document is null)
         {
             return MspCommandResult.Failure("PDF document not found.");
         }
 
-        var prompt = string.Join(' ', arguments.Skip(2)).Trim();
-        if (string.IsNullOrWhiteSpace(prompt))
+        string? artifactPath = null;
+        if (!string.IsNullOrWhiteSpace(parsed.ArtifactPath))
         {
-            return MspCommandResult.Failure("prompt must not be empty.", exitCode: 2);
+            artifactPath = NormalizeArtifactPath(parsed.ArtifactPath);
+            if (!IsArtifactFilePath(artifactPath))
+            {
+                return MspCommandResult.Failure("chat ask --artifact must target a file under /artifacts.", exitCode: 2);
+            }
         }
 
         var existingConversation = FindConversation(document);
@@ -1258,7 +1303,7 @@ internal sealed class ReadOsChatCommand : IMspCommand
             settingsProvider(),
             document,
             history,
-            prompt,
+            parsed.Prompt,
             attachments,
             attachmentTextProvider,
             allowMspCommandRequests: false,
@@ -1273,7 +1318,7 @@ internal sealed class ReadOsChatCommand : IMspCommand
         {
             Role = ChatRole.User,
             Author = "MSP",
-            Content = prompt,
+            Content = parsed.Prompt,
             CreatedAt = DateTimeOffset.Now
         };
         foreach (var attachment in attachments)
@@ -1301,6 +1346,31 @@ internal sealed class ReadOsChatCommand : IMspCommand
             95,
             cancellationToken);
 
+        MspArtifact[] artifacts = Array.Empty<MspArtifact>();
+        if (!string.IsNullOrWhiteSpace(artifactPath))
+        {
+            var artifactContent = BuildChatArtifactContent(document, conversation, userMessage, assistantMessage, attachments);
+            var sourceDocuments = GetAttachmentSourceDocuments(attachments, document.Id).ToArray();
+            var sourcePages = GetAttachmentSourcePages(attachments).ToArray();
+            var sourcePaths = GetAttachmentSourcePaths(attachments).ToArray();
+            var artifact = new MspArtifact
+            {
+                Path = artifactPath,
+                MediaType = "text/markdown",
+                SizeBytes = artifactContent.Length,
+                Description = $"Chat answer generated for {document.Name}.",
+                SourceCommand = context.Invocation.CommandText,
+                Actor = context.Invocation.Actor,
+                SessionId = context.Invocation.SessionId,
+                SourceDocuments = sourceDocuments,
+                SourcePages = sourcePages,
+                SourcePaths = sourcePaths,
+                Preview = $"document: {document.Name}; conversation: {conversation.Id}; attachments: {attachments.Length}; contentLength: {artifactContent.Length}"
+            };
+            await context.Workspace.WriteTextAsync(artifactPath, artifactContent, artifact, cancellationToken);
+            artifacts = new[] { artifact };
+        }
+
         var builder = new StringBuilder();
         builder.Append("chat-answer\t");
         builder.Append(document.Id);
@@ -1309,7 +1379,165 @@ internal sealed class ReadOsChatCommand : IMspCommand
         builder.Append('\t');
         builder.AppendLine(assistantMessage.Id);
         builder.AppendLine(answer);
-        return MspCommandResult.Success(builder.ToString());
+        if (artifacts.Length > 0)
+        {
+            builder.Append("artifact\t");
+            builder.AppendLine(artifacts[0].Path);
+        }
+
+        return MspCommandResult.Success(builder.ToString(), artifacts);
+    }
+
+    private static bool HasArtifactOutput(IEnumerable<string> arguments)
+    {
+        return arguments.Any(argument =>
+            string.Equals(argument, "--artifact", StringComparison.OrdinalIgnoreCase) ||
+            argument.StartsWith("--artifact=", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryParseChatAskArguments(
+        IReadOnlyList<string> arguments,
+        out ChatAskArguments parsed,
+        out string error)
+    {
+        parsed = new ChatAskArguments(string.Empty, string.Empty, null);
+        error = string.Empty;
+        if (arguments.Count < 2)
+        {
+            error = "Usage: chat ask [current|documentId] <prompt...> [--artifact <path>]";
+            return false;
+        }
+
+        var promptParts = new List<string>();
+        string? artifactPath = null;
+        var index = 1;
+        while (index < arguments.Count)
+        {
+            var argument = arguments[index];
+            if (string.Equals(argument, "--artifact", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index + 1]))
+                {
+                    error = "--artifact requires a path.";
+                    return false;
+                }
+
+                artifactPath = arguments[index + 1];
+                index += 2;
+                continue;
+            }
+
+            if (argument.StartsWith("--artifact=", StringComparison.OrdinalIgnoreCase))
+            {
+                artifactPath = argument["--artifact=".Length..];
+                if (string.IsNullOrWhiteSpace(artifactPath))
+                {
+                    error = "--artifact requires a path.";
+                    return false;
+                }
+
+                index++;
+                continue;
+            }
+
+            promptParts.Add(argument);
+            index++;
+        }
+
+        var prompt = string.Join(' ', promptParts).Trim();
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            error = "prompt must not be empty.";
+            return false;
+        }
+
+        parsed = new ChatAskArguments(arguments[0], prompt, artifactPath);
+        return true;
+    }
+
+    private static string NormalizeArtifactPath(string path)
+    {
+        if (path.StartsWith("/artifacts", StringComparison.Ordinal))
+        {
+            return path;
+        }
+
+        return "/artifacts/" + path.TrimStart('/');
+    }
+
+    private static bool IsArtifactFilePath(string path)
+    {
+        return path.StartsWith("/artifacts/", StringComparison.Ordinal);
+    }
+
+    private static string BuildChatArtifactContent(
+        LibraryItem document,
+        ChatConversation conversation,
+        ChatMessage userMessage,
+        ChatMessage assistantMessage,
+        IReadOnlyList<ChatAttachment> attachments)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("# MSP Chat Answer");
+        builder.AppendLine();
+        builder.AppendLine($"Document: {document.Name} ({document.Id})");
+        builder.AppendLine($"Conversation: {conversation.Id}");
+        builder.AppendLine($"Question: {userMessage.Content}");
+        if (attachments.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Evidence:");
+            foreach (var attachment in attachments)
+            {
+                builder.Append("- ");
+                builder.AppendLine(attachment.Detail);
+            }
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("Answer:");
+        builder.AppendLine(assistantMessage.Content);
+        return builder.ToString();
+    }
+
+    private static IEnumerable<string> GetAttachmentSourceDocuments(
+        IEnumerable<ChatAttachment> attachments,
+        string fallbackDocumentId)
+    {
+        var documentIds = attachments
+            .Select(attachment => attachment.DocumentId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return documentIds.Length == 0 ? new[] { fallbackDocumentId } : documentIds;
+    }
+
+    private static IEnumerable<string> GetAttachmentSourcePages(IEnumerable<ChatAttachment> attachments)
+    {
+        return attachments
+            .Where(attachment => !string.IsNullOrWhiteSpace(attachment.DocumentId) && attachment.StartPage > 0)
+            .Select(attachment =>
+            {
+                var endPage = attachment.EndPage <= 0 ? attachment.StartPage : attachment.EndPage;
+                return attachment.StartPage == endPage
+                    ? $"{attachment.DocumentId}:{attachment.StartPage}"
+                    : $"{attachment.DocumentId}:{Math.Min(attachment.StartPage, endPage)}-{Math.Max(attachment.StartPage, endPage)}";
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> GetAttachmentSourcePaths(IEnumerable<ChatAttachment> attachments)
+    {
+        foreach (var attachment in attachments.Where(attachment => !string.IsNullOrWhiteSpace(attachment.DocumentId) && attachment.StartPage > 0))
+        {
+            var endPage = attachment.EndPage <= 0 ? attachment.StartPage : attachment.EndPage;
+            var start = Math.Min(attachment.StartPage, endPage);
+            var end = Math.Max(attachment.StartPage, endPage);
+            for (var page = start; page <= end; page++)
+            {
+                yield return $"/documents/{attachment.DocumentId}/pages/{page}.txt";
+            }
+        }
     }
 
     private static ChatAttachment CloneAttachment(ChatAttachment source)
@@ -1345,6 +1573,11 @@ internal sealed class ReadOsChatCommand : IMspCommand
         document.Conversations.Insert(0, conversation);
         return conversation;
     }
+
+    private sealed record ChatAskArguments(
+        string DocumentSelector,
+        string Prompt,
+        string? ArtifactPath);
 }
 
 internal static class ReadOsMspCommandHelpers

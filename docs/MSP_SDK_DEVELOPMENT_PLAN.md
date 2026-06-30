@@ -92,12 +92,13 @@ Implemented:
 - transcript/session diagnostic summaries and recovery hints for failed commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
 - PDF text extraction and search results to durable artifacts with automatic source document/page provenance
+- chat answers to durable Markdown artifacts with queued attachment provenance
 - streaming execution events for command start, policy decision, progress, completion, and cancellation
 - workbench transcript consumption of streaming progress plus operator command cancellation
 
 Next:
 
-- expand automatic source document/page provenance to chat and named workflow artifacts;
+- expand automatic source document/page provenance to named workflow artifacts;
 - richer command-specific recovery diagnostics for document/provider failures;
 - more ReadOS virtual workspace tests.
 
@@ -163,7 +164,7 @@ Required behavior:
 - commands can return artifact references;
 - artifacts can be listed, shown, exported, and reused by later commands.
 
-Current status: `artifact write` creates durable text artifacts and returns provenance-rich `MspArtifact` records. `pdf text ... --artifact <path>` creates durable extraction artifacts with source document IDs, virtual page paths, and page range provenance populated automatically. `pdf search ... --artifact <path>` writes tab-separated search hit artifacts and records the matched source pages. The ReadOS workspace persists source command, actor, session, timestamps, preview, and source reference fields, and exposes manifest JSON sidecars beside artifact content.
+Current status: `artifact write` creates durable text artifacts and returns provenance-rich `MspArtifact` records. `pdf text ... --artifact <path>` creates durable extraction artifacts with source document IDs, virtual page paths, and page range provenance populated automatically. `pdf search ... --artifact <path>` writes tab-separated search hit artifacts and records the matched source pages. `chat ask ... --artifact <path>` writes model answers to Markdown artifacts and records queued attachment evidence as source document/page provenance. The ReadOS workspace persists source command, actor, session, timestamps, preview, and source reference fields, and exposes manifest JSON sidecars beside artifact content.
 
 ## Phase 5: Native Core Extraction
 
