@@ -62,6 +62,8 @@ The bridge translates model requests into service-host calls. It should support:
 - optional streaming events;
 - structured result return.
 
+Current status: the .NET runtime and ReadOS host expose `ExecuteStreamingAsync`, which emits started, policy decision, progress, completed, and canceled events for agent bridge consumers.
+
 ### MSP Service Host
 
 The host is the orchestration layer above the raw runtime. It owns:
@@ -72,7 +74,8 @@ The host is the orchestration layer above the raw runtime. It owns:
 - policy authorization;
 - audit sink;
 - artifact store;
-- approval requests for mutating commands.
+- approval requests for mutating commands;
+- command lifecycle and progress event publication.
 
 ### Command Runtime
 
@@ -85,6 +88,7 @@ The runtime owns:
 - stdout/stderr conventions;
 - exit codes;
 - exception-to-result conversion;
+- command progress reports through the execution context;
 - future composition features such as pipes and redirection.
 
 ### Command Packs
@@ -168,6 +172,18 @@ Minimum fields:
 - `artifacts`
 - `auditRecords`
 - `diagnostics`
+
+### Command Events
+
+Streaming execution emits lifecycle events:
+
+- `Started`
+- `PolicyDecision`
+- `Progress`
+- `Completed`
+- `Canceled`
+
+Events carry actor, session ID, command text/name, message, optional percent, exit code, policy decision, effects, and preview. Commands report progress through `MspCommandContext.ReportProgressAsync`.
 
 ### Command Metadata
 
@@ -270,9 +286,9 @@ Possible internal steps:
 1. Harden .NET contracts in `src/ReadOS.Msp`.
 2. Add service-host concepts around `ReadOsMspHost`.
 3. Persist transcripts and artifacts.
-4. Add policy metadata and approval UI.
+4. Add policy metadata, approval UI, and streaming command events.
 5. Expand document command packs.
-6. Add conformance fixtures for request/result behavior.
+6. Add conformance fixtures for request/result/event behavior.
 7. Extract runtime-neutral pieces into `native/msp-core`.
 
 ## Design Rule

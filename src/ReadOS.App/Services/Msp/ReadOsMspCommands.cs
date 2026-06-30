@@ -164,8 +164,8 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         return arguments[0].ToLowerInvariant() switch
         {
             "inspect" => Inspect(arguments.Skip(1).ToArray()),
-            "text" => await TextAsync(arguments.Skip(1).ToArray(), cancellationToken),
-            "search" => await SearchAsync(arguments.Skip(1).ToArray(), cancellationToken),
+            "text" => await TextAsync(context, arguments.Skip(1).ToArray(), cancellationToken),
+            "search" => await SearchAsync(context, arguments.Skip(1).ToArray(), cancellationToken),
             _ => MspCommandResult.Failure("Usage: pdf inspect|text|search [current|documentId] ...", exitCode: 2)
         };
     }
@@ -192,7 +192,10 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         return MspCommandResult.Success(JsonSerializer.Serialize(payload, JsonOptions) + Environment.NewLine);
     }
 
-    private async ValueTask<MspCommandResult> TextAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async ValueTask<MspCommandResult> TextAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
     {
         if (arguments.Count < 2)
         {
@@ -216,15 +219,26 @@ internal sealed class ReadOsPdfCommand : IMspCommand
             return MspCommandResult.Failure("endPage must be a number.", exitCode: 2);
         }
 
+        await context.ReportProgressAsync(
+            $"Extracting PDF text from {document.Name}, pages {startPage}-{endPage}.",
+            20,
+            cancellationToken);
         var text = await pdfService.ExtractPageTextAsync(
             workspaceStore.GetAbsolutePath(document),
             startPage,
             endPage,
             cancellationToken);
+        await context.ReportProgressAsync(
+            $"Extracted {text.Length} characters from {document.Name}.",
+            90,
+            cancellationToken);
         return MspCommandResult.Success(text + Environment.NewLine);
     }
 
-    private async ValueTask<MspCommandResult> SearchAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async ValueTask<MspCommandResult> SearchAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
     {
         if (arguments.Count < 2)
         {
@@ -238,7 +252,15 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         }
 
         var query = string.Join(' ', arguments.Skip(1));
+        await context.ReportProgressAsync(
+            $"Searching {document.Name} for \"{query}\".",
+            20,
+            cancellationToken);
         var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(document), query, cancellationToken);
+        await context.ReportProgressAsync(
+            $"Found {hits.Count} matching PDF pages.",
+            90,
+            cancellationToken);
         var builder = new StringBuilder();
         foreach (var hit in hits)
         {
@@ -901,6 +923,14 @@ internal sealed class ReadOsChatCommand : IMspCommand
         var attachments = pendingAttachmentsProvider()
             .Select(CloneAttachment)
             .ToArray();
+        await context.ReportProgressAsync(
+            $"Preparing chat request with {attachments.Length} attachments.",
+            15,
+            cancellationToken);
+        await context.ReportProgressAsync(
+            $"Calling chat model {settingsProvider().ModelName}.",
+            45,
+            cancellationToken);
         var answer = await aiChatService.SendAsync(
             settingsProvider(),
             document,
@@ -911,6 +941,10 @@ internal sealed class ReadOsChatCommand : IMspCommand
             allowMspCommandRequests: false,
             cancellationToken: cancellationToken);
 
+        await context.ReportProgressAsync(
+            "Writing chat answer to the document conversation.",
+            80,
+            cancellationToken);
         var conversation = existingConversation ?? CreateConversation(document);
         var userMessage = new ChatMessage
         {
@@ -939,6 +973,10 @@ internal sealed class ReadOsChatCommand : IMspCommand
         clearAttachments();
         await workspaceStore.SaveAsync(workspace, cancellationToken);
         chatResultSink(document, conversation);
+        await context.ReportProgressAsync(
+            $"Chat answer saved to conversation {conversation.Id}.",
+            95,
+            cancellationToken);
 
         var builder = new StringBuilder();
         builder.Append("chat-answer\t");

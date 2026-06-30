@@ -1,4 +1,5 @@
 using ReadOS.Msp.Audit;
+using ReadOS.Msp.Models;
 using ReadOS.Msp.Policy;
 using ReadOS.Msp.Workspace;
 
@@ -13,7 +14,8 @@ public sealed class MspCommandContext
         IMspAuditSink audit,
         string workingDirectory = "/",
         IServiceProvider? services = null,
-        MspCommandInvocation? invocation = null)
+        MspCommandInvocation? invocation = null,
+        IMspCommandEventSink? events = null)
     {
         Workspace = workspace;
         Registry = registry;
@@ -22,6 +24,7 @@ public sealed class MspCommandContext
         WorkingDirectory = workspace.NormalizePath(workingDirectory);
         Services = services;
         Invocation = invocation ?? MspCommandInvocation.Empty;
+        Events = events;
     }
 
     public IMspWorkspace Workspace { get; }
@@ -38,13 +41,42 @@ public sealed class MspCommandContext
 
     public MspCommandInvocation Invocation { get; }
 
+    public IMspCommandEventSink? Events { get; }
+
     public MspCommandContext WithWorkingDirectory(string workingDirectory)
     {
-        return new MspCommandContext(Workspace, Registry, Policy, Audit, workingDirectory, Services, Invocation);
+        return new MspCommandContext(Workspace, Registry, Policy, Audit, workingDirectory, Services, Invocation, Events);
     }
 
     public MspCommandContext WithInvocation(MspCommandInvocation invocation)
     {
-        return new MspCommandContext(Workspace, Registry, Policy, Audit, WorkingDirectory, Services, invocation);
+        return new MspCommandContext(Workspace, Registry, Policy, Audit, WorkingDirectory, Services, invocation, Events);
+    }
+
+    public MspCommandContext WithEventSink(IMspCommandEventSink? events)
+    {
+        return new MspCommandContext(Workspace, Registry, Policy, Audit, WorkingDirectory, Services, Invocation, events);
+    }
+
+    public ValueTask ReportProgressAsync(
+        string message,
+        int? percent = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (Events is null)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return Events.PublishAsync(new MspCommandEvent
+        {
+            Kind = MspCommandEventKind.Progress,
+            Actor = Invocation.Actor,
+            SessionId = Invocation.SessionId,
+            CommandText = Invocation.CommandText,
+            CommandName = Invocation.CommandName,
+            Message = message,
+            Percent = percent
+        }, cancellationToken);
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Models;
 using ReadOS.Msp.Policy;
 
 namespace ReadOS.App.Tests.Services.Msp;
@@ -109,6 +110,40 @@ public sealed class ReadOsMspHostTests
         Assert.Equal("answer from model", conversation.Messages[1].Content);
         Assert.Equal("explain attached page", chatService.LastPrompt);
         Assert.Single(chatService.LastAttachments);
+    }
+
+    [Fact]
+    public async Task Chat_ask_streams_progress_events_after_approval()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var chatService = new TestAiChatService("streamed answer");
+        var host = CreateHost(workspace, document, chatService);
+        var events = new List<MspCommandEvent>();
+
+        await foreach (var commandEvent in host.ExecuteApprovedStreamingAsync(
+            "chat ask current \"summarize progress\"",
+            "test-agent"))
+        {
+            events.Add(commandEvent);
+        }
+
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.PolicyDecision &&
+            item.Decision == MspPolicyDecision.Allow);
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.Progress &&
+            item.Message.Contains("Preparing chat request", StringComparison.Ordinal));
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.Progress &&
+            item.Message.Contains("Calling chat model", StringComparison.Ordinal));
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.Progress &&
+            item.Message.Contains("Chat answer saved", StringComparison.Ordinal));
+        var completed = events[^1];
+        Assert.Equal(MspCommandEventKind.Completed, completed.Kind);
+        Assert.Equal(0, completed.ExitCode);
+        Assert.Equal("reados-workbench", completed.SessionId);
+        Assert.Single(document.Conversations);
     }
 
     [Fact]

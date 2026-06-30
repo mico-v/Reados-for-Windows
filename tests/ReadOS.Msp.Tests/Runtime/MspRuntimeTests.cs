@@ -231,6 +231,68 @@ public sealed class MspRuntimeTests
         Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, Assert.Single(write.AuditRecords).Effects);
     }
 
+    [Fact]
+    public async Task Runtime_streams_started_policy_progress_and_completed_events()
+    {
+        var registry = new MspCommandRegistry().Register(new ProgressTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new AllowAllMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+        var events = new List<MspCommandEvent>();
+
+        await foreach (var commandEvent in runtime.ExecuteStreamingAsync(new MspCommandRequest
+        {
+            Actor = "stream-agent",
+            SessionId = "stream-session",
+            CommandText = "progress"
+        }))
+        {
+            events.Add(commandEvent);
+        }
+
+        Assert.Equal(MspCommandEventKind.Started, events[0].Kind);
+        Assert.Equal("progress", events[0].CommandName);
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.PolicyDecision &&
+            item.Decision == MspPolicyDecision.Allow);
+        Assert.Contains(events, item =>
+            item.Kind == MspCommandEventKind.Progress &&
+            item.CommandName == "progress" &&
+            item.Percent == 40 &&
+            item.Message == "halfway");
+        var completed = events[^1];
+        Assert.Equal(MspCommandEventKind.Completed, completed.Kind);
+        Assert.Equal(0, completed.ExitCode);
+        Assert.All(events, item => Assert.Equal("stream-session", item.SessionId));
+    }
+
+    [Fact]
+    public async Task Runtime_streams_canceled_event_when_command_is_canceled()
+    {
+        var registry = new MspCommandRegistry().Register(new CancelingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new AllowAllMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+        var events = new List<MspCommandEvent>();
+
+        await foreach (var commandEvent in runtime.ExecuteStreamingAsync(new MspCommandRequest
+        {
+            CommandText = "cancel-me"
+        }))
+        {
+            events.Add(commandEvent);
+        }
+
+        Assert.Contains(events, item => item.Kind == MspCommandEventKind.Progress);
+        Assert.Equal(MspCommandEventKind.Canceled, events[^1].Kind);
+    }
+
     private sealed class CapturingPolicy : IMspPolicy
     {
         public MspPolicyRequest? LastRequest { get; private set; }
@@ -271,6 +333,38 @@ public sealed class MspRuntimeTests
             CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult(MspCommandResult.Success());
+        }
+    }
+
+    private sealed class ProgressTestCommand : IMspCommand
+    {
+        public string Name => "progress";
+
+        public string Summary => "Emit test progress.";
+
+        public async ValueTask<MspCommandResult> ExecuteAsync(
+            MspCommandContext context,
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken = default)
+        {
+            await context.ReportProgressAsync("halfway", 40, cancellationToken);
+            return MspCommandResult.Success("done");
+        }
+    }
+
+    private sealed class CancelingTestCommand : IMspCommand
+    {
+        public string Name => "cancel-me";
+
+        public string Summary => "Cancel test command.";
+
+        public async ValueTask<MspCommandResult> ExecuteAsync(
+            MspCommandContext context,
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken = default)
+        {
+            await context.ReportProgressAsync("before cancel", 10, cancellationToken);
+            throw new OperationCanceledException(cancellationToken);
         }
     }
 }

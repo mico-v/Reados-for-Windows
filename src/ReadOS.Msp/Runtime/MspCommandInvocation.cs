@@ -8,6 +8,8 @@ public sealed record MspCommandInvocation
 
     public string CommandText { get; init; } = string.Empty;
 
+    public string CommandName { get; init; } = string.Empty;
+
     public string SessionId { get; init; } = "default";
 
     public bool DryRun { get; init; }

@@ -43,6 +43,8 @@ Each non-empty line is parsed as one MSP command. Comment lines beginning with `
 8. The command report is sent back to the model with MSP command requests disabled.
 9. The final answer is saved into the conversation.
 
+The host also exposes streaming command events for future UI and bridge consumers. Long-running `pdf text`, `pdf search`, and approved `chat ask` operations report progress through the MSP event stream while preserving the same final stdout/stderr/audit result.
+
 ## Translation Boundary
 
 MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries. The current translation layer maps commands into controlled ReadOS services:

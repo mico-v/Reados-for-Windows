@@ -65,12 +65,14 @@ Implemented:
 - `MspCommandRegistry`
 - `MspRuntime`
 - `MspCommandInvocation`
+- `MspCommandEvent`
 - parser and workspace path utility
 - request environment passed into policy
 - request session ID passed into policy, audit, and command execution context
 - argument-specific command metadata through `IMspCommand.GetMetadata(arguments)`
 - command previews through `IMspCommand.GetPreview(arguments)`
 - read/write workspace abstraction
+- command event sink and `MspCommandContext.ReportProgressAsync`
 - in-memory workspace
 - policy interface and allow-all policy
 - effect-based policy for mutating/external command confirmation
@@ -84,10 +86,12 @@ Implemented:
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
 - policy/audit/transcript preview diagnostics for approval-gated commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
+- streaming execution events for command start, policy decision, progress, completion, and cancellation
 
 Next:
 
 - richer command result diagnostics;
+- workbench UI consumption of streaming progress/cancel events;
 - automatic source document/page provenance for generated workflow artifacts;
 - more ReadOS virtual workspace tests.
 
@@ -104,7 +108,7 @@ Responsibilities:
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
 
-Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, and durable workspace-backed transcript records. It still needs durable session records plus cancellation/progress events before it should become a separate `ReadOS.Msp.Hosting` project.
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, and durable workspace-backed transcript records. It still needs durable session records and UI persistence/display of progress events before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 
@@ -117,6 +121,8 @@ IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
     MspCommandRequest request,
     CancellationToken cancellationToken = default);
 ```
+
+ReadOS also exposes `ExecuteApprovedStreamingAsync(...)` to replay an operator-approved mutating command while retaining the same lifecycle/progress event stream.
 
 ## Phase 3: Policy And Mutating Commands
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ReadOS.App.Models;
 using ReadOS.Msp.Audit;
 using ReadOS.Msp.Commands;
@@ -71,6 +72,19 @@ public sealed class ReadOsMspHost
         }, cancellationToken);
     }
 
+    public IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
+        string commandText,
+        string actor = "reados-agent",
+        CancellationToken cancellationToken = default)
+    {
+        return runtime.ExecuteStreamingAsync(new MspCommandRequest
+        {
+            Actor = actor,
+            SessionId = DefaultSessionId,
+            CommandText = commandText
+        }, cancellationToken);
+    }
+
     public async ValueTask<MspCommandResult> ExecuteApprovedAsync(
         string commandText,
         string actor = "reados-agent",
@@ -89,6 +103,34 @@ public sealed class ReadOsMspHost
                     [ApprovalTokenKey] = approvalToken
                 }
             }, cancellationToken);
+        }
+        finally
+        {
+            policy.RevokeApprovalToken(approvalToken);
+        }
+    }
+
+    public async IAsyncEnumerable<MspCommandEvent> ExecuteApprovedStreamingAsync(
+        string commandText,
+        string actor = "reados-agent",
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var approvalToken = policy.ApproveNextCommand(commandText, actor);
+        try
+        {
+            await foreach (var commandEvent in runtime.ExecuteStreamingAsync(new MspCommandRequest
+            {
+                Actor = actor,
+                SessionId = DefaultSessionId,
+                CommandText = commandText,
+                Environment = new Dictionary<string, string>
+                {
+                    [ApprovalTokenKey] = approvalToken
+                }
+            }, cancellationToken))
+            {
+                yield return commandEvent;
+            }
         }
         finally
         {
