@@ -76,6 +76,8 @@ public sealed partial class ShellViewModel : ObservableObject
     private Window? hostWindow;
     private bool suppressNavigationSelection;
     private bool suppressThumbnailSelection;
+    private CancellationTokenSource? activeMspCommandCancellation;
+    private string? activeMspCommandEntryId;
 
     public ShellViewModel(
         IWorkspaceStore workspaceStore,
@@ -408,6 +410,22 @@ public sealed partial class ShellViewModel : ObservableObject
         return mspHost.ExecuteApprovedAsync(commandText, actor, cancellationToken);
     }
 
+    public IAsyncEnumerable<MspCommandEvent> ExecuteMspCommandStreamingAsync(
+        string commandText,
+        string actor = "reados-agent",
+        CancellationToken cancellationToken = default)
+    {
+        return mspHost.ExecuteStreamingAsync(commandText, actor, cancellationToken);
+    }
+
+    public IAsyncEnumerable<MspCommandEvent> ExecuteApprovedMspCommandStreamingAsync(
+        string commandText,
+        string actor = "reados-agent",
+        CancellationToken cancellationToken = default)
+    {
+        return mspHost.ExecuteApprovedStreamingAsync(commandText, actor, cancellationToken);
+    }
+
     [RelayCommand]
     private async Task RunMspCommandAsync()
     {
@@ -421,7 +439,9 @@ public sealed partial class ShellViewModel : ObservableObject
         try
         {
             var entry = await ExecuteAndRecordMspCommandAsync(MspCommandDraft.Trim(), "user");
-            StatusMessage = entry.Succeeded
+            StatusMessage = entry.WasCanceled
+                ? $"MSP 命令已取消：{entry.CommandText}"
+                : entry.Succeeded
                 ? $"MSP 命令完成：{entry.CommandText}"
                 : $"MSP 命令失败：{entry.CommandText}";
         }
@@ -445,7 +465,9 @@ public sealed partial class ShellViewModel : ObservableObject
             MspTranscript.Remove(entry);
             RemoveWorkspaceTranscriptEntry(entry);
             var approved = await ExecuteAndRecordMspCommandAsync(entry.CommandText, entry.Actor, approved: true);
-            StatusMessage = approved.Succeeded
+            StatusMessage = approved.WasCanceled
+                ? $"已取消：{approved.CommandText}"
+                : approved.Succeeded
                 ? $"已批准并执行：{approved.CommandText}"
                 : $"批准后执行失败：{approved.CommandText}";
         }
@@ -490,6 +512,23 @@ public sealed partial class ShellViewModel : ObservableObject
         await SaveWorkspaceAsync();
         StatusMessage = $"已拒绝 MSP 命令：{entry.CommandText}";
         OnPropertyChanged(nameof(MspTranscriptSummary));
+    }
+
+    [RelayCommand]
+    private void CancelMspCommand(MspTranscriptEntry? entry)
+    {
+        if (entry is null ||
+            !entry.IsRunning ||
+            activeMspCommandCancellation is null ||
+            activeMspCommandEntryId != entry.Id)
+        {
+            return;
+        }
+
+        entry.ProgressMessage = "正在取消 MSP 命令...";
+        entry.ProgressPercent = null;
+        StatusMessage = $"正在取消 MSP 命令：{entry.CommandText}";
+        activeMspCommandCancellation.Cancel();
     }
 
     public async Task InitializeAsync()
@@ -2001,39 +2040,127 @@ public sealed partial class ShellViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         var startedAt = DateTimeOffset.Now;
-        MspCommandResult result;
+        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var entry = new MspTranscriptEntry
+        {
+            Actor = actor,
+            CommandText = commandText,
+            StartedAt = startedAt,
+            CompletedAt = startedAt,
+            Decision = "Running",
+            IsRunning = true,
+            ProgressMessage = "MSP 命令已开始。",
+            ProgressPercent = 0
+        };
+
+        MspTranscript.Insert(0, entry);
+        OnPropertyChanged(nameof(MspTranscriptSummary));
+        SelectedInspectorTab = InspectorTab.Actions;
+        activeMspCommandCancellation = commandCancellation;
+        activeMspCommandEntryId = entry.Id;
+
+        MspCommandResult? result = null;
         try
         {
-            result = approved
-                ? await ExecuteApprovedMspCommandAsync(commandText, actor, cancellationToken)
-                : await ExecuteMspCommandAsync(commandText, actor, cancellationToken);
+            var stream = approved
+                ? ExecuteApprovedMspCommandStreamingAsync(commandText, actor, commandCancellation.Token)
+                : ExecuteMspCommandStreamingAsync(commandText, actor, commandCancellation.Token);
+            await foreach (var commandEvent in stream)
+            {
+                ApplyMspCommandEvent(entry, commandEvent);
+                result = commandEvent.Result ?? result;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result = MspCommandResult.Failure("Operator canceled MSP command.", exitCode: 130);
+            entry.WasCanceled = true;
+            entry.ProgressMessage = "MSP 命令已取消。";
         }
         catch (Exception ex)
         {
             result = MspCommandResult.Failure(ex.Message);
         }
-
-        var auditRecord = result.AuditRecords.LastOrDefault();
-        var transcriptRecord = new MspCommandTranscriptRecord
+        finally
         {
-            Actor = actor,
-            CommandText = commandText,
-            StartedAt = startedAt,
-            CompletedAt = DateTimeOffset.Now,
-            ExitCode = result.ExitCode,
-            Stdout = result.Stdout,
-            Stderr = result.Stderr,
-            Decision = auditRecord?.Decision.ToString() ?? "Allow",
-            Effects = auditRecord?.Effects.ToString() ?? "None",
-            ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path)),
-            PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? string.Empty
-        };
-        var entry = MspTranscriptEntry.FromRecord(transcriptRecord);
-        MspTranscript.Insert(0, entry);
+            if (activeMspCommandCancellation == commandCancellation)
+            {
+                activeMspCommandCancellation = null;
+                activeMspCommandEntryId = null;
+            }
+        }
+
+        result ??= MspCommandResult.Failure("MSP command did not return a result.");
+        CompleteMspTranscriptEntry(entry, result);
         PersistTranscriptEntry(entry, 0);
         await SaveWorkspaceAsync();
         OnPropertyChanged(nameof(MspTranscriptSummary));
         return entry;
+    }
+
+    private void ApplyMspCommandEvent(MspTranscriptEntry entry, MspCommandEvent commandEvent)
+    {
+        if (!string.IsNullOrWhiteSpace(commandEvent.Message))
+        {
+            entry.ProgressMessage = commandEvent.Message;
+            StatusMessage = commandEvent.Message;
+        }
+
+        if (commandEvent.Percent is not null)
+        {
+            entry.ProgressPercent = commandEvent.Percent;
+        }
+
+        switch (commandEvent.Kind)
+        {
+            case MspCommandEventKind.Started:
+                entry.IsRunning = true;
+                entry.ProgressPercent ??= 0;
+                break;
+            case MspCommandEventKind.PolicyDecision:
+                entry.Decision = commandEvent.Decision?.ToString() ?? entry.Decision;
+                entry.Effects = commandEvent.Effects.ToString();
+                entry.PolicyPreview = commandEvent.Preview.ToDisplayText();
+                entry.ProgressPercent ??= 10;
+                break;
+            case MspCommandEventKind.Progress:
+                break;
+            case MspCommandEventKind.Canceled:
+                entry.WasCanceled = true;
+                entry.IsRunning = false;
+                entry.ExitCode = commandEvent.ExitCode ?? 130;
+                break;
+            case MspCommandEventKind.Completed:
+                entry.IsRunning = false;
+                entry.ExitCode = commandEvent.ExitCode ?? entry.ExitCode;
+                if (commandEvent.ExitCode == 0)
+                {
+                    entry.ProgressPercent = 100;
+                }
+
+                break;
+        }
+    }
+
+    private static void CompleteMspTranscriptEntry(MspTranscriptEntry entry, MspCommandResult result)
+    {
+        var auditRecord = result.AuditRecords.LastOrDefault();
+        entry.IsRunning = false;
+        entry.CompletedAt = DateTimeOffset.Now;
+        entry.ExitCode = result.ExitCode;
+        entry.Stdout = result.Stdout;
+        entry.Stderr = result.Stderr;
+        entry.WasCanceled = entry.WasCanceled || result.ExitCode == 130;
+        entry.Decision = entry.WasCanceled
+            ? "Canceled"
+            : auditRecord?.Decision.ToString() ?? (entry.Decision == "Running" ? "Allow" : entry.Decision);
+        entry.Effects = auditRecord?.Effects.ToString() ?? entry.Effects;
+        entry.ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path));
+        entry.PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? entry.PolicyPreview;
+        if (entry.WasCanceled && string.IsNullOrWhiteSpace(entry.ProgressMessage))
+        {
+            entry.ProgressMessage = "MSP 命令已取消。";
+        }
     }
 
     private void RefreshMspTranscript()
@@ -2048,6 +2175,7 @@ public sealed partial class ShellViewModel : ObservableObject
             .OrderByDescending(entry => entry.CompletedAt)
             .Take(MaxMspTranscriptEntries))
         {
+            entry.IsRunning = false;
             MspTranscript.Add(entry);
         }
 

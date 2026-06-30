@@ -43,7 +43,7 @@ Each non-empty line is parsed as one MSP command. Comment lines beginning with `
 8. The command report is sent back to the model with MSP command requests disabled.
 9. The final answer is saved into the conversation.
 
-The host also exposes streaming command events for future UI and bridge consumers. Long-running `pdf text`, `pdf search`, and approved `chat ask` operations report progress through the MSP event stream while preserving the same final stdout/stderr/audit result.
+The host also exposes streaming command events for UI and bridge consumers. Long-running `pdf text`, `pdf search`, and approved `chat ask` operations report progress through the MSP event stream while preserving the same final stdout/stderr/audit result. The workbench transcript shows running progress and lets the operator cancel the active MSP command.
 
 ## Translation Boundary
 

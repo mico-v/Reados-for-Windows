@@ -62,7 +62,7 @@ The bridge translates model requests into service-host calls. It should support:
 - optional streaming events;
 - structured result return.
 
-Current status: the .NET runtime and ReadOS host expose `ExecuteStreamingAsync`, which emits started, policy decision, progress, completed, and canceled events for agent bridge consumers.
+Current status: the .NET runtime and ReadOS host expose `ExecuteStreamingAsync`, which emits started, policy decision, progress, completed, and canceled events for agent bridge consumers. The workbench consumes those events to update transcript progress, record the final result, and cancel the active MSP command.
 
 ### MSP Service Host
 
@@ -183,7 +183,7 @@ Streaming execution emits lifecycle events:
 - `Completed`
 - `Canceled`
 
-Events carry actor, session ID, command text/name, message, optional percent, exit code, policy decision, effects, and preview. Commands report progress through `MspCommandContext.ReportProgressAsync`.
+Events carry actor, session ID, command text/name, message, optional percent, exit code, final result, policy decision, effects, and preview. Commands report progress through `MspCommandContext.ReportProgressAsync`.
 
 ### Command Metadata
 

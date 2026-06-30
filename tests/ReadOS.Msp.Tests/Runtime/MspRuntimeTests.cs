@@ -266,6 +266,8 @@ public sealed class MspRuntimeTests
         var completed = events[^1];
         Assert.Equal(MspCommandEventKind.Completed, completed.Kind);
         Assert.Equal(0, completed.ExitCode);
+        Assert.NotNull(completed.Result);
+        Assert.Equal("done", completed.Result.Stdout);
         Assert.All(events, item => Assert.Equal("stream-session", item.SessionId));
     }
 
@@ -291,6 +293,7 @@ public sealed class MspRuntimeTests
 
         Assert.Contains(events, item => item.Kind == MspCommandEventKind.Progress);
         Assert.Equal(MspCommandEventKind.Canceled, events[^1].Kind);
+        Assert.Equal(130, events[^1].Result?.ExitCode);
     }
 
     private sealed class CapturingPolicy : IMspPolicy

@@ -424,6 +424,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             entry.Stdout.Length +
             entry.Stderr.Length +
             entry.ArtifactsSummary.Length +
+            entry.ProgressMessage.Length +
             256;
     }
 
@@ -603,7 +604,10 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.Decision,
             record.Effects,
             record.ArtifactsSummary,
-            record.PolicyPreview
+            record.PolicyPreview,
+            record.ProgressMessage,
+            record.ProgressPercent,
+            record.WasCanceled
         };
     }
 }

@@ -282,6 +282,19 @@
                                                                     <TextBlock Grid.Column="1" Text="{Binding StatusLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" />
                                                                 </Grid>
                                                                 <TextBlock Text="{Binding OutputPreview}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" MaxLines="8" />
+                                                                <Grid ColumnSpacing="8" Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <ProgressBar Height="4" Value="{Binding ProgressPercentValue}" IsIndeterminate="{Binding IsProgressIndeterminate}" VerticalAlignment="Center" />
+                                                                    <Button Grid.Column="1" Height="28" Padding="10,0" Background="Transparent" BorderBrush="{ThemeResource ReadOSBorderBrush}" Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}" CommandParameter="{Binding}" ToolTipService.ToolTip="取消 MSP 命令">
+                                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="11" />
+                                                                            <TextBlock Text="取消" />
+                                                                        </StackPanel>
+                                                                    </Button>
+                                                                </Grid>
                                                                 <TextBlock Text="{Binding ArtifactsSummary}" Foreground="{ThemeResource ReadOSAccentBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                                                 <TextBlock Text="{Binding Effects}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                                                 <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}">

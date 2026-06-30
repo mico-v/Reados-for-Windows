@@ -68,12 +68,15 @@ public sealed class MspRuntime
             }
             catch (OperationCanceledException)
             {
+                var canceled = MspCommandResult.Failure("Command execution was canceled.", exitCode: 130);
                 eventSink.TryPublish(new MspCommandEvent
                 {
                     Kind = MspCommandEventKind.Canceled,
                     Actor = request.Actor,
                     SessionId = request.SessionId,
                     CommandText = request.CommandText,
+                    ExitCode = canceled.ExitCode,
+                    Result = canceled,
                     Message = "Command execution was canceled."
                 });
             }
@@ -95,7 +98,7 @@ public sealed class MspRuntime
             }
         }, CancellationToken.None);
 
-        await foreach (var commandEvent in channel.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var commandEvent in channel.Reader.ReadAllAsync())
         {
             yield return commandEvent;
         }
@@ -248,6 +251,7 @@ public sealed class MspRuntime
             CommandText = request.CommandText,
             CommandName = commandName,
             ExitCode = result.ExitCode,
+            Result = result,
             Message = result.Succeeded ? "Command execution completed." : result.Stderr
         }, cancellationToken);
     }

@@ -349,31 +349,55 @@ public sealed partial class WorkspaceArtifact : ObservableObject
     public long SizeBytes => Content.Length;
 }
 
-public sealed class MspTranscriptEntry
+public sealed partial class MspTranscriptEntry : ObservableObject
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    public string Actor { get; init; } = "agent";
+    [ObservableProperty]
+    public partial string Actor { get; set; } = "agent";
 
-    public required string CommandText { get; init; }
+    [ObservableProperty]
+    public partial string CommandText { get; set; } = string.Empty;
 
-    public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.Now;
+    [ObservableProperty]
+    public partial DateTimeOffset StartedAt { get; set; } = DateTimeOffset.Now;
 
-    public DateTimeOffset CompletedAt { get; init; } = DateTimeOffset.Now;
+    [ObservableProperty]
+    public partial DateTimeOffset CompletedAt { get; set; } = DateTimeOffset.Now;
 
-    public int ExitCode { get; init; }
+    [ObservableProperty]
+    public partial int ExitCode { get; set; }
 
-    public string Stdout { get; init; } = string.Empty;
+    [ObservableProperty]
+    public partial string Stdout { get; set; } = string.Empty;
 
-    public string Stderr { get; init; } = string.Empty;
+    [ObservableProperty]
+    public partial string Stderr { get; set; } = string.Empty;
 
-    public string Decision { get; init; } = "Allow";
+    [ObservableProperty]
+    public partial string Decision { get; set; } = "Allow";
 
-    public string Effects { get; init; } = "None";
+    [ObservableProperty]
+    public partial string Effects { get; set; } = "None";
 
-    public string ArtifactsSummary { get; init; } = string.Empty;
+    [ObservableProperty]
+    public partial string ArtifactsSummary { get; set; } = string.Empty;
 
-    public string PolicyPreview { get; init; } = string.Empty;
+    [ObservableProperty]
+    public partial string PolicyPreview { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ProgressMessage { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int? ProgressPercent { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsRunning { get; set; }
+
+    [ObservableProperty]
+    public partial bool WasCanceled { get; set; }
 
     public static MspTranscriptEntry FromRecord(MspCommandTranscriptRecord record)
     {
@@ -390,7 +414,10 @@ public sealed class MspTranscriptEntry
             Decision = record.Decision,
             Effects = record.Effects,
             ArtifactsSummary = record.ArtifactsSummary,
-            PolicyPreview = record.PolicyPreview
+            PolicyPreview = record.PolicyPreview,
+            ProgressMessage = record.ProgressMessage,
+            ProgressPercent = record.ProgressPercent,
+            WasCanceled = record.WasCanceled
         };
     }
 
@@ -409,7 +436,10 @@ public sealed class MspTranscriptEntry
             Decision = Decision,
             Effects = Effects,
             ArtifactsSummary = ArtifactsSummary,
-            PolicyPreview = PolicyPreview
+            PolicyPreview = PolicyPreview,
+            ProgressMessage = ProgressMessage,
+            ProgressPercent = ProgressPercent,
+            WasCanceled = WasCanceled
         };
     }
 
@@ -420,9 +450,18 @@ public sealed class MspTranscriptEntry
     public bool IsApprovalRequired => Decision == "RequireConfirmation";
 
     [JsonIgnore]
-    public string StatusLabel => IsApprovalRequired
-        ? "待确认"
-        : Succeeded ? "完成" : $"失败 {ExitCode}";
+    public bool CanCancel => IsRunning;
+
+    [JsonIgnore]
+    public bool IsProgressIndeterminate => IsRunning && ProgressPercent is null;
+
+    [JsonIgnore]
+    public double ProgressPercentValue => Math.Clamp(ProgressPercent ?? 0, 0, 100);
+
+    [JsonIgnore]
+    public string StatusLabel => IsRunning
+        ? ProgressPercent is null ? "运行中" : $"运行 {ProgressPercent}%"
+        : IsApprovalRequired ? "待确认" : WasCanceled ? "已取消" : Succeeded ? "完成" : $"失败 {ExitCode}";
 
     [JsonIgnore]
     public string CompletedLabel => CompletedAt.ToLocalTime().ToString("HH:mm:ss");
@@ -432,8 +471,12 @@ public sealed class MspTranscriptEntry
     {
         get
         {
-            var output = IsApprovalRequired && !string.IsNullOrWhiteSpace(PolicyPreview)
+            var output = IsRunning && !string.IsNullOrWhiteSpace(ProgressMessage)
+                ? ProgressMessage
+                : IsApprovalRequired && !string.IsNullOrWhiteSpace(PolicyPreview)
                 ? PolicyPreview
+                : WasCanceled && !string.IsNullOrWhiteSpace(ProgressMessage)
+                    ? ProgressMessage
                 : string.IsNullOrWhiteSpace(Stdout) ? Stderr : Stdout;
             if (string.IsNullOrWhiteSpace(output))
             {
@@ -443,6 +486,69 @@ public sealed class MspTranscriptEntry
             output = output.Trim();
             return output.Length <= 900 ? output : output[..900] + "...";
         }
+    }
+
+    partial void OnCompletedAtChanged(DateTimeOffset value)
+    {
+        OnPropertyChanged(nameof(CompletedLabel));
+    }
+
+    partial void OnExitCodeChanged(int value)
+    {
+        NotifyStatusChanged();
+    }
+
+    partial void OnStdoutChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnStderrChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnDecisionChanged(string value)
+    {
+        NotifyStatusChanged();
+    }
+
+    partial void OnPolicyPreviewChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnProgressMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnProgressPercentChanged(int? value)
+    {
+        OnPropertyChanged(nameof(ProgressPercentValue));
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+        OnPropertyChanged(nameof(StatusLabel));
+    }
+
+    partial void OnIsRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanCancel));
+        NotifyStatusChanged();
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnWasCanceledChanged(bool value)
+    {
+        NotifyStatusChanged();
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    private void NotifyStatusChanged()
+    {
+        OnPropertyChanged(nameof(Succeeded));
+        OnPropertyChanged(nameof(IsApprovalRequired));
+        OnPropertyChanged(nameof(StatusLabel));
     }
 }
 

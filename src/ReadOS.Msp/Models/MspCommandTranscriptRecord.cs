@@ -25,4 +25,10 @@ public sealed record MspCommandTranscriptRecord
     public string ArtifactsSummary { get; init; } = string.Empty;
 
     public string PolicyPreview { get; init; } = string.Empty;
+
+    public string ProgressMessage { get; init; } = string.Empty;
+
+    public int? ProgressPercent { get; init; }
+
+    public bool WasCanceled { get; init; }
 }

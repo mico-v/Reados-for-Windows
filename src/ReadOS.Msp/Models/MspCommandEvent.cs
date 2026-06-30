@@ -31,6 +31,8 @@ public sealed record MspCommandEvent
 
     public int? ExitCode { get; init; }
 
+    public MspCommandResult? Result { get; init; }
+
     public MspPolicyDecision? Decision { get; init; }
 
     public MspCommandEffects Effects { get; init; } = MspCommandEffects.None;

@@ -19,7 +19,9 @@ public sealed class ReadOsVirtualWorkspaceTests
             ExitCode = 0,
             Stdout = "ok",
             Decision = "Allow",
-            Effects = "ReadWorkspace"
+            Effects = "ReadWorkspace",
+            ProgressMessage = "complete",
+            ProgressPercent = 100
         };
         workspace.MspTranscript.Add(transcript);
 
@@ -37,6 +39,34 @@ public sealed class ReadOsVirtualWorkspaceTests
         Assert.Contains("\"commandText\": \"workspace info\"", content);
         Assert.Contains("\"decision\": \"Allow\"", content);
         Assert.Contains("\"effects\": \"ReadWorkspace\"", content);
+        Assert.Contains("\"progressMessage\": \"complete\"", content);
+        Assert.Contains("\"progressPercent\": 100", content);
+    }
+
+    [Fact]
+    public void Transcript_entry_reports_running_and_canceled_progress()
+    {
+        var entry = new MspTranscriptEntry
+        {
+            CommandText = "pdf search current keyword",
+            IsRunning = true,
+            ProgressMessage = "Searching current document.",
+            ProgressPercent = 45
+        };
+
+        Assert.True(entry.CanCancel);
+        Assert.Equal("运行 45%", entry.StatusLabel);
+        Assert.Equal(45, entry.ProgressPercentValue);
+        Assert.Equal("Searching current document.", entry.OutputPreview);
+
+        entry.IsRunning = false;
+        entry.WasCanceled = true;
+        entry.ExitCode = 130;
+        entry.ProgressMessage = "MSP command was canceled.";
+
+        Assert.False(entry.CanCancel);
+        Assert.Equal("已取消", entry.StatusLabel);
+        Assert.Equal("MSP command was canceled.", entry.OutputPreview);
     }
 
     [Fact]

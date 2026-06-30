@@ -87,11 +87,12 @@ Implemented:
 - policy/audit/transcript preview diagnostics for approval-gated commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
 - streaming execution events for command start, policy decision, progress, completion, and cancellation
+- workbench transcript consumption of streaming progress plus operator command cancellation
 
 Next:
 
 - richer command result diagnostics;
-- workbench UI consumption of streaming progress/cancel events;
+- durable MSP session records above individual transcript entries;
 - automatic source document/page provenance for generated workflow artifacts;
 - more ReadOS virtual workspace tests.
 
@@ -108,7 +109,7 @@ Responsibilities:
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
 
-Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, and durable workspace-backed transcript records. It still needs durable session records and UI persistence/display of progress events before it should become a separate `ReadOS.Msp.Hosting` project.
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, live transcript progress/cancel UI, and durable workspace-backed transcript records. It still needs durable session records before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 
