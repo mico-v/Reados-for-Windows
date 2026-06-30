@@ -17,6 +17,26 @@ public sealed class ArtifactCommand : IMspCommand
         MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
         new[] { "msp.artifact.read", "msp.artifact.write" });
 
+    public MspCommandMetadata GetMetadata(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count > 0 && string.Equals(arguments[0], "write", StringComparison.OrdinalIgnoreCase))
+        {
+            return MspCommandMetadata.Create(
+                Name,
+                Summary,
+                "artifact write <path> <content...>",
+                MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
+                new[] { "msp.artifact.write" });
+        }
+
+        return MspCommandMetadata.Create(
+            Name,
+            Summary,
+            "artifact list [path] | artifact show <path>",
+            MspCommandEffects.ReadWorkspace,
+            new[] { "msp.artifact.read" });
+    }
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

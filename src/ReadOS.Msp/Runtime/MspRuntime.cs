@@ -61,7 +61,7 @@ public sealed class MspRuntime
             return MspCommandResult.Failure($"Command not found: {parsed.Name}", exitCode: 127);
         }
 
-        var commandMetadata = command.Metadata;
+        var commandMetadata = command.GetMetadata(parsed.Arguments);
         var decision = await requestContext.Policy.AuthorizeAsync(new MspPolicyRequest
         {
             CommandName = parsed.Name,
@@ -69,6 +69,7 @@ public sealed class MspRuntime
             Actor = request.Actor,
             WorkingDirectory = requestContext.WorkingDirectory,
             DryRun = request.DryRun,
+            Environment = request.Environment,
             Arguments = parsed.Arguments,
             CommandMetadata = commandMetadata
         }, cancellationToken);

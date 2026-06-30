@@ -1,5 +1,6 @@
 <UserControl
     x:Class="ReadOS.App.Views.ChatSurfaceView"
+    x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -283,6 +284,20 @@
                                                                 <TextBlock Text="{Binding OutputPreview}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" MaxLines="8" />
                                                                 <TextBlock Text="{Binding ArtifactsSummary}" Foreground="{ThemeResource ReadOSAccentBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                                                 <TextBlock Text="{Binding Effects}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                                <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <Button Height="28" Padding="10,0" Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE73E;" FontSize="11" />
+                                                                            <TextBlock Text="批准并重放" />
+                                                                        </StackPanel>
+                                                                    </Button>
+                                                                    <Button Height="28" Padding="10,0" Background="Transparent" BorderBrush="{ThemeResource ReadOSBorderBrush}" Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="11" />
+                                                                            <TextBlock Text="拒绝" />
+                                                                        </StackPanel>
+                                                                    </Button>
+                                                                </StackPanel>
                                                             </StackPanel>
                                                         </Border>
                                                     </DataTemplate>

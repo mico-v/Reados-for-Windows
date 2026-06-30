@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using ReadOS.Msp.Models;
 
 namespace ReadOS.Msp.Policy;
@@ -13,6 +14,9 @@ public sealed record MspPolicyRequest
     public string WorkingDirectory { get; init; } = "/";
 
     public bool DryRun { get; init; }
+
+    public IReadOnlyDictionary<string, string> Environment { get; init; } =
+        ReadOnlyDictionary<string, string>.Empty;
 
     public IReadOnlyList<string> Arguments { get; init; } = Array.Empty<string>();
 

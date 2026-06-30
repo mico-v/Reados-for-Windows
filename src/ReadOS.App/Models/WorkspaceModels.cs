@@ -356,7 +356,12 @@ public sealed class MspTranscriptEntry
     public bool Succeeded => ExitCode == 0;
 
     [JsonIgnore]
-    public string StatusLabel => Succeeded ? "完成" : $"失败 {ExitCode}";
+    public bool IsApprovalRequired => Decision == "RequireConfirmation";
+
+    [JsonIgnore]
+    public string StatusLabel => IsApprovalRequired
+        ? "待确认"
+        : Succeeded ? "完成" : $"失败 {ExitCode}";
 
     [JsonIgnore]
     public string CompletedLabel => CompletedAt.ToLocalTime().ToString("HH:mm:ss");

@@ -101,9 +101,35 @@ public sealed class MspRuntimeTests
         Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, policy.LastRequest!.Effects);
         Assert.True(policy.LastRequest.RequiresConfirmation);
         Assert.Equal("msp.test.write", Assert.Single(policy.LastRequest.Capabilities));
+        Assert.Empty(policy.LastRequest.Environment);
 
         var record = Assert.Single(result.AuditRecords);
         Assert.Equal(policy.LastRequest.Effects, record.Effects);
+    }
+
+    [Fact]
+    public async Task Runtime_passes_environment_to_policy()
+    {
+        var policy = new CapturingPolicy();
+        var registry = new MspCommandRegistry().Register(new MutatingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            policy,
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+
+        await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "mutate",
+            Environment = new Dictionary<string, string>
+            {
+                ["approval"] = "token"
+            }
+        });
+
+        Assert.NotNull(policy.LastRequest);
+        Assert.Equal("token", policy.LastRequest!.Environment["approval"]);
     }
 
     [Fact]
@@ -153,6 +179,35 @@ public sealed class MspRuntimeTests
         Assert.True(result.Succeeded, result.Stderr);
         Assert.Contains("dry-run: mutate", result.Stdout);
         Assert.Equal(MspPolicyDecision.Allow, Assert.Single(result.AuditRecords).Decision);
+    }
+
+    [Fact]
+    public async Task Effect_policy_uses_argument_specific_command_metadata()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        await workspace.WriteTextAsync("/artifacts/summary.md", "hello");
+        var registry = MspRuntime.CreateDefaultRegistry();
+        var context = new MspCommandContext(
+            workspace,
+            registry,
+            new EffectBasedMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+
+        var list = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "artifact list /artifacts"
+        });
+        var write = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "artifact write /artifacts/new.md \"new artifact\""
+        });
+
+        Assert.True(list.Succeeded, list.Stderr);
+        Assert.Equal(MspCommandEffects.ReadWorkspace, Assert.Single(list.AuditRecords).Effects);
+        Assert.False(write.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(write.AuditRecords).Decision);
+        Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, Assert.Single(write.AuditRecords).Effects);
     }
 
     private sealed class CapturingPolicy : IMspPolicy

@@ -33,16 +33,18 @@ Each non-empty line is parsed as one MSP command. Comment lines beginning with `
 2. `AiChatService` injects the MSP command instructions.
 3. If the model returns an `msp` block, `ShellViewModel` parses it.
 4. Each command is executed through `ReadOsMspHost`.
-5. Results are written to the MSP transcript panel.
-6. The command report is sent back to the model with MSP command requests disabled.
-7. The final answer is saved into the conversation.
+5. Read-only commands run immediately; mutating commands return `RequireConfirmation`.
+6. Results and approval requests are written to the MSP transcript panel.
+7. The operator can approve and replay the pending command or deny it.
+8. The command report is sent back to the model with MSP command requests disabled.
+9. The final answer is saved into the conversation.
 
 ## Translation Boundary
 
 MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries. The current translation layer maps commands into controlled ReadOS services:
 
 - `workspace`, `library`, and `pdf` commands translate to workspace/PDF services.
-- `artifact` commands create durable `/artifacts/...` workspace files.
+- `artifact list/show` read durable `/artifacts/...` workspace files; `artifact write` creates them behind policy approval.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `windows info` and `windows path ...` translate to safe .NET/Windows host metadata and local ReadOS paths.
 - raw host filesystem access remains hidden behind virtual workspace paths and app services.

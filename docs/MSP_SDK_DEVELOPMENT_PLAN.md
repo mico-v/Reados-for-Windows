@@ -63,6 +63,8 @@ Implemented:
 - `MspCommandRegistry`
 - `MspRuntime`
 - parser and workspace path utility
+- request environment passed into policy
+- argument-specific command metadata through `IMspCommand.GetMetadata(arguments)`
 - read/write workspace abstraction
 - in-memory workspace
 - policy interface and allow-all policy
@@ -73,6 +75,7 @@ Implemented:
 - ReadOS host adapter
 - ReadOS virtual workspace
 - ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`
+- WinUI transcript approval actions using one-shot app-host approval tokens
 
 Next:
 
@@ -93,6 +96,8 @@ Responsibilities:
 - request policy authorization;
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
+
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy and one-shot approval token path. It still needs durable session records, cancellation/progress events, and transcript persistence before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 
@@ -126,6 +131,8 @@ All mutating commands should support:
 - audit record;
 - rollback note or recovery guidance where practical.
 
+Current status: generic mutating-command confirmation is wired into the workbench transcript. Per-command preview text and recovery guidance are still pending.
+
 ## Phase 4: Artifact And Workspace Contracts
 
 Add `/artifacts` to the workspace and make artifacts first-class SDK objects.
@@ -156,6 +163,7 @@ Every command added to MSP must have:
 
 - parser coverage when it depends on quoting or argument shape;
 - runtime coverage for success and failure exit codes;
+- argument-specific metadata coverage when subcommands have different side effects;
 - audit coverage;
 - policy behavior if it can mutate user state;
 - artifact coverage if it creates durable output;

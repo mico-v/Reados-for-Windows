@@ -51,7 +51,8 @@ ReadOS currently uses a compact WinUI frame that should evolve from a reader lay
 
 - show mutating command previews
 - explain target paths and side effects
-- allow, deny, or require confirmation
+- allow, deny, or require confirmation from the transcript
+- replay approved commands through one-shot host approval tokens
 - keep a recoverable transcript of approved actions
 
 ### Settings Drawer

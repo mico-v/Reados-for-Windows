@@ -17,6 +17,7 @@ Implemented:
 - ReadOS MSP host adapter in `src/ReadOS.App/Services/Msp`.
 - ReadOS virtual workspace paths for settings, projects, library, documents, pages, outlines, and conversations.
 - Domain commands: `workspace info`, `library list`, `pdf inspect`, `pdf text`, `pdf search`.
+- Argument-specific command metadata, effect-based policy checks, and operator approval retry for mutating MSP commands.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage.
 
@@ -92,7 +93,7 @@ Status: started.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
 
-Current status: command transcripts are visible in the workbench, MSP metadata reaches policy/audit, and `EffectBasedMspPolicy` can require confirmation for mutating commands. The app still uses allow-all until an approval UI is added.
+Current status: command transcripts are visible in the workbench, MSP metadata reaches policy/audit, `EffectBasedMspPolicy` can require confirmation, and the app host uses one-shot approval tokens to replay approved mutating commands.
 
 ### Milestone 3: Artifact System
 
@@ -103,7 +104,7 @@ Status: started.
 - Attach provenance: command text, source paths, document IDs, page ranges, timestamps, and actor.
 - Add `artifact list`, `artifact show`, and `artifact write`.
 
-Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, and `artifact list/show/write` are available through MSP.
+Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and only `artifact write` is treated as a mutating artifact operation by policy.
 
 ### Milestone 4: Vertical Document Commands
 
@@ -147,14 +148,13 @@ Mutating or approval-gated:
 
 ## Immediate Backlog
 
-- Add command metadata to `IMspCommand`.
 - Add `MspCommandTranscriptRecord`.
-- Add `IMspPolicy.AuthorizeAsync` inputs for side-effect metadata.
-- Add `MspArtifact` persistence and `/artifacts` workspace projection.
+- Add target-path and provenance diagnostics to policy/audit records.
 - Add tests for `ReadOsVirtualWorkspace`.
-- Add an operator transcript panel to the WinUI shell.
 - Add artifact provenance fields beyond path/media type/content.
-- Add an approval UI that can resume commands after `RequireConfirmation`.
+- Persist MSP transcript records under the local workspace.
+- Add cancellation/progress event surfaces for long-running commands.
+- Add `attach` and `chat` commands behind the same policy/audit flow.
 
 ## Verification
 

@@ -80,6 +80,7 @@ The runtime owns:
 
 - parsing;
 - command registry lookup;
+- argument-specific command metadata lookup;
 - working directory resolution;
 - stdout/stderr conventions;
 - exit codes;
@@ -177,7 +178,7 @@ Every command should declare:
 - required capabilities;
 - argument usage string.
 
-Metadata lets the workbench explain commands before execution and lets policy decide without parsing command-specific internals each time.
+Metadata lets the workbench explain commands before execution and lets policy decide without parsing command-specific internals each time. Composite commands can override metadata per argument set; for example, `artifact list` is read-only while `artifact write` creates a durable artifact.
 
 ## Policy Model
 
@@ -197,8 +198,9 @@ Policy requests should include:
 - declared side effects;
 - target paths;
 - dry-run flag.
+- host-controlled environment values such as approval tokens.
 
-The current `AllowAllMspPolicy` is acceptable for tests and early development only.
+The current app host uses effect-based confirmation plus one-shot approval tokens. `AllowAllMspPolicy` should remain limited to tests and explicitly trusted local experiments.
 
 ## Audit And Evidence
 

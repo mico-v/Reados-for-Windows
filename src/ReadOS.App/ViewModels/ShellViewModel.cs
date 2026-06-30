@@ -391,6 +391,14 @@ public sealed partial class ShellViewModel : ObservableObject
         return mspHost.ExecuteAsync(commandText, actor, cancellationToken);
     }
 
+    public ValueTask<MspCommandResult> ExecuteApprovedMspCommandAsync(
+        string commandText,
+        string actor = "reados-agent",
+        CancellationToken cancellationToken = default)
+    {
+        return mspHost.ExecuteApprovedAsync(commandText, actor, cancellationToken);
+    }
+
     [RelayCommand]
     private async Task RunMspCommandAsync()
     {
@@ -412,6 +420,59 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task ApproveMspCommandAsync(MspTranscriptEntry? entry)
+    {
+        if (entry is null || !entry.IsApprovalRequired)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            MspTranscript.Remove(entry);
+            var approved = await ExecuteAndRecordMspCommandAsync(entry.CommandText, entry.Actor, approved: true);
+            StatusMessage = approved.Succeeded
+                ? $"已批准并执行：{approved.CommandText}"
+                : $"批准后执行失败：{approved.CommandText}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void DenyMspCommand(MspTranscriptEntry? entry)
+    {
+        if (entry is null || !entry.IsApprovalRequired)
+        {
+            return;
+        }
+
+        var index = MspTranscript.IndexOf(entry);
+        if (index >= 0)
+        {
+            MspTranscript.RemoveAt(index);
+        }
+
+        MspTranscript.Insert(Math.Max(0, index), new MspTranscriptEntry
+        {
+            Actor = entry.Actor,
+            CommandText = entry.CommandText,
+            StartedAt = entry.StartedAt,
+            CompletedAt = DateTimeOffset.Now,
+            ExitCode = 126,
+            Stderr = "Operator denied MSP command.",
+            Decision = "Deny",
+            Effects = entry.Effects,
+            ArtifactsSummary = entry.ArtifactsSummary
+        });
+        StatusMessage = $"已拒绝 MSP 命令：{entry.CommandText}";
+        OnPropertyChanged(nameof(MspTranscriptSummary));
     }
 
     public async Task InitializeAsync()
@@ -1892,13 +1953,16 @@ public sealed partial class ShellViewModel : ObservableObject
     private async Task<MspTranscriptEntry> ExecuteAndRecordMspCommandAsync(
         string commandText,
         string actor,
+        bool approved = false,
         CancellationToken cancellationToken = default)
     {
         var startedAt = DateTimeOffset.Now;
         MspCommandResult result;
         try
         {
-            result = await ExecuteMspCommandAsync(commandText, actor, cancellationToken);
+            result = approved
+                ? await ExecuteApprovedMspCommandAsync(commandText, actor, cancellationToken)
+                : await ExecuteMspCommandAsync(commandText, actor, cancellationToken);
         }
         catch (Exception ex)
         {

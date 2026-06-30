@@ -10,6 +10,11 @@ public interface IMspCommand
 
     MspCommandMetadata Metadata => MspCommandMetadata.Create(Name, Summary);
 
+    MspCommandMetadata GetMetadata(IReadOnlyList<string> arguments)
+    {
+        return Metadata;
+    }
+
     ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,
