@@ -11,5 +11,8 @@ public interface IAiChatService
         string userPrompt,
         IEnumerable<ChatAttachment> attachments,
         Func<ChatAttachment, Task<string>> attachmentTextProvider,
+        string? mspInstruction = null,
+        string? mspExecutionContext = null,
+        bool allowMspCommandRequests = true,
         CancellationToken cancellationToken = default);
 }

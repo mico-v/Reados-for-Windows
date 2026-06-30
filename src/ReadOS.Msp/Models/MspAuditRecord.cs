@@ -14,6 +14,8 @@ public sealed record MspAuditRecord
 
     public MspPolicyDecision Decision { get; init; } = MspPolicyDecision.Allow;
 
+    public MspCommandEffects Effects { get; init; } = MspCommandEffects.None;
+
     public int ExitCode { get; init; }
 
     public string WorkingDirectory { get; init; } = "/";

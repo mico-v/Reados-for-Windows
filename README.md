@@ -1,42 +1,37 @@
 # ReadOS
 
-ReadOS is a WinUI 3 Windows desktop application for focused PDF reading and AI-assisted study. The current app can persist a local workspace, import real PDFs, render pages, manage page labels and outlines, attach pages to chat, and call an OpenAI-compatible chat endpoint when configured.
+ReadOS is an MSP-first vertical application service and Windows workbench. Its purpose is to prove how an AI agent can operate inside real product software through an app-owned command runtime, virtual workspace, domain command packs, policy, audit, and durable artifacts.
 
-The long-term product goal is maintained in [PRODUCT_GOAL.md](PRODUCT_GOAL.md).
+The existing document/PDF reading experience is now the first vertical domain for MSP rather than the final product boundary. It gives the runtime rich materials, conversations, page evidence, search, attachments, and user-visible workflows to operate on.
+
+The product direction is maintained in [PRODUCT_GOAL.md](PRODUCT_GOAL.md), and the implementation path is maintained in [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
 
 ## Current Status
 
-- Native WinUI 3 desktop app under `src/ReadOS.App`.
-- Local workspace stored in `%LOCALAPPDATA%\ReadOS`.
-- Real file import for PDF, Markdown, and text files.
-- Real PDF page rendering through `Windows.Data.Pdf`.
-- PDF page count, text extraction, search, and existing bookmark import through `PdfPig`.
-- Finder-like project/library rail with import, rename, delete-to-ReadOS-trash, search, and open-location commands.
-- Reader workspace with page navigation, jump by PDF page or mapped page label, zoom width, thumbnails, outline, and document search.
-- Editable page labels and outline entries, plus automatic baseline page mapping and outline generation.
-- Region explanation workflow: click "框选讲解", drag a red box on the page, and ReadOS creates a region attachment with context pages.
-- Per-document chat warehouse with attachments, persisted conversations, and configurable prompts.
-- AI provider settings for OpenAI-compatible `/chat/completions` endpoints. Offline reading mode remains available when no API key is configured.
-- Workspace export/import as a zip archive.
+- WinUI 3 Windows workbench under `src/ReadOS.App`.
+- Portable .NET MSP runtime under `src/ReadOS.Msp`.
+- MSP parser, command registry, runtime context, workspace abstraction, policy interface, audit sink, and basic commands: `help`, `pwd`, `echo`, `ls`, `cat`.
+- ReadOS host adapter under `src/ReadOS.App/Services/Msp`.
+- ReadOS virtual workspace exposing `/settings.json`, `/projects`, `/library`, and `/documents`.
+- Domain commands for `workspace info`, `library list`, and `pdf inspect|text|search`.
+- Document services for PDF rendering, text extraction, search, page labels, outlines, attachments, and per-document conversations.
+- OpenAI-compatible chat service and offline fallback.
+- Rust native MSP core prototype under `native/msp-core`.
+- MSP xUnit tests under `tests/ReadOS.Msp.Tests`.
 
-Verified locally:
+## Architecture Direction
 
-```powershell
-& 'C:\Program Files\dotnet\dotnet.exe' build .\ReadOS.sln
-```
+ReadOS should evolve into a vertical MSP service host with these layers:
 
-The app also starts successfully from the Debug build output.
+1. Operator workbench: WinUI surface for workspace, evidence, command transcript, and approval.
+2. MSP service host: sessions, command execution, policy checks, audit records, and artifact lifecycle.
+3. Command runtime: parser, command registry, exit codes, stdout/stderr, and future composition features.
+4. Virtual workspace: app-owned file model projected as stable MSP paths.
+5. Domain command packs: document, PDF, chat, artifact, workflow, and future app-specific commands.
+6. Agent bridge: a small model-facing boundary such as `exec_command({ "cmd": "pdf search current \"policy\"" })`.
+7. Native core and SDK: portable runtime pieces extracted behind stable JSON contracts.
 
-## Stack
-
-- UI framework: WinUI 3 with Windows App SDK.
-- Language: C# / .NET 10 Windows target.
-- Architecture: single app project with MVVM (`CommunityToolkit.Mvvm`) and service interfaces for workspace storage, PDF, file picking, and AI chat.
-- Local data: JSON workspace metadata plus copied user files under `%LOCALAPPDATA%\ReadOS\Library`.
-- PDF layer: `Windows.Data.Pdf` for rendering, `PdfPig` for metadata/text/search.
-- AI layer: OpenAI-compatible HTTP service with an offline local fallback.
-
-## Run
+## Build, Test, And Run
 
 Build only:
 
@@ -44,21 +39,37 @@ Build only:
 .\scripts\run.ps1 -BuildOnly
 ```
 
-Build and run:
+Build and run the workbench:
 
 ```powershell
 .\scripts\run.ps1
 ```
 
-If the app is already running and locking build output:
+Run managed MSP tests:
 
 ```powershell
-.\scripts\run.ps1 -StopExisting
+dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
+```
+
+Run the full MSP verification path:
+
+```powershell
+.\scripts\verify-msp.ps1
+```
+
+Create a Windows x64 release package:
+
+```powershell
+.\scripts\package-windows.ps1 -StopExisting
 ```
 
 ## Development Documents
 
-- [PRODUCT_GOAL.md](PRODUCT_GOAL.md): Product vision and core feature map.
-- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): Current implementation plan and milestones.
-- [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, Visual Studio, WinUI, and CLI setup guide.
-- [docs/INITIAL_MVP.md](docs/INITIAL_MVP.md): Historical initial shell scope.
+- [PRODUCT_GOAL.md](PRODUCT_GOAL.md): MSP vertical service product direction.
+- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): practical implementation roadmap.
+- [docs/MSP_PLAN.md](docs/MSP_PLAN.md): service architecture and runtime model.
+- [docs/MSP_SDK_DEVELOPMENT_PLAN.md](docs/MSP_SDK_DEVELOPMENT_PLAN.md): SDK and native extraction plan.
+- [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md): desktop conversation workbench UI/UX design.
+- [docs/MSP_AGENT_COMMAND_LOOP.md](docs/MSP_AGENT_COMMAND_LOOP.md): prompt-injected MSP command loop.
+- [docs/APP_FRAME_DESIGN.md](docs/APP_FRAME_DESIGN.md): current WinUI frame notes.
+- [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, WinUI, and CLI setup.

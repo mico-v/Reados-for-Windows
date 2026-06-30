@@ -82,7 +82,7 @@ public static class LocalizationCatalog
 
     private static AppStrings Chinese { get; } = new()
     {
-        AppSubtitle = "AI PDF 学习工作台",
+        AppSubtitle = "MSP 对话工作台",
         NewSession = "新对话",
         Projects = "项目",
         Sessions = "会话",
@@ -105,7 +105,7 @@ public static class LocalizationCatalog
         AttachPage = "附加本页",
         ExplainRegion = "框选讲解",
         AttachRange = "附加范围",
-        Reader = "阅读器",
+        Reader = "证据预览",
         Previous = "上一页",
         Next = "下一页",
         ChatWarehouse = "对话仓库",
@@ -132,7 +132,7 @@ public static class LocalizationCatalog
         DragHint = "拖动分隔条可调整各区域宽度",
         NoDocumentSelected = "未选择文档",
         ChooseDocument = "从资料库选择一份文档",
-        ReaderPreview = "阅读器预览",
+        ReaderPreview = "证据预览",
         NoPdfLoaded = "未加载 PDF",
         PdfEngineStatus = "系统 PDF 引擎",
         NoPage = "无页面",
@@ -148,7 +148,7 @@ public static class LocalizationCatalog
 
     private static AppStrings English { get; } = new()
     {
-        AppSubtitle = "AI PDF Workspace",
+        AppSubtitle = "MSP Conversation Workbench",
         NewSession = "New Session",
         Projects = "Projects",
         Sessions = "Sessions",
@@ -171,7 +171,7 @@ public static class LocalizationCatalog
         AttachPage = "Attach Page",
         ExplainRegion = "Explain Region",
         AttachRange = "Attach Range",
-        Reader = "Reader",
+        Reader = "Evidence",
         Previous = "Previous",
         Next = "Next",
         ChatWarehouse = "Chat Warehouse",
@@ -198,7 +198,7 @@ public static class LocalizationCatalog
         DragHint = "Drag splitters to resize panes",
         NoDocumentSelected = "No document selected",
         ChooseDocument = "Choose a document from the library",
-        ReaderPreview = "Reader preview",
+        ReaderPreview = "Evidence preview",
         NoPdfLoaded = "No PDF loaded",
         PdfEngineStatus = "System PDF engine",
         NoPage = "No page",

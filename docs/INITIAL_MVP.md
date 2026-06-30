@@ -1,6 +1,6 @@
 # Initial MVP
 
-This document records the initial MVP target and its current status.
+This document records the initial MVP target and its current status. It is historical context; the current project direction is the MSP vertical service workbench described in `PRODUCT_GOAL.md` and `docs/MSP_PLAN.md`.
 
 ## Original Goal
 
@@ -53,12 +53,14 @@ The app now supports:
 - ViewModels own UI state; code-behind handles only window, picker, resize, and pointer-surface duties: complete.
 - No secrets, API keys, or local user data are committed: complete.
 
-## Follow-Up Integration Order
+## Historical Follow-Up Integration Order
 
-1. Add tests around workspace serialization and PDF metadata parsing.
-2. Add drag/drop folders, restore UI, undo/redo, and manual ordering controls.
-3. Add PDF metadata export for page labels and outlines.
-4. Add region crop image generation and attachment editing.
-5. Add vision model workflows for scanned-book page mapping and TOC extraction.
-6. Add MinorU parse/cache integration.
-7. Add packaging and installer flow.
+These items are no longer the main roadmap by themselves. Fold them into the MSP service plan when they support command execution, virtual workspace evidence, artifacts, or approval-gated workflows.
+
+1. Add tests around workspace serialization, PDF metadata parsing, and MSP workspace projection.
+2. Add drag/drop folders, restore UI, undo/redo, and manual ordering controls when needed by workspace commands.
+3. Add PDF metadata export for page labels and outlines as approval-gated commands.
+4. Add region crop image generation and attachment editing as artifact-producing commands.
+5. Add vision model workflows for scanned-book page mapping and TOC extraction as auditable workflows.
+6. Add MinorU parse/cache integration as a document command pack.
+7. Add packaging and installer flow after service-host behavior stabilizes.

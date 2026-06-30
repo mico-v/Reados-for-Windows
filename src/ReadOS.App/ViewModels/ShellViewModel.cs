@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -114,6 +115,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ObservableCollection<ChatAttachment> PendingAttachments { get; } = new();
 
+    public ObservableCollection<MspTranscriptEntry> MspTranscript { get; } = new();
+
     [ObservableProperty]
     public partial AppStrings Strings { get; set; } = LocalizationCatalog.GetStrings("zh-CN");
 
@@ -149,6 +152,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string ComposerDraft { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string MspCommandDraft { get; set; } = "workspace info";
 
     [ObservableProperty]
     public partial string PageJumpText { get; set; } = "1";
@@ -290,6 +296,10 @@ public sealed partial class ShellViewModel : ObservableObject
         ? "暂无附件"
         : $"{PendingAttachments.Count} 个附件待发送";
 
+    public string MspTranscriptSummary => MspTranscript.Count == 0
+        ? "暂无 MSP 执行记录"
+        : $"{MspTranscript.Count} 条 MSP 执行记录";
+
     public string ActiveModelLabel => UseOfflineResponses
         ? "离线阅读模式"
         : $"{ProviderName} / {ModelName}";
@@ -379,6 +389,29 @@ public sealed partial class ShellViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         return mspHost.ExecuteAsync(commandText, actor, cancellationToken);
+    }
+
+    [RelayCommand]
+    private async Task RunMspCommandAsync()
+    {
+        if (string.IsNullOrWhiteSpace(MspCommandDraft))
+        {
+            StatusMessage = "请输入 MSP 命令。";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var entry = await ExecuteAndRecordMspCommandAsync(MspCommandDraft.Trim(), "user");
+            StatusMessage = entry.Succeeded
+                ? $"MSP 命令完成：{entry.CommandText}"
+                : $"MSP 命令失败：{entry.CommandText}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     public async Task InitializeAsync()
@@ -1113,13 +1146,16 @@ public sealed partial class ShellViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            var settings = BuildSettingsFromInputs();
             var answer = await aiChatService.SendAsync(
-                BuildSettingsFromInputs(),
+                settings,
                 SelectedDocument,
                 SelectedConversation.Messages.Where(message => message.Id != userMessage.Id),
                 prompt,
                 attachments,
-                GetAttachmentTextAsync);
+                GetAttachmentTextAsync,
+                BuildMspAgentInstruction(),
+                allowMspCommandRequests: true);
 
             SelectedConversation.Messages.Add(new ChatMessage
             {
@@ -1128,6 +1164,39 @@ public sealed partial class ShellViewModel : ObservableObject
                 Content = answer,
                 CreatedAt = DateTimeOffset.Now
             });
+
+            var requestedCommands = ExtractMspCommands(answer);
+            if (requestedCommands.Count > 0)
+            {
+                var mspReport = await ExecuteAgentMspCommandsAsync(requestedCommands);
+                SelectedConversation.Messages.Add(new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Author = "MSP",
+                    Content = mspReport,
+                    CreatedAt = DateTimeOffset.Now
+                });
+
+                var finalAnswer = await aiChatService.SendAsync(
+                    settings,
+                    SelectedDocument,
+                    SelectedConversation.Messages,
+                    $"请基于 MSP 执行结果回答用户原始问题：{prompt}",
+                    Array.Empty<ChatAttachment>(),
+                    GetAttachmentTextAsync,
+                    BuildMspAgentInstruction(),
+                    mspReport,
+                    allowMspCommandRequests: false);
+
+                SelectedConversation.Messages.Add(new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Author = "ReadOS",
+                    Content = finalAnswer,
+                    CreatedAt = DateTimeOffset.Now
+                });
+            }
+
             SelectedConversation.UpdatedAt = DateTimeOffset.Now;
             if (SelectedDocument is not null)
             {
@@ -1818,6 +1887,165 @@ public sealed partial class ShellViewModel : ObservableObject
     private void NotifyAttachmentState()
     {
         OnPropertyChanged(nameof(PendingAttachmentSummary));
+    }
+
+    private async Task<MspTranscriptEntry> ExecuteAndRecordMspCommandAsync(
+        string commandText,
+        string actor,
+        CancellationToken cancellationToken = default)
+    {
+        var startedAt = DateTimeOffset.Now;
+        MspCommandResult result;
+        try
+        {
+            result = await ExecuteMspCommandAsync(commandText, actor, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            result = MspCommandResult.Failure(ex.Message);
+        }
+
+        var auditRecord = result.AuditRecords.LastOrDefault();
+        var entry = new MspTranscriptEntry
+        {
+            Actor = actor,
+            CommandText = commandText,
+            StartedAt = startedAt,
+            CompletedAt = DateTimeOffset.Now,
+            ExitCode = result.ExitCode,
+            Stdout = result.Stdout,
+            Stderr = result.Stderr,
+            Decision = auditRecord?.Decision.ToString() ?? "Allow",
+            Effects = auditRecord?.Effects.ToString() ?? "None",
+            ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path))
+        };
+        MspTranscript.Insert(0, entry);
+        OnPropertyChanged(nameof(MspTranscriptSummary));
+        return entry;
+    }
+
+    private async Task<string> ExecuteAgentMspCommandsAsync(IReadOnlyList<string> commandTexts)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("MSP command results:");
+        foreach (var commandText in commandTexts)
+        {
+            var entry = await ExecuteAndRecordMspCommandAsync(commandText, "reados-agent");
+            builder.AppendLine();
+            builder.AppendLine($"$ {entry.CommandText}");
+            builder.AppendLine($"exitCode: {entry.ExitCode}");
+            builder.AppendLine($"decision: {entry.Decision}");
+            builder.AppendLine($"effects: {entry.Effects}");
+            if (!string.IsNullOrWhiteSpace(entry.ArtifactsSummary))
+            {
+                builder.AppendLine($"artifacts: {entry.ArtifactsSummary}");
+            }
+            if (!string.IsNullOrWhiteSpace(entry.Stdout))
+            {
+                builder.AppendLine("stdout:");
+                builder.AppendLine(TrimForMspReport(entry.Stdout, 5000));
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.Stderr))
+            {
+                builder.AppendLine("stderr:");
+                builder.AppendLine(TrimForMspReport(entry.Stderr, 2000));
+            }
+        }
+
+        StatusMessage = $"已执行 {commandTexts.Count} 条 MSP 命令。";
+        SelectedInspectorTab = InspectorTab.Actions;
+        return builder.ToString().Trim();
+    }
+
+    private string BuildMspAgentInstruction()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("你可以请求 ReadOS 执行 MSP 命令。MSP 命令面向你这个 Agent，不是让用户手动执行。");
+        builder.AppendLine("当你需要读取工作区、资料、PDF 文本、搜索结果或安全 Windows 宿主信息时，返回一个 msp 代码块，每行一个命令：");
+        builder.AppendLine("```msp");
+        builder.AppendLine("workspace info");
+        builder.AppendLine("library list");
+        builder.AppendLine("pdf inspect current");
+        builder.AppendLine("pdf search current \"关键词\"");
+        builder.AppendLine("pdf text current 1 3");
+        builder.AppendLine("artifact write /artifacts/summary.md \"摘要内容\"");
+        builder.AppendLine("artifact list /artifacts");
+        builder.AppendLine("artifact show /artifacts/summary.md");
+        builder.AppendLine("page-label set current 12 \"iii\"");
+        builder.AppendLine("outline add current 42 \"Chapter 3\" --level 1");
+        builder.AppendLine("windows info");
+        builder.AppendLine("windows path current");
+        builder.AppendLine("```");
+        builder.AppendLine("ReadOS 会解析这些命令，通过 MSP runtime 翻译到受控的 ReadOS 服务和 Windows/.NET API，然后把 stdout、stderr、exitCode、policy audit 返回给你。");
+        builder.AppendLine("不要调用 PowerShell、cmd、bash 或主机文件系统路径；只使用 MSP 虚拟路径和已列出的命令。");
+        builder.AppendLine("如果已有足够上下文，直接回答；如果需要执行命令，先只输出 msp 代码块和极短说明。");
+        return builder.ToString().Trim();
+    }
+
+    private static IReadOnlyList<string> ExtractMspCommands(string content)
+    {
+        var commands = new List<string>();
+        foreach (Match match in Regex.Matches(
+            content,
+            @"```(?:reados[-_])?msp(?:-sh)?\s*(.*?)```",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            AddCommandsFromBlock(commands, match.Groups[1].Value);
+        }
+
+        foreach (Match match in Regex.Matches(
+            content,
+            @"<msp>\s*(.*?)</msp>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            AddCommandsFromBlock(commands, match.Groups[1].Value);
+        }
+
+        foreach (Match match in Regex.Matches(
+            content,
+            @"<reados-msp>\s*(.*?)</reados-msp>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            AddCommandsFromBlock(commands, match.Groups[1].Value);
+        }
+
+        return commands;
+    }
+
+    private static void AddCommandsFromBlock(List<string> commands, string block)
+    {
+        foreach (var rawLine in block.Replace("\r\n", "\n").Split('\n'))
+        {
+            var command = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(command) ||
+                command.StartsWith('#') ||
+                command.StartsWith("//", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (command.StartsWith("$ ", StringComparison.Ordinal))
+            {
+                command = command[2..].Trim();
+            }
+
+            if (command.StartsWith("msp>", StringComparison.OrdinalIgnoreCase))
+            {
+                command = command[4..].Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(command))
+            {
+                commands.Add(command);
+            }
+        }
+    }
+
+    private static string TrimForMspReport(string value, int maxLength)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength] + "...";
     }
 
     private static ChatAttachment CloneAttachment(ChatAttachment source)

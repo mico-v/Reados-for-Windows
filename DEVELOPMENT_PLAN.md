@@ -2,243 +2,173 @@
 
 ## Purpose
 
-This document turns the product goal into a practical WinUI development plan. The application should be built as a native Windows desktop reader first, with AI workflows integrated into the reading surface rather than treated as a side panel novelty.
+This plan turns ReadOS into an MSP-first vertical application service. The current WinUI document workbench and MSP runtime are the starting point; the next phase is to make MSP the product architecture instead of a hidden helper inside a reader.
 
 ## Current Implementation Progress
 
-ReadOS now has a usable local desktop MVP rather than a static shell.
+Implemented:
 
-Completed in the current app:
+- WinUI 3 app frame with library, reader, chat, settings, and workspace persistence.
+- PDF import, rendering, text extraction, search, page labels, outlines, region attachments, and per-document conversations.
+- OpenAI-compatible chat service with offline fallback.
+- Portable .NET MSP runtime in `src/ReadOS.Msp`.
+- Command parser, command registry, runtime context, command results, policy interface, audit sink, and virtual workspace abstraction.
+- Core commands: `help`, `pwd`, `echo`, `ls`, `cat`.
+- ReadOS MSP host adapter in `src/ReadOS.App/Services/Msp`.
+- ReadOS virtual workspace paths for settings, projects, library, documents, pages, outlines, and conversations.
+- Domain commands: `workspace info`, `library list`, `pdf inspect`, `pdf text`, `pdf search`.
+- Rust `native/msp-core` prototype and FFI smoke script.
+- MSP test project with parser/runtime/audit coverage.
 
-- WinUI 3 app frame with resizable library and chat panes.
-- Local workspace persistence under `%LOCALAPPDATA%\ReadOS`.
-- Project/library model with import, rename, delete-to-trash, search, and open-location commands.
-- Real PDF import and page rendering using `Windows.Data.Pdf`.
-- PDF page count, text extraction, document search, and bookmark import using `PdfPig`.
-- Reader controls for previous/next, page jump, zoom width, thumbnails, page labels, and outline navigation.
-- Editable page labels and outline items.
-- Automatic baseline page mapping and heuristic outline generation.
-- Region selection workflow that creates a red-box attachment with context pages.
-- Per-document chat warehouse with persisted messages and attachments.
-- OpenAI-compatible chat service with configurable provider, base URL, API key, model, and prompts.
-- Offline reading response mode for use without an API key.
-- Workspace export/import as zip archives.
+The main gap is not another reader feature. The main gap is the service layer: sessions, command metadata, policy enforcement, command transcript, artifact persistence, and an agent bridge that can safely drive vertical workflows.
 
-Remaining product-level work:
+## Target Solution Shape
 
-- PDF metadata writing for exported page labels and outlines.
-- Annotation editing beyond the region-explanation overlay.
-- Robust drag/drop folder tree, undo/redo, manual ordering UI, and restore UI for trash.
-- True scanned-book vision page mapping and table-of-contents extraction.
-- Cropped image attachments for selected regions.
-- MinorU parse/cache integration and precise chapter/section extraction.
-- Packaged installer, migration system, and automated tests.
-
-## WinUI Template Research
-
-The current best starting options are:
-
-1. Visual Studio WinUI Blank App (Packaged) C# template
-   - Best default for this repository.
-   - Keeps the app shell minimal and avoids inheriting a large sample codebase.
-   - Microsoft Learn currently points WinUI developers to Visual Studio with the WinUI application development workload, then the WinUI Blank App (Packaged) C# template.
-
-2. Microsoft Template Studio
-   - Useful if we want generated MVVM navigation, settings pages, tests, and common app patterns.
-   - It is a Visual Studio extension and supports WinUI 3 project types including Blank, Navigation Pane, and Menu Bar, with MVVM Toolkit support.
-   - It should be used as a generator, not cloned wholesale as the product source.
-
-3. Microsoft WinUI Gallery
-   - Strong reference for WinUI controls, Fluent styling, adaptive UI, and control snippets.
-   - Not a product template for ReadOS because it is intentionally a gallery/sample app.
-
-4. Microsoft Windows App SDK Samples
-   - Strong reference for platform features: app lifecycle, deployment, Mica, notifications, windowing, resource management, and Windows AI/OCR samples.
-   - Not a product template; use specific samples as references during feature spikes.
-
-5. Microsoft microsoft-ui-xaml
-   - This is the upstream WinUI repository, containing framework source, controls, styles, specs, samples, docs, build infrastructure, and release history.
-   - It is valuable as an authoritative reference when we need to inspect control behavior, Fluent styling, WinUI limitations, and release direction.
-   - It is not a suitable application template for ReadOS because it is the UI framework/product repository itself, with a large native build system and many framework-level concerns unrelated to a desktop app.
-
-Recommendation: start from Visual Studio's WinUI Blank App (Packaged) C# template. If we want navigation/settings/test scaffolding immediately, generate a Template Studio WinUI 3 app in a scratch directory and copy only the patterns we choose. Use `microsoft-ui-xaml`, WinUI Gallery, and Windows App SDK Samples as references, not as the repository base.
-
-## Local Environment Findings
-
-- Git is available.
-- GitHub CLI is installed at `C:\Program Files\GitHub CLI\gh.exe`, but `C:\Program Files\GitHub CLI` was not visible in the Codex runner PATH.
-- GitHub CLI is authenticated as `mico-v` with repository permissions.
-- .NET SDK 10.0.301 is available at `C:\Program Files\dotnet\dotnet.exe` and has been used to verify solution builds.
-- WinUI project creation is therefore expected to happen through Visual Studio until the local SDK/CLI path is installed or fixed.
-
-## Proposed Solution Structure
-
-The first scaffold should aim for this shape:
+Current layout:
 
 ```text
-ReadOS.sln
 src/
-  ReadOS.App/
-    App.xaml
-    MainWindow.xaml
-    Views/
-    ViewModels/
-    Services/
-    Models/
-    Assets/
-  ReadOS.Core/
-    Library/
-    Documents/
-    Ai/
-    Storage/
-    Sync/
+  ReadOS.App/        WinUI operator workbench and domain host adapters
+  ReadOS.Msp/        .NET MSP runtime, SDK contracts, command model
 tests/
-  ReadOS.Core.Tests/
+  ReadOS.Msp.Tests/  parser/runtime/workspace tests
+native/
+  msp-core/          Rust native core prototype
 docs/
+  MSP plans, environment notes, app frame notes
 ```
 
-If keeping a single project is faster for the first prototype, it is acceptable to start with only `ReadOS.App` and extract `ReadOS.Core` when the library, storage, and PDF logic become stable enough to test separately.
+Near-term target:
+
+```text
+src/
+  ReadOS.App/          WinUI workbench and document-domain UI
+  ReadOS.Msp/          core .NET SDK contracts and runtime
+  ReadOS.Msp.Hosting/  planned service host/session/policy/artifact layer
+tests/
+  ReadOS.Msp.Tests/
+  ReadOS.Msp.Hosting.Tests/
+native/
+  msp-core/
+```
+
+Create `ReadOS.Msp.Hosting` only when the service concepts are stable enough to test separately. Until then, evolve `ReadOsMspHost` inside the app.
 
 ## Architecture Principles
 
-- Keep UI state in ViewModels; keep file, PDF, AI, and persistence logic out of code-behind.
-- Use provider interfaces for AI calls so OpenAI-compatible, Gemini-compatible, local, or proxy endpoints can coexist.
-- Keep PDF metadata operations behind a document service abstraction because page labels, outlines, export, annotations, and rendering may require different libraries.
-- Persist user data locally first; sync should be a later adapter around the same data model.
-- Treat long-running AI and PDF parse jobs as cancellable background operations with visible progress.
-
-## Major Modules
-
-### App Shell
-
-- Main window with document library, reader workspace, and chat panel.
-- Hideable side panels and adaptive command bars.
-- Tab model for multiple open PDFs.
-- App-wide command routing and shortcut management.
-
-### Library
-
-- Folder tree and ordered children.
-- Import, drag/move, rename, delete, restore, trash, search, and manual ordering.
-- Durable local metadata independent of raw file paths.
-
-### PDF Reader
-
-- Rendering and navigation.
-- Thumbnails.
-- Search.
-- Page jump using mapped labels.
-- Annotation baseline.
-- Export page subsets with metadata.
-
-### PDF Intelligence
-
-- Book page mapping model and editor.
-- Outline generation model and editor.
-- PDF metadata writer for page labels and outlines.
-- OCR/vision job history and error recovery.
-
-### AI Workspace
-
-- Provider/model settings.
-- Per-PDF system prompts.
-- Per-PDF chat warehouse.
-- Attachment manager for pages, ranges, images, PDFs, and Markdown.
-- Conversation search and long-image export.
-
-### Precision Study
-
-- Region selection with context pages and red-box annotation.
-- Attachment crop/split editor.
-- MinorU-style parse cache.
-- Outline item to precise section extraction.
-
-### Data And Sync
-
-- Local database and file storage layout.
-- Workspace export/import.
-- Future iCloud/PCloud-style sync adapter.
+- The model-facing bridge should stay small: `exec_command({ "cmd": "..." })`.
+- The service host owns sessions, cancellation, policy, audit, artifacts, and command transcripts.
+- The runtime owns parsing, dispatch, stdout/stderr, exit codes, and workspace resolution.
+- The app owns domain services: documents, PDF rendering, chat, provider settings, and UI state.
+- The virtual workspace is the canonical agent read model.
+- Mutating commands must declare side effects before execution and pass policy.
+- Generated outputs should become artifacts with paths, media types, provenance, and previews.
+- Runtime-neutral behavior should be proven in .NET before extraction into Rust.
 
 ## Milestones
 
-### Milestone 0: Repository And Tooling
+### Milestone 0: Direction Alignment
 
-- Initialize Git repository.
-- Add README, product goal, development plan, and .gitignore.
-- Create GitHub repository and push initial commit.
-- Install or document required local WinUI tooling.
+Status: in progress.
 
-### Milestone 1: WinUI Shell - complete
+- Reframe README, product goal, development plan, and MSP docs around the vertical service direction.
+- Keep historical reader docs only where they still explain the first domain.
+- Make command examples and future backlog use current repository paths and C#/Rust reality.
 
-- Scaffold WinUI 3 app.
-- Establish MVVM Toolkit.
-- Add main layout: library panel, PDF workspace, chat panel, settings drawer, and panel resizing.
-- Add navigation and basic command structure.
+### Milestone 1: MSP Contract Hardening
 
-### Milestone 2: Library MVP - mostly complete
+- Add command metadata: name, summary, argument shape, mutability, external effects, and artifact outputs.
+- Extend `MspCommandResult` with policy decision and structured diagnostics where useful.
+- Add test coverage for quoting, unknown commands, command failure, audit records, and workspace path normalization.
+- Define stable JSON examples for command request/result/audit/artifact.
 
-- Persist folders and documents.
-- Implement import, rename, delete, trash, restore, and manual ordering.
-- Add search.
-- Add keyboard shortcuts matching the product goal.
+### Milestone 2: Service Host Layer
 
-Current status: local persistence, import, rename, delete-to-trash, search, and open-location are implemented. Folder restore UI, drag/drop, undo/redo, manual ordering UI, and shortcut polish remain.
+- Introduce session IDs and command transcript records.
+- Add cancellation and progress event surfaces.
+- Replace app-level allow-all execution with a policy service.
+- Add approval requests for write-capable commands.
+- Persist transcripts under the local workspace.
 
-### Milestone 3: Reader MVP - mostly complete
+### Milestone 3: Artifact System
 
-- Select PDF library after spike.
-- Render PDFs with page navigation and thumbnails.
-- Add tabs and panel hide/show.
-- Persist reading progress.
+Status: started.
 
-Current status: PDF rendering, page navigation, thumbnails, search, imported bookmarks, editable outline entries, editable page labels, and reading progress are implemented. Multiple tabs and annotation tools remain.
+- Add `/artifacts` to the virtual workspace.
+- Persist generated Markdown, JSON, extracted snippets, summaries, and exported attachments.
+- Attach provenance: command text, source paths, document IDs, page ranges, timestamps, and actor.
+- Add `artifact list`, `artifact show`, and `artifact write`.
 
-### Milestone 4: AI Chat MVP - mostly complete
+Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, and `artifact list/show/write` are available through MSP.
 
-- Add provider/model settings.
-- Implement per-PDF chat warehouse.
-- Attach current page and page ranges.
-- Add prompt defaults and conversation persistence.
+### Milestone 4: Vertical Document Commands
 
-Current status: provider settings, OpenAI-compatible chat calls, offline mode, per-document persisted conversations, page/range/region attachments, and prompt defaults are implemented. Conversation export and richer provider-specific options remain.
+Read-only:
 
-### Milestone 5: Smart PDF Metadata - partial
+- `workspace info`
+- `library list`
+- `pdf inspect current`
+- `pdf text current 12 14`
+- `pdf search current "query"`
+- `cat /documents/{id}/pages/12.txt`
 
-- Implement book page mapping workflow.
-- Implement manual page mapping editor.
-- Implement outline generation workflow.
-- Export PDFs with page labels and outlines.
+Mutating or approval-gated:
 
-Current status: manual page label editing, baseline page mapping, bookmark import, heuristic outline generation, and manual outline edits are implemented. Vision mapping and PDF metadata writing remain.
+- `page-label set current 12 "iii"`
+- `outline add current 42 "Chapter 3" --level 1`
+- `attach page current 12`
+- `attach range current 12 18`
+- `chat ask current "explain attached pages"`
+- `artifact write /artifacts/summary.md`
 
-### Milestone 6: Precision Workflows - partial
+### Milestone 5: Agent Bridge
 
-- Region selection explanation.
-- Attachment page deletion/splitting/cropping.
-- MinorU-style parse cache integration.
-- Outline section explanation.
+- Expose one application bridge for command execution.
+- Return exit code, stdout, stderr, artifacts, audit records, and approval state.
+- Show command transcript and evidence in the workbench.
+- Support retry and cancellation for long-running document/model work.
 
-Current status: red-box region selection creates context-page attachments and inserts the region prompt. Cropped image export, attachment crop/split editing, and MinorU integration remain.
+### Milestone 6: Workflow Runtime
 
-## Key Technical Spikes
+- Add command scripts or named workflows once single commands are reliable.
+- Support document-centered workflows such as "summarize this chapter", "extract evidence", and "build review notes".
+- Keep workflow outputs inspectable as artifacts.
 
-1. PDF engine spike
-   - Requirements: render quality, page thumbnails, text search, annotations, page labels, outlines, export subset, metadata writing, commercial/license constraints.
+### Milestone 7: Native Core And SDK Extraction
 
-2. AI vision workflow spike
-   - Requirements: page image extraction, prompt schema, structured response validation, retry strategy, cost/progress visibility.
+- Move parser/runtime-neutral contracts into `native/msp-core` after .NET behavior stabilizes.
+- Keep host adapters in .NET.
+- Add conformance fixtures shared by Rust and .NET.
+- Package native binaries through a future .NET binding layer only after FFI behavior is stable.
 
-3. Local persistence spike
-   - Requirements: library tree, ordering, document metadata, chat history, attachments, parse cache, export/import.
+## Immediate Backlog
 
-4. WinUI shell spike
-   - Requirements: adaptive command bars, Mica/Acrylic where appropriate, custom title bar, panel resizing, keyboard shortcuts.
+- Add command metadata to `IMspCommand`.
+- Add `MspCommandTranscriptRecord`.
+- Add `IMspPolicy.AuthorizeAsync` inputs for side-effect metadata.
+- Add `MspArtifact` persistence and `/artifacts` workspace projection.
+- Add tests for `ReadOsVirtualWorkspace`.
+- Add an operator transcript panel to the WinUI shell.
+- Add artifact provenance fields beyond path/media type/content.
+- Add an approval policy implementation for write commands.
 
-## Open Decisions
+## Verification
 
-- PDF library choice.
-- Packaged versus unpackaged app after the first scaffold.
-- Database choice.
-- Whether to use Template Studio directly or hand-build MVVM shell from Blank App.
-- Exact AI provider configuration schema.
-- Whether MinorU integration starts as API-only, local process, or both.
+Managed tests:
+
+```powershell
+dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
+```
+
+Full MSP verification:
+
+```powershell
+.\scripts\verify-msp.ps1
+```
+
+Workbench build/run:
+
+```powershell
+.\scripts\run.ps1 -BuildOnly
+.\scripts\run.ps1
+```

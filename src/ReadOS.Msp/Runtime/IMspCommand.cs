@@ -8,6 +8,8 @@ public interface IMspCommand
 
     string Summary { get; }
 
+    MspCommandMetadata Metadata => MspCommandMetadata.Create(Name, Summary);
+
     ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

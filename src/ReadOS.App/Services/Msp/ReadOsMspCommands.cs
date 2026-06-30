@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using ReadOS.App.Models;
@@ -20,6 +21,13 @@ internal sealed class ReadOsWorkspaceCommand : IMspCommand
     public string Name => "workspace";
 
     public string Summary => "Inspect the ReadOS workspace. Usage: workspace info";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "workspace info",
+        MspCommandEffects.ReadWorkspace,
+        new[] { "reados.workspace.read" });
 
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
@@ -61,6 +69,13 @@ internal sealed class ReadOsLibraryCommand : IMspCommand
     public string Name => "library";
 
     public string Summary => "List ReadOS projects and documents. Usage: library list";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "library list",
+        MspCommandEffects.ReadWorkspace,
+        new[] { "reados.library.read" });
 
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
@@ -128,6 +143,13 @@ internal sealed class ReadOsPdfCommand : IMspCommand
     public string Name => "pdf";
 
     public string Summary => "Inspect PDF documents. Usage: pdf inspect|text|search [current|documentId] ...";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "pdf inspect|text|search [current|documentId] ...",
+        MspCommandEffects.ReadWorkspace,
+        new[] { "reados.pdf.read" });
 
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
@@ -240,6 +262,318 @@ internal sealed class ReadOsPdfCommand : IMspCommand
         if (workspace is null)
         {
             return null;
+        }
+
+        return workspace.Projects
+            .SelectMany(project => project.LibraryItems)
+            .Where(item => item.Kind == LibraryItemKind.Pdf)
+            .FirstOrDefault(item =>
+                string.Equals(item.Id, value, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.Name, value, StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+internal sealed class ReadOsWindowsCommand : IMspCommand
+{
+    private readonly IWorkspaceStore workspaceStore;
+    private readonly Func<LibraryItem?> selectedDocumentProvider;
+
+    public ReadOsWindowsCommand(
+        IWorkspaceStore workspaceStore,
+        Func<LibraryItem?> selectedDocumentProvider)
+    {
+        this.workspaceStore = workspaceStore;
+        this.selectedDocumentProvider = selectedDocumentProvider;
+    }
+
+    public string Name => "windows";
+
+    public string Summary => "Inspect safe Windows host context exposed by ReadOS. Usage: windows info|path [workspace|library|current]";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "windows info|path [workspace|library|current]",
+        MspCommandEffects.ReadWorkspace,
+        new[] { "reados.windows.read" });
+
+    public ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        var subcommand = arguments.FirstOrDefault() ?? "info";
+        return ValueTask.FromResult(subcommand.ToLowerInvariant() switch
+        {
+            "info" => Info(),
+            "path" => PathInfo(arguments.Skip(1).FirstOrDefault() ?? "workspace"),
+            _ => MspCommandResult.Failure("Usage: windows info|path [workspace|library|current]", exitCode: 2)
+        });
+    }
+
+    private static MspCommandResult Info()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"os\t{RuntimeInformation.OSDescription}");
+        builder.AppendLine($"architecture\t{RuntimeInformation.OSArchitecture}");
+        builder.AppendLine($"framework\t{RuntimeInformation.FrameworkDescription}");
+        builder.AppendLine($"processArchitecture\t{RuntimeInformation.ProcessArchitecture}");
+        return MspCommandResult.Success(builder.ToString());
+    }
+
+    private MspCommandResult PathInfo(string target)
+    {
+        var normalized = target.ToLowerInvariant();
+        var path = normalized switch
+        {
+            "workspace" => workspaceStore.WorkspaceRoot,
+            "library" => workspaceStore.LibraryRoot,
+            "current" => CurrentDocumentPath(),
+            _ => null
+        };
+
+        return path is null
+            ? MspCommandResult.Failure("Usage: windows path [workspace|library|current]", exitCode: 2)
+            : MspCommandResult.Success(path + Environment.NewLine);
+    }
+
+    private string? CurrentDocumentPath()
+    {
+        var selected = selectedDocumentProvider();
+        return selected is null ? null : workspaceStore.GetAbsolutePath(selected);
+    }
+}
+
+internal sealed class ReadOsPageLabelCommand : IMspCommand
+{
+    private readonly IWorkspaceStore workspaceStore;
+    private readonly Func<WorkspaceState?> workspaceProvider;
+    private readonly Func<LibraryItem?> selectedDocumentProvider;
+
+    public ReadOsPageLabelCommand(
+        IWorkspaceStore workspaceStore,
+        Func<WorkspaceState?> workspaceProvider,
+        Func<LibraryItem?> selectedDocumentProvider)
+    {
+        this.workspaceStore = workspaceStore;
+        this.workspaceProvider = workspaceProvider;
+        this.selectedDocumentProvider = selectedDocumentProvider;
+    }
+
+    public string Name => "page-label";
+
+    public string Summary => "Set a ReadOS PDF page label. Usage: page-label set [current|documentId] <page> <label>";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "page-label set [current|documentId] <page> <label>",
+        MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
+        new[] { "reados.pdf.write" });
+
+    public async ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        if (arguments.Count < 4 || !string.Equals(arguments[0], "set", StringComparison.OrdinalIgnoreCase))
+        {
+            return MspCommandResult.Failure("Usage: page-label set [current|documentId] <page> <label>", exitCode: 2);
+        }
+
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            return MspCommandResult.Failure("ReadOS workspace is not loaded.");
+        }
+
+        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, arguments[1], selectedDocumentProvider);
+        if (document is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        if (!int.TryParse(arguments[2], out var page) || page < 1 || page > document.PageCount)
+        {
+            return MspCommandResult.Failure($"page must be between 1 and {document.PageCount}.", exitCode: 2);
+        }
+
+        var labelText = string.Join(' ', arguments.Skip(3)).Trim();
+        if (string.IsNullOrWhiteSpace(labelText))
+        {
+            return MspCommandResult.Failure("label must not be empty.", exitCode: 2);
+        }
+
+        var label = document.PageLabels.FirstOrDefault(item => item.PdfPage == page);
+        if (label is null)
+        {
+            label = new PageLabelRule { PdfPage = page };
+            document.PageLabels.Add(label);
+        }
+
+        label.Label = labelText;
+        document.UpdatedAt = DateTimeOffset.Now;
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
+        return MspCommandResult.Success($"page-label\t{document.Id}\t{page}\t{labelText}{Environment.NewLine}");
+    }
+}
+
+internal sealed class ReadOsOutlineCommand : IMspCommand
+{
+    private readonly IWorkspaceStore workspaceStore;
+    private readonly Func<WorkspaceState?> workspaceProvider;
+    private readonly Func<LibraryItem?> selectedDocumentProvider;
+
+    public ReadOsOutlineCommand(
+        IWorkspaceStore workspaceStore,
+        Func<WorkspaceState?> workspaceProvider,
+        Func<LibraryItem?> selectedDocumentProvider)
+    {
+        this.workspaceStore = workspaceStore;
+        this.workspaceProvider = workspaceProvider;
+        this.selectedDocumentProvider = selectedDocumentProvider;
+    }
+
+    public string Name => "outline";
+
+    public string Summary => "Add or delete ReadOS PDF outline items.";
+
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "outline add [current|documentId] <page> <title> [--level N] | outline delete [current|documentId] <id|title>",
+        MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace,
+        new[] { "reados.pdf.write" });
+
+    public async ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandContext context,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        if (arguments.Count == 0)
+        {
+            return MspCommandResult.Failure(Usage(), exitCode: 2);
+        }
+
+        return arguments[0].ToLowerInvariant() switch
+        {
+            "add" => await AddAsync(arguments.Skip(1).ToArray(), cancellationToken),
+            "delete" => await DeleteAsync(arguments.Skip(1).ToArray(), cancellationToken),
+            _ => MspCommandResult.Failure(Usage(), exitCode: 2)
+        };
+    }
+
+    private async ValueTask<MspCommandResult> AddAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        if (arguments.Count < 3)
+        {
+            return MspCommandResult.Failure("Usage: outline add [current|documentId] <page> <title> [--level N]", exitCode: 2);
+        }
+
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            return MspCommandResult.Failure("ReadOS workspace is not loaded.");
+        }
+
+        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, arguments[0], selectedDocumentProvider);
+        if (document is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        if (!int.TryParse(arguments[1], out var page) || page < 1 || page > document.PageCount)
+        {
+            return MspCommandResult.Failure($"page must be between 1 and {document.PageCount}.", exitCode: 2);
+        }
+
+        var titleParts = new List<string>();
+        var level = 1;
+        for (var index = 2; index < arguments.Count; index++)
+        {
+            if (string.Equals(arguments[index], "--level", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= arguments.Count || !int.TryParse(arguments[index + 1], out level))
+                {
+                    return MspCommandResult.Failure("--level requires a number.", exitCode: 2);
+                }
+
+                index++;
+                continue;
+            }
+
+            titleParts.Add(arguments[index]);
+        }
+
+        var title = string.Join(' ', titleParts).Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return MspCommandResult.Failure("title must not be empty.", exitCode: 2);
+        }
+
+        var item = new OutlineItem
+        {
+            Title = title,
+            Page = page,
+            Level = Math.Clamp(level, 1, 6)
+        };
+        document.Outline.Add(item);
+        document.UpdatedAt = DateTimeOffset.Now;
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
+        return MspCommandResult.Success($"outline-added\t{document.Id}\t{item.Id}\t{page}\t{item.Level}\t{title}{Environment.NewLine}");
+    }
+
+    private async ValueTask<MspCommandResult> DeleteAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        if (arguments.Count < 2)
+        {
+            return MspCommandResult.Failure("Usage: outline delete [current|documentId] <id|title>", exitCode: 2);
+        }
+
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            return MspCommandResult.Failure("ReadOS workspace is not loaded.");
+        }
+
+        var document = ReadOsMspCommandHelpers.ResolvePdfDocument(workspace, arguments[0], selectedDocumentProvider);
+        if (document is null)
+        {
+            return MspCommandResult.Failure("PDF document not found.");
+        }
+
+        var selector = string.Join(' ', arguments.Skip(1)).Trim();
+        var item = document.Outline.FirstOrDefault(item =>
+            string.Equals(item.Id, selector, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.Title, selector, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            return MspCommandResult.Failure($"Outline item not found: {selector}");
+        }
+
+        document.Outline.Remove(item);
+        document.UpdatedAt = DateTimeOffset.Now;
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
+        return MspCommandResult.Success($"outline-deleted\t{document.Id}\t{item.Id}\t{item.Title}{Environment.NewLine}");
+    }
+
+    private static string Usage()
+    {
+        return "Usage: outline add [current|documentId] <page> <title> [--level N] | outline delete [current|documentId] <id|title>";
+    }
+}
+
+internal static class ReadOsMspCommandHelpers
+{
+    public static LibraryItem? ResolvePdfDocument(
+        WorkspaceState workspace,
+        string value,
+        Func<LibraryItem?> selectedDocumentProvider)
+    {
+        if (string.Equals(value, "current", StringComparison.OrdinalIgnoreCase))
+        {
+            var selected = selectedDocumentProvider();
+            return selected?.Kind == LibraryItemKind.Pdf ? selected : null;
         }
 
         return workspace.Projects

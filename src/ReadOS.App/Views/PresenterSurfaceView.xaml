@@ -13,7 +13,7 @@
             CornerRadius="8">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="52" />
+                <RowDefinition Height="58" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -24,26 +24,26 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding PresenterKindLabel}" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="证据预览" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding CurrentPageIndicator}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="打开对话视窗" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="FocusChat">
+                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="回到对话" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="FocusChat">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" FontSize="13" />
                         </Button>
-                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="平铺双视窗" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="PresenterPrimary">
+                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="并排显示" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="PresenterPrimary">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A9;" FontSize="13" />
                         </Button>
-                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="演示全屏" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="FocusPresenter">
+                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="专注预览" Command="{Binding SetWorkspaceLayoutCommand}" CommandParameter="FocusPresenter">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE740;" FontSize="13" />
                         </Button>
-                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="缩略图/目录" Command="{Binding ToggleThumbnailsCommand}">
+                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="材料导航" Command="{Binding ToggleThumbnailsCommand}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7C3;" FontSize="13" />
                         </Button>
                         <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="附加本页或全文" Command="{Binding AttachCurrentPageCommand}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A5;" FontSize="13" />
                         </Button>
-                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="框选讲解" Command="{Binding StartRegionSelectionCommand}">
+                        <Button Width="32" Height="32" Padding="0" ToolTipService.ToolTip="框选证据" Command="{Binding StartRegionSelectionCommand}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEF20;" FontSize="13" />
                         </Button>
                     </StackPanel>
@@ -72,7 +72,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="30" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="材料导航" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Text="材料" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
                             <Button Grid.Column="1" Width="30" Height="30" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="隐藏" Command="{Binding ToggleThumbnailsCommand}">
                                 <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BB;" FontSize="12" />
                             </Button>
@@ -86,7 +86,7 @@
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Spacing="4" Margin="0,0,0,8">
-                                        <Border Background="{ThemeResource ReadOSCanvasBrush}" Padding="3" BorderBrush="{ThemeResource ReadOSStrongBorderBrush}" BorderThickness="1">
+                                        <Border Background="{ThemeResource ReadOSCanvasBrush}" Padding="3" BorderBrush="{ThemeResource ReadOSStrongBorderBrush}" BorderThickness="1" CornerRadius="4">
                                             <Image Source="{Binding Image}" Width="92" Stretch="Uniform" />
                                         </Border>
                                         <TextBlock Text="{Binding Label}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" FontSize="11" HorizontalAlignment="Center" />
@@ -203,7 +203,7 @@
                             </Border>
 
                             <Grid Visibility="{Binding HasPageImage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <Border Background="{ThemeResource ReadOSPdfPageHostBrush}" Padding="10" CornerRadius="3">
+                                <Border Background="{ThemeResource ReadOSPdfPageHostBrush}" Padding="10" CornerRadius="4">
                                     <Image x:Name="PdfPageImage"
                                            Source="{Binding CurrentPageImage}"
                                            Width="{Binding ReaderImageWidth}"

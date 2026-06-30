@@ -17,12 +17,23 @@ public sealed class AiChatService : IAiChatService
         string userPrompt,
         IEnumerable<ChatAttachment> attachments,
         Func<ChatAttachment, Task<string>> attachmentTextProvider,
+        string? mspInstruction = null,
+        string? mspExecutionContext = null,
+        bool allowMspCommandRequests = true,
         CancellationToken cancellationToken = default)
     {
         var attachmentContext = await BuildAttachmentContextAsync(attachments, attachmentTextProvider);
         if (settings.UseOfflineResponses || string.IsNullOrWhiteSpace(settings.ProviderApiKey))
         {
-            return BuildOfflineResponse(document, userPrompt, attachmentContext);
+            return BuildOfflineResponse(document, userPrompt, attachmentContext, mspExecutionContext);
+        }
+
+        var systemPrompt = new StringBuilder();
+        systemPrompt.AppendLine("你是 ReadOS 的桌面对话 Agent。回答应基于用户问题、当前工作区、资料上下文和附件页文本；不确定时直接说明。");
+        if (allowMspCommandRequests && !string.IsNullOrWhiteSpace(mspInstruction))
+        {
+            systemPrompt.AppendLine();
+            systemPrompt.AppendLine(mspInstruction.Trim());
         }
 
         var messages = new List<object>
@@ -30,7 +41,7 @@ public sealed class AiChatService : IAiChatService
             new
             {
                 role = "system",
-                content = "你是 ReadOS 的阅读助手。回答应基于用户问题、当前 PDF 上下文和附件页文本；不确定时直接说明。"
+                content = systemPrompt.ToString().Trim()
             }
         };
 
@@ -48,9 +59,23 @@ public sealed class AiChatService : IAiChatService
             });
         }
 
-        var prompt = string.IsNullOrWhiteSpace(attachmentContext)
-            ? userPrompt
-            : $"{userPrompt}\n\n以下是 ReadOS 附件上下文：\n{attachmentContext}";
+        var promptBuilder = new StringBuilder();
+        promptBuilder.AppendLine(userPrompt);
+        if (!string.IsNullOrWhiteSpace(attachmentContext))
+        {
+            promptBuilder.AppendLine();
+            promptBuilder.AppendLine("以下是 ReadOS 附件上下文：");
+            promptBuilder.AppendLine(attachmentContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(mspExecutionContext))
+        {
+            promptBuilder.AppendLine();
+            promptBuilder.AppendLine("以下是 ReadOS 已执行的 MSP 命令结果：");
+            promptBuilder.AppendLine(mspExecutionContext.Trim());
+        }
+
+        var prompt = promptBuilder.ToString().Trim();
         messages.Add(new { role = "user", content = prompt });
 
         var baseUrl = settings.ProviderBaseUrl.Trim().TrimEnd('/');
@@ -105,7 +130,11 @@ public sealed class AiChatService : IAiChatService
         return builder.ToString().Trim();
     }
 
-    private static string BuildOfflineResponse(LibraryItem? document, string userPrompt, string attachmentContext)
+    private static string BuildOfflineResponse(
+        LibraryItem? document,
+        string userPrompt,
+        string attachmentContext,
+        string? mspExecutionContext)
     {
         var builder = new StringBuilder();
         builder.AppendLine("当前使用离线阅读模式。ReadOS 已保留你的问题和附件，并基于本地可读取文本生成以下整理：");
@@ -129,6 +158,13 @@ public sealed class AiChatService : IAiChatService
         {
             builder.AppendLine();
             builder.AppendLine("这条消息没有附件上下文。你可以先使用“附加本页”或“附加范围”，再发送问题。若已配置模型，也可以关闭离线回答直接请求模型。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(mspExecutionContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine("MSP 执行结果：");
+            builder.AppendLine(Trim(mspExecutionContext.Trim(), 1800));
         }
 
         return builder.ToString().Trim();

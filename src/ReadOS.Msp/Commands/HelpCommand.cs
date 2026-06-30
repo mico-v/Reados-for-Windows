@@ -17,6 +17,11 @@ public sealed class HelpCommand : IMspCommand
 
     public string Summary => "List registered MSP commands.";
 
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "help");
+
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

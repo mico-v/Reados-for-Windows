@@ -10,6 +10,12 @@ public sealed class LsCommand : IMspCommand
 
     public string Summary => "List virtual workspace entries.";
 
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "ls [path]",
+        MspCommandEffects.ReadWorkspace);
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

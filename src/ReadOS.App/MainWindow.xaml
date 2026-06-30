@@ -11,47 +11,61 @@
 
     <Grid x:Name="RootShell" Background="{ThemeResource ReadOSCanvasBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="52" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="28" />
+            <RowDefinition Height="30" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{ThemeResource ReadOSCanvasBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="0,0,0,1">
             <Grid Padding="12,0,150,0" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="232" />
+                    <ColumnDefinition Width="292" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="30" Height="30" CornerRadius="7" Background="{ThemeResource ReadOSBrandBrush}">
+                    <Border Width="32" Height="32" CornerRadius="8" Background="{ThemeResource ReadOSBrandBrush}">
                         <TextBlock Text="R" Foreground="{ThemeResource ReadOSBrandTextBrush}" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Spacing="0" VerticalAlignment="Center">
                         <TextBlock Text="ReadOS" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding WorkspaceModeLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" />
+                        <TextBlock Text="MSP Command Center" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" />
                     </StackPanel>
                 </StackPanel>
 
                 <Grid x:Name="TitleBarDragRegion" Grid.Column="1" Background="Transparent">
-                    <StackPanel Spacing="0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ActiveTitle}" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding ActiveWorkspaceScope}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border Padding="8,4" CornerRadius="8" Background="{ThemeResource ReadOSSubtleBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Width="7" Height="7" Fill="{ThemeResource ReadOSSuccessBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding WorkspaceModeLabel}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" FontSize="12" />
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Spacing="0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ActiveTitle}" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding ActiveWorkspaceScope}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="导入资料" Command="{Binding ImportMaterialCommand}">
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="显示/隐藏工作区" Command="{Binding ToggleLibraryCommand}">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE700;" FontSize="14" />
+                    </Button>
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="导入资料" Command="{Binding ImportMaterialCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8E5;" FontSize="14" />
                     </Button>
-                    <Button Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="新对话" Command="{Binding NewConversationCommand}">
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="新建线程" Command="{Binding NewConversationCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="14" />
                     </Button>
-                    <Button Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="{Binding ThemeToggleLabel}" Command="{Binding ToggleThemeCommand}">
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="切换预览" Command="{Binding ToggleWorkspaceSurfaceCommand}">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A9;" FontSize="14" />
+                    </Button>
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="{Binding ThemeToggleLabel}" Command="{Binding ToggleThemeCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE706;" FontSize="14" />
                     </Button>
-                    <Button Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="设置" Command="{Binding NavigateSettingsCommand}">
+                    <Button Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="设置" Command="{Binding NavigateSettingsCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;" FontSize="14" />
                     </Button>
                 </StackPanel>
@@ -60,7 +74,7 @@
 
         <Grid Grid.Row="1" Visibility="{Binding IsWorkspaceRoute, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="280" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="292" />
                 <ColumnDefinition x:Name="SidebarSplitterColumn" Width="1" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -102,9 +116,13 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis" />
-                <ProgressRing Grid.Column="1" Width="18" Height="18" IsActive="{Binding IsBusy}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <ProgressRing Grid.Column="2" Width="18" Height="18" IsActive="{Binding IsBusy}" />
             </Grid>
         </Border>
     </Grid>

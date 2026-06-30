@@ -22,7 +22,10 @@ public sealed class ReadOsMspHost
         registry
             .Register(new ReadOsWorkspaceCommand(workspaceStore, workspaceProvider))
             .Register(new ReadOsLibraryCommand(workspaceProvider))
-            .Register(new ReadOsPdfCommand(workspaceStore, pdfService, workspaceProvider, selectedDocumentProvider));
+            .Register(new ReadOsPdfCommand(workspaceStore, pdfService, workspaceProvider, selectedDocumentProvider))
+            .Register(new ReadOsWindowsCommand(workspaceStore, selectedDocumentProvider))
+            .Register(new ReadOsPageLabelCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
+            .Register(new ReadOsOutlineCommand(workspaceStore, workspaceProvider, selectedDocumentProvider));
 
         var context = new MspCommandContext(
             workspace,

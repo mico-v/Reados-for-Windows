@@ -9,6 +9,12 @@ public sealed class PwdCommand : IMspCommand
 
     public string Summary => "Print the current virtual workspace directory.";
 
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "pwd",
+        MspCommandEffects.ReadWorkspace);
+
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

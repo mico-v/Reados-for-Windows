@@ -11,29 +11,41 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#F9F9F9" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#F7F7F8" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#ECECEC" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#DADCE0" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#5F6368" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#F6F7F9" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#F1F4F8" />
+                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#FAFBFC" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#E3E7ED" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#C9D1DA" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#111827" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#4B5563" />
                     <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#6B7280" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#111827" />
                     <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#D8D8D8" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#2563EB" />
+                    <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#15803D" />
+                    <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#B45309" />
+                    <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#DC2626" />
+                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#D6DBE3" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#212121" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#2A2A2A" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#333333" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#424242" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#F4F4F4" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#C7C7C7" />
-                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#9B9B9B" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#F4F4F4" />
-                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#2F2F2F" />
+                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#171A1F" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#111318" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#20242B" />
+                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#1B1F26" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#2C333D" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#3E4653" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#CBD5E1" />
+                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#94A3B8" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#111318" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#60A5FA" />
+                    <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#0B1220" />
+                    <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#4ADE80" />
+                    <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#FBBF24" />
+                    <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#F87171" />
+                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#252B34" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />

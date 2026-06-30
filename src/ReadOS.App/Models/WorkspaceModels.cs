@@ -36,6 +36,8 @@ public sealed partial class WorkspaceState : ObservableObject
     public partial WorkspaceSettings Settings { get; set; } = new();
 
     public ObservableCollection<ProjectItem> Projects { get; } = new();
+
+    public ObservableCollection<WorkspaceArtifact> Artifacts { get; } = new();
 }
 
 public sealed partial class WorkspaceSettings : ObservableObject
@@ -297,6 +299,83 @@ public sealed partial class ChatAttachment : ObservableObject
         AttachmentKind.Region => $"第 {StartPage} 页框选区域",
         _ => FilePath ?? string.Empty
     };
+}
+
+public sealed partial class WorkspaceArtifact : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial string Path { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Content { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string MediaType { get; set; } = "text/plain";
+
+    [ObservableProperty]
+    public partial string Description { get; set; } = "MSP artifact";
+
+    [ObservableProperty]
+    public partial DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
+
+    [ObservableProperty]
+    public partial DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+
+    [JsonIgnore]
+    public long SizeBytes => Content.Length;
+}
+
+public sealed class MspTranscriptEntry
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    public string Actor { get; init; } = "agent";
+
+    public required string CommandText { get; init; }
+
+    public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.Now;
+
+    public DateTimeOffset CompletedAt { get; init; } = DateTimeOffset.Now;
+
+    public int ExitCode { get; init; }
+
+    public string Stdout { get; init; } = string.Empty;
+
+    public string Stderr { get; init; } = string.Empty;
+
+    public string Decision { get; init; } = "Allow";
+
+    public string Effects { get; init; } = "None";
+
+    public string ArtifactsSummary { get; init; } = string.Empty;
+
+    [JsonIgnore]
+    public bool Succeeded => ExitCode == 0;
+
+    [JsonIgnore]
+    public string StatusLabel => Succeeded ? "完成" : $"失败 {ExitCode}";
+
+    [JsonIgnore]
+    public string CompletedLabel => CompletedAt.ToLocalTime().ToString("HH:mm:ss");
+
+    [JsonIgnore]
+    public string OutputPreview
+    {
+        get
+        {
+            var output = string.IsNullOrWhiteSpace(Stdout) ? Stderr : Stdout;
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                return "(no output)";
+            }
+
+            output = output.Trim();
+            return output.Length <= 900 ? output : output[..900] + "...";
+        }
+    }
 }
 
 public sealed partial class PageImageItem : ObservableObject

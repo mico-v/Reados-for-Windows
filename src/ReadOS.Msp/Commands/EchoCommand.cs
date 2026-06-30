@@ -9,6 +9,11 @@ public sealed class EchoCommand : IMspCommand
 
     public string Summary => "Write arguments to stdout.";
 
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "echo [text...]");
+
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,

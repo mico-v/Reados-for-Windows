@@ -33,7 +33,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     public async ValueTask<bool> ExistsAsync(string path, CancellationToken cancellationToken = default)
     {
         var normalized = NormalizePath(path);
-        if (normalized is "/" or "/projects" or "/library" or "/documents" or "/settings.json")
+        if (normalized is "/" or "/projects" or "/library" or "/documents" or "/artifacts" or "/settings.json")
         {
             return workspaceProvider() is not null;
         }
@@ -67,6 +67,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             "/documents" => Documents(workspace)
                 .Select(document => Directory($"/documents/{document.Id}", document.Id))
                 .ToArray(),
+            "/artifacts" => ListArtifactEntries(normalized, workspace),
             _ => ListNested(normalized, workspace)
         };
 
@@ -85,6 +86,13 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         if (normalized == "/settings.json")
         {
             return JsonSerializer.Serialize(ProjectSettings(workspace.Settings), JsonOptions);
+        }
+
+        if (normalized.StartsWith("/artifacts/", StringComparison.Ordinal))
+        {
+            var artifact = workspace.Artifacts.FirstOrDefault(item =>
+                string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
+            return artifact?.Content;
         }
 
         if (normalized.StartsWith("/library/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
@@ -165,9 +173,38 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         return null;
     }
 
-    public ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
+    public async ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException("ReadOS virtual workspace is read-only in this MSP phase.");
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            throw new InvalidOperationException("ReadOS workspace is not loaded.");
+        }
+
+        var normalized = NormalizePath(path);
+        if (!normalized.StartsWith("/artifacts/", StringComparison.Ordinal) ||
+            normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            throw new NotSupportedException("ReadOS virtual workspace only supports writing under /artifacts in this MSP phase.");
+        }
+
+        var now = DateTimeOffset.Now;
+        var artifact = workspace.Artifacts.FirstOrDefault(item =>
+            string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
+        if (artifact is null)
+        {
+            artifact = new WorkspaceArtifact
+            {
+                Path = normalized,
+                CreatedAt = now
+            };
+            workspace.Artifacts.Add(artifact);
+        }
+
+        artifact.Content = content;
+        artifact.MediaType = GuessMediaType(normalized);
+        artifact.UpdatedAt = now;
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
     }
 
     private static IReadOnlyList<MspWorkspaceEntry> RootEntries()
@@ -177,6 +214,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             Directory("/projects", "projects"),
             Directory("/library", "library"),
             Directory("/documents", "documents"),
+            Directory("/artifacts", "artifacts"),
             File("/settings.json", "settings.json", null, "application/json")
         };
     }
@@ -232,7 +270,52 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
                 .ToArray();
         }
 
+        if (parts.Length >= 1 && parts[0] == "artifacts")
+        {
+            return ListArtifactEntries(normalized, workspace);
+        }
+
         return Array.Empty<MspWorkspaceEntry>();
+    }
+
+    private static IReadOnlyList<MspWorkspaceEntry> ListArtifactEntries(string normalized, WorkspaceState workspace)
+    {
+        var entries = new Dictionary<string, MspWorkspaceEntry>(StringComparer.OrdinalIgnoreCase);
+        var prefix = normalized == "/artifacts" ? "/artifacts/" : normalized.TrimEnd('/') + "/";
+        foreach (var artifact in workspace.Artifacts)
+        {
+            if (!artifact.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var remainder = artifact.Path[prefix.Length..];
+            if (string.IsNullOrWhiteSpace(remainder))
+            {
+                continue;
+            }
+
+            var slashIndex = remainder.IndexOf('/');
+            if (slashIndex >= 0)
+            {
+                var directoryName = remainder[..slashIndex];
+                var directoryPath = prefix.TrimEnd('/') + "/" + directoryName;
+                entries.TryAdd(directoryPath, Directory(directoryPath, directoryName));
+            }
+            else
+            {
+                entries.TryAdd(artifact.Path, File(
+                    artifact.Path,
+                    Path.GetFileName(artifact.Path),
+                    artifact.SizeBytes,
+                    artifact.MediaType));
+            }
+        }
+
+        return entries.Values
+            .OrderBy(item => item.IsDirectory ? 0 : 1)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static IEnumerable<LibraryItem> Documents(WorkspaceState workspace)
@@ -270,6 +353,18 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     private static long EstimateDocumentInfoSize(LibraryItem document)
     {
         return document.Name.Length + 128;
+    }
+
+    private static string GuessMediaType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "application/json",
+            ".md" or ".markdown" => "text/markdown",
+            ".txt" => "text/plain",
+            ".csv" => "text/csv",
+            _ => "text/plain"
+        };
     }
 
     private static object ProjectSettings(WorkspaceSettings settings)

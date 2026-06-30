@@ -9,6 +9,12 @@ public sealed class CatCommand : IMspCommand
 
     public string Summary => "Read a text file from the virtual workspace.";
 
+    public MspCommandMetadata Metadata => MspCommandMetadata.Create(
+        Name,
+        Summary,
+        "cat <path> [path...]",
+        MspCommandEffects.ReadWorkspace);
+
     public async ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandContext context,
         IReadOnlyList<string> arguments,
