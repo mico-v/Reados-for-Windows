@@ -34,7 +34,7 @@ Each non-empty line is parsed as one MSP command. Comment lines beginning with `
 3. If the model returns an `msp` block, `ShellViewModel` parses it.
 4. Each command is executed through `ReadOsMspHost`.
 5. Read-only commands run immediately; mutating commands return `RequireConfirmation`.
-6. Results and approval requests are written to the MSP transcript panel.
+6. Results and approval requests are written to the MSP transcript panel and persisted with workspace state.
 7. The operator can approve and replay the pending command or deny it.
 8. The command report is sent back to the model with MSP command requests disabled.
 9. The final answer is saved into the conversation.
@@ -45,6 +45,7 @@ MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries
 
 - `workspace`, `library`, and `pdf` commands translate to workspace/PDF services.
 - `artifact list/show` read durable `/artifacts/...` workspace files; `artifact write` creates them behind policy approval.
+- `/transcripts/{id}.json` exposes prior MSP command records for later inspection.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `windows info` and `windows path ...` translate to safe .NET/Windows host metadata and local ReadOS paths.
 - raw host filesystem access remains hidden behind virtual workspace paths and app services.

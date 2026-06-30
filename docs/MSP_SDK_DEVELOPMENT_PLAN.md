@@ -60,6 +60,7 @@ Implemented:
 - `MspCommandResult`
 - `MspArtifact`
 - `MspAuditRecord`
+- `MspCommandTranscriptRecord`
 - `MspCommandRegistry`
 - `MspRuntime`
 - parser and workspace path utility
@@ -76,13 +77,13 @@ Implemented:
 - ReadOS virtual workspace
 - ReadOS commands: `workspace`, `library`, `pdf`, `windows`, `page-label`, `outline`
 - WinUI transcript approval actions using one-shot app-host approval tokens
+- persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
 
 Next:
 
 - richer command result diagnostics;
 - artifact provenance beyond the first persisted content fields;
-- transcript records;
-- ReadOS virtual workspace tests.
+- more ReadOS virtual workspace tests.
 
 ## Phase 2: Hosting Layer
 
@@ -97,7 +98,7 @@ Responsibilities:
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
 
-Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy and one-shot approval token path. It still needs durable session records, cancellation/progress events, and transcript persistence before it should become a separate `ReadOS.Msp.Hosting` project.
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, and durable workspace-backed transcript records. It still needs durable session records plus cancellation/progress events before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 

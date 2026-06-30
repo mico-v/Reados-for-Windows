@@ -46,6 +46,7 @@ ReadOS currently uses a compact WinUI frame that should evolve from a reader lay
 - offline response mode
 - MSP command transcript
 - command stdout/stderr, artifacts, and audit records
+- workspace-backed transcript history exposed through `/transcripts`
 
 ### Approval And Policy Surface
 

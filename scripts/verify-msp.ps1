@@ -44,7 +44,9 @@ if (-not $SkipDotNet) {
         throw "dotnet was not found. Install the .NET SDK or add dotnet.exe to PATH."
     }
 
+    & $dotnet restore (Join-Path $repoRoot "ReadOS.sln")
     & $dotnet test (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj") --no-restore
+    & $dotnet test (Join-Path $repoRoot "tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj") --no-restore
     & $dotnet build (Join-Path $repoRoot "ReadOS.sln") --no-restore
 }
 

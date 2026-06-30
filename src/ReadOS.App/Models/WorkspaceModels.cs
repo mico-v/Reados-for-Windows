@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media.Imaging;
+using ReadOS.Msp.Models;
 
 namespace ReadOS.App.Models;
 
@@ -38,6 +39,8 @@ public sealed partial class WorkspaceState : ObservableObject
     public ObservableCollection<ProjectItem> Projects { get; } = new();
 
     public ObservableCollection<WorkspaceArtifact> Artifacts { get; } = new();
+
+    public ObservableCollection<MspTranscriptEntry> MspTranscript { get; } = new();
 }
 
 public sealed partial class WorkspaceSettings : ObservableObject
@@ -351,6 +354,42 @@ public sealed class MspTranscriptEntry
     public string Effects { get; init; } = "None";
 
     public string ArtifactsSummary { get; init; } = string.Empty;
+
+    public static MspTranscriptEntry FromRecord(MspCommandTranscriptRecord record)
+    {
+        return new MspTranscriptEntry
+        {
+            Id = record.Id,
+            Actor = record.Actor,
+            CommandText = record.CommandText,
+            StartedAt = record.StartedAt,
+            CompletedAt = record.CompletedAt,
+            ExitCode = record.ExitCode,
+            Stdout = record.Stdout,
+            Stderr = record.Stderr,
+            Decision = record.Decision,
+            Effects = record.Effects,
+            ArtifactsSummary = record.ArtifactsSummary
+        };
+    }
+
+    public MspCommandTranscriptRecord ToRecord()
+    {
+        return new MspCommandTranscriptRecord
+        {
+            Id = Id,
+            Actor = Actor,
+            CommandText = CommandText,
+            StartedAt = StartedAt,
+            CompletedAt = CompletedAt,
+            ExitCode = ExitCode,
+            Stdout = Stdout,
+            Stderr = Stderr,
+            Decision = Decision,
+            Effects = Effects,
+            ArtifactsSummary = ArtifactsSummary
+        };
+    }
 
     [JsonIgnore]
     public bool Succeeded => ExitCode == 0;

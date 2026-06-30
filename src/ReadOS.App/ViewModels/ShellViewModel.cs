@@ -65,6 +65,8 @@ public enum PresenterKind
 
 public sealed partial class ShellViewModel : ObservableObject
 {
+    private const int MaxMspTranscriptEntries = 200;
+
     private readonly IWorkspaceStore workspaceStore;
     private readonly IPdfDocumentService pdfService;
     private readonly IFileDialogService fileDialogService;
@@ -434,6 +436,7 @@ public sealed partial class ShellViewModel : ObservableObject
         try
         {
             MspTranscript.Remove(entry);
+            RemoveWorkspaceTranscriptEntry(entry);
             var approved = await ExecuteAndRecordMspCommandAsync(entry.CommandText, entry.Actor, approved: true);
             StatusMessage = approved.Succeeded
                 ? $"已批准并执行：{approved.CommandText}"
@@ -446,7 +449,7 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void DenyMspCommand(MspTranscriptEntry? entry)
+    private async Task DenyMspCommandAsync(MspTranscriptEntry? entry)
     {
         if (entry is null || !entry.IsApprovalRequired)
         {
@@ -459,7 +462,8 @@ public sealed partial class ShellViewModel : ObservableObject
             MspTranscript.RemoveAt(index);
         }
 
-        MspTranscript.Insert(Math.Max(0, index), new MspTranscriptEntry
+        RemoveWorkspaceTranscriptEntry(entry);
+        var deniedEntry = MspTranscriptEntry.FromRecord(new MspCommandTranscriptRecord
         {
             Actor = entry.Actor,
             CommandText = entry.CommandText,
@@ -471,6 +475,11 @@ public sealed partial class ShellViewModel : ObservableObject
             Effects = entry.Effects,
             ArtifactsSummary = entry.ArtifactsSummary
         });
+
+        var insertIndex = Math.Max(0, index);
+        MspTranscript.Insert(insertIndex, deniedEntry);
+        PersistTranscriptEntry(deniedEntry, insertIndex);
+        await SaveWorkspaceAsync();
         StatusMessage = $"已拒绝 MSP 命令：{entry.CommandText}";
         OnPropertyChanged(nameof(MspTranscriptSummary));
     }
@@ -482,6 +491,7 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             workspace = await workspaceStore.LoadAsync();
             LoadSettings(workspace.Settings);
+            RefreshMspTranscript();
             RefreshProjects();
             var firstProject = workspace.Projects.FirstOrDefault();
             if (firstProject is not null)
@@ -1970,7 +1980,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         var auditRecord = result.AuditRecords.LastOrDefault();
-        var entry = new MspTranscriptEntry
+        var transcriptRecord = new MspCommandTranscriptRecord
         {
             Actor = actor,
             CommandText = commandText,
@@ -1983,9 +1993,65 @@ public sealed partial class ShellViewModel : ObservableObject
             Effects = auditRecord?.Effects.ToString() ?? "None",
             ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path))
         };
+        var entry = MspTranscriptEntry.FromRecord(transcriptRecord);
         MspTranscript.Insert(0, entry);
+        PersistTranscriptEntry(entry, 0);
+        await SaveWorkspaceAsync();
         OnPropertyChanged(nameof(MspTranscriptSummary));
         return entry;
+    }
+
+    private void RefreshMspTranscript()
+    {
+        MspTranscript.Clear();
+        if (workspace is null)
+        {
+            return;
+        }
+
+        foreach (var entry in workspace.MspTranscript
+            .OrderByDescending(entry => entry.CompletedAt)
+            .Take(MaxMspTranscriptEntries))
+        {
+            MspTranscript.Add(entry);
+        }
+
+        workspace.MspTranscript.Clear();
+        foreach (var entry in MspTranscript)
+        {
+            workspace.MspTranscript.Add(entry);
+        }
+
+        OnPropertyChanged(nameof(MspTranscriptSummary));
+    }
+
+    private void PersistTranscriptEntry(MspTranscriptEntry entry, int index)
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        RemoveWorkspaceTranscriptEntry(entry);
+        workspace.MspTranscript.Insert(Math.Clamp(index, 0, workspace.MspTranscript.Count), entry);
+        while (workspace.MspTranscript.Count > MaxMspTranscriptEntries)
+        {
+            workspace.MspTranscript.RemoveAt(workspace.MspTranscript.Count - 1);
+        }
+    }
+
+    private void RemoveWorkspaceTranscriptEntry(MspTranscriptEntry entry)
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        var existing = workspace.MspTranscript.FirstOrDefault(item => item.Id == entry.Id);
+        if (existing is not null)
+        {
+            workspace.MspTranscript.Remove(existing);
+        }
     }
 
     private async Task<string> ExecuteAgentMspCommandsAsync(IReadOnlyList<string> commandTexts)

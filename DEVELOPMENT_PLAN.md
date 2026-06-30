@@ -18,8 +18,9 @@ Implemented:
 - ReadOS virtual workspace paths for settings, projects, library, documents, pages, outlines, and conversations.
 - Domain commands: `workspace info`, `library list`, `pdf inspect`, `pdf text`, `pdf search`.
 - Argument-specific command metadata, effect-based policy checks, and operator approval retry for mutating MSP commands.
+- Core transcript record contract, persisted workbench transcript state, and `/transcripts` virtual workspace projection.
 - Rust `native/msp-core` prototype and FFI smoke script.
-- MSP test project with parser/runtime/audit coverage.
+- MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
 The main gap is not another reader feature. The main gap is the service layer: sessions, command metadata, policy enforcement, command transcript, artifact persistence, and an agent bridge that can safely drive vertical workflows.
 
@@ -93,7 +94,7 @@ Status: started.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
 
-Current status: command transcripts are visible in the workbench, MSP metadata reaches policy/audit, `EffectBasedMspPolicy` can require confirmation, and the app host uses one-shot approval tokens to replay approved mutating commands.
+Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, and replayable through one-shot approval tokens for approved mutating commands.
 
 ### Milestone 3: Artifact System
 
@@ -148,11 +149,8 @@ Mutating or approval-gated:
 
 ## Immediate Backlog
 
-- Add `MspCommandTranscriptRecord`.
 - Add target-path and provenance diagnostics to policy/audit records.
-- Add tests for `ReadOsVirtualWorkspace`.
 - Add artifact provenance fields beyond path/media type/content.
-- Persist MSP transcript records under the local workspace.
 - Add cancellation/progress event surfaces for long-running commands.
 - Add `attach` and `chat` commands behind the same policy/audit flow.
 

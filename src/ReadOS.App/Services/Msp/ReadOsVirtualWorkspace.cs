@@ -33,7 +33,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     public async ValueTask<bool> ExistsAsync(string path, CancellationToken cancellationToken = default)
     {
         var normalized = NormalizePath(path);
-        if (normalized is "/" or "/projects" or "/library" or "/documents" or "/artifacts" or "/settings.json")
+        if (normalized is "/" or "/projects" or "/library" or "/documents" or "/artifacts" or "/transcripts" or "/settings.json")
         {
             return workspaceProvider() is not null;
         }
@@ -68,6 +68,9 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
                 .Select(document => Directory($"/documents/{document.Id}", document.Id))
                 .ToArray(),
             "/artifacts" => ListArtifactEntries(normalized, workspace),
+            "/transcripts" => workspace.MspTranscript
+                .Select(entry => File($"/transcripts/{entry.Id}.json", $"{entry.Id}.json", EstimateTranscriptSize(entry), "application/json"))
+                .ToArray(),
             _ => ListNested(normalized, workspace)
         };
 
@@ -93,6 +96,14 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             var artifact = workspace.Artifacts.FirstOrDefault(item =>
                 string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
             return artifact?.Content;
+        }
+
+        if (normalized.StartsWith("/transcripts/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
+        {
+            var transcriptId = Path.GetFileNameWithoutExtension(normalized);
+            var entry = workspace.MspTranscript.FirstOrDefault(item =>
+                string.Equals(item.Id, transcriptId, StringComparison.OrdinalIgnoreCase));
+            return entry is null ? null : JsonSerializer.Serialize(ProjectTranscript(entry), JsonOptions);
         }
 
         if (normalized.StartsWith("/library/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
@@ -215,6 +226,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             Directory("/library", "library"),
             Directory("/documents", "documents"),
             Directory("/artifacts", "artifacts"),
+            Directory("/transcripts", "transcripts"),
             File("/settings.json", "settings.json", null, "application/json")
         };
     }
@@ -273,6 +285,15 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         if (parts.Length >= 1 && parts[0] == "artifacts")
         {
             return ListArtifactEntries(normalized, workspace);
+        }
+
+        if (parts.Length >= 1 && parts[0] == "transcripts")
+        {
+            return parts.Length == 1
+                ? workspace.MspTranscript
+                    .Select(entry => File($"/transcripts/{entry.Id}.json", $"{entry.Id}.json", EstimateTranscriptSize(entry), "application/json"))
+                    .ToArray()
+                : Array.Empty<MspWorkspaceEntry>();
         }
 
         return Array.Empty<MspWorkspaceEntry>();
@@ -353,6 +374,15 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     private static long EstimateDocumentInfoSize(LibraryItem document)
     {
         return document.Name.Length + 128;
+    }
+
+    private static long EstimateTranscriptSize(MspTranscriptEntry entry)
+    {
+        return entry.CommandText.Length +
+            entry.Stdout.Length +
+            entry.Stderr.Length +
+            entry.ArtifactsSummary.Length +
+            256;
     }
 
     private static string GuessMediaType(string path)
@@ -453,6 +483,25 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
                     attachment.RegionHeight
                 })
             })
+        };
+    }
+
+    private static object ProjectTranscript(MspTranscriptEntry entry)
+    {
+        var record = entry.ToRecord();
+        return new
+        {
+            record.Id,
+            record.Actor,
+            record.CommandText,
+            record.StartedAt,
+            record.CompletedAt,
+            record.ExitCode,
+            record.Stdout,
+            record.Stderr,
+            record.Decision,
+            record.Effects,
+            record.ArtifactsSummary
         };
     }
 }

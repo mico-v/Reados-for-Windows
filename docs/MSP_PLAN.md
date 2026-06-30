@@ -140,6 +140,8 @@ Current and target path shape:
 /artifacts
 /artifacts/{artifactId}/manifest.json
 /artifacts/{artifactId}/content.md
+/transcripts
+/transcripts/{transcriptId}.json
 ```
 
 Domain services can be more complex internally, but the agent should see durable, inspectable files.
@@ -215,6 +217,8 @@ Audit records should answer:
 - what artifacts were created.
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
+
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`.
 
 ## Artifact Model
 
