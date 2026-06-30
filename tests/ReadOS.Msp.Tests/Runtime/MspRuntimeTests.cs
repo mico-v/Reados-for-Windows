@@ -113,6 +113,100 @@ public sealed class MspRuntimeTests
     }
 
     [Fact]
+    public async Task Workflow_summary_writes_artifact_with_session_transcript_provenance()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        await workspace.WriteTextAsync("/sessions/workflow-1.json", """
+            {
+              "id": "workflow-1",
+              "title": "Evidence workflow",
+              "actor": "workflow-agent",
+              "startedAt": "2026-06-30T01:00:00Z",
+              "updatedAt": "2026-06-30T01:05:00Z",
+              "lastCommandText": "missing-command",
+              "lastDecision": "Allow",
+              "lastExitCode": 127,
+              "lastDiagnosticsSummary": "error msp.command_not_found: missing-command",
+              "lastRecoveryHint": "Run help.",
+              "commandCount": 2,
+              "approvalCount": 1,
+              "failureCount": 1,
+              "transcriptIds": [ "ok-1", "fail-1" ],
+              "artifactPaths": [ "/artifacts/excerpts/alpha.md" ]
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/ok-1.json", """
+            {
+              "id": "ok-1",
+              "actor": "workflow-agent",
+              "sessionId": "workflow-1",
+              "commandText": "pdf text current 1 2 --artifact /artifacts/excerpts/alpha.md",
+              "startedAt": "2026-06-30T01:01:00Z",
+              "completedAt": "2026-06-30T01:02:00Z",
+              "exitCode": 0,
+              "stdout": "artifact\t/artifacts/excerpts/alpha.md\t42\n",
+              "decision": "Allow",
+              "effects": "ReadWorkspace, WriteWorkspace, CreateArtifact",
+              "artifactsSummary": "/artifacts/excerpts/alpha.md"
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/fail-1.json", """
+            {
+              "id": "fail-1",
+              "actor": "workflow-agent",
+              "sessionId": "workflow-1",
+              "commandText": "missing-command",
+              "startedAt": "2026-06-30T01:03:00Z",
+              "completedAt": "2026-06-30T01:04:00Z",
+              "exitCode": 127,
+              "stderr": "Command not found: missing-command",
+              "decision": "Allow",
+              "effects": "None",
+              "diagnosticsSummary": "error msp.command_not_found: Command not found: missing-command",
+              "recoveryHint": "Run help to list available MSP commands."
+            }
+            """);
+        var runtime = MspRuntime.CreateDefault(workspace);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "workflow-agent",
+            SessionId = "workflow-1",
+            CommandText = "workflow summary current --artifact /artifacts/workflows/workflow-1.md"
+        });
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("# MSP Workflow Summary", result.Stdout);
+        Assert.Contains("- failures: 1", result.Stdout);
+        Assert.Contains("msp.command_not_found", result.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/workflow-1.md", result.Stdout);
+
+        var artifact = Assert.Single(result.Artifacts);
+        Assert.Equal("/artifacts/workflows/workflow-1.md", artifact.Path);
+        Assert.Equal("text/markdown", artifact.MediaType);
+        Assert.Equal("workflow-agent", artifact.Actor);
+        Assert.Equal("workflow-1", artifact.SessionId);
+        Assert.Equal("workflow summary current --artifact /artifacts/workflows/workflow-1.md", artifact.SourceCommand);
+        Assert.Equal(new[]
+        {
+            "/sessions/workflow-1.json",
+            "/transcripts/ok-1.json",
+            "/transcripts/fail-1.json"
+        }, artifact.SourcePaths);
+
+        var content = await workspace.TryReadTextAsync("/artifacts/workflows/workflow-1.md");
+        Assert.NotNull(content);
+        Assert.Contains("Evidence workflow", content);
+        Assert.Contains("missing-command", content);
+
+        var manifest = await workspace.TryReadTextAsync("/artifacts/workflows/workflow-1.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"sourcePaths\": [", manifest);
+        Assert.Contains("\"/sessions/workflow-1.json\"", manifest);
+        Assert.Contains("\"/transcripts/fail-1.json\"", manifest);
+    }
+
+    [Fact]
     public async Task Runtime_passes_command_metadata_to_policy_and_audit()
     {
         var policy = new CapturingPolicy();

@@ -103,6 +103,7 @@ Core pack:
 - `ls`
 - `cat`
 - `echo`
+- `workflow summary`
 
 ReadOS document pack:
 
@@ -116,11 +117,12 @@ ReadOS document pack:
 
 Planned packs:
 
-- workflow commands.
+- named workflow run commands.
 
 Started packs:
 
 - artifact commands;
+- workflow summary commands;
 - page label commands;
 - outline commands;
 - attachment commands;
@@ -264,7 +266,7 @@ Audit records should answer:
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Failed transcript records include diagnostic summaries and recovery hints. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index with failure counts and the latest recovery hint before reading individual transcript files. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Failed transcript records include diagnostic summaries and recovery hints. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index with failure counts and the latest recovery hint before reading individual transcript files. `workflow summary current|<session-id>` turns those projections into a workflow-level Markdown report, and `--artifact` persists that report with session/transcript source paths. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
 
 ## Artifact Model
 
@@ -287,11 +289,19 @@ Each artifact should have:
 - creation time;
 - actor/session.
 
-Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. `pdf search ... --artifact <path>` creates tab-separated hit artifacts and records the matched page paths and page references. `chat ask ... --artifact <path>` creates Markdown answer artifacts and records queued evidence attachments as source document/page references. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`.
+Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. `pdf search ... --artifact <path>` creates tab-separated hit artifacts and records the matched page paths and page references. `chat ask ... --artifact <path>` creates Markdown answer artifacts and records queued evidence attachments as source document/page references. `workflow summary ... --artifact <path>` creates workflow report artifacts and records `/sessions/{id}.json` plus `/transcripts/{id}.json` source paths. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`.
 
 ## Workflow Model
 
 Workflows should be added after single-command semantics are reliable. A workflow is a named, inspectable sequence of MSP commands, not a hidden block of app logic.
+
+Current first step:
+
+```text
+workflow summary current --artifact /artifacts/workflows/current.md
+```
+
+This summarizes an existing MSP session before the runtime grows `workflow run` or named command scripts.
 
 Example future workflow:
 

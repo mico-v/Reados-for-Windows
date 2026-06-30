@@ -371,6 +371,92 @@ public sealed class ReadOsMspHostTests
         Assert.Contains("hits: 3", persisted.Preview);
     }
 
+    [Fact]
+    public async Task Workflow_summary_artifact_requires_approval_and_persists_session_provenance()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var success = new MspTranscriptEntry
+        {
+            Id = "transcript-ok",
+            Actor = "test-agent",
+            SessionId = ReadOsMspHost.DefaultSessionId,
+            CommandText = "pdf search current alpha --artifact /artifacts/search/alpha.tsv",
+            ExitCode = 0,
+            Stdout = "artifact\t/artifacts/search/alpha.tsv\t3",
+            Decision = "Allow",
+            Effects = "ReadWorkspace, WriteWorkspace, CreateArtifact",
+            ArtifactsSummary = "/artifacts/search/alpha.tsv"
+        };
+        var failure = new MspTranscriptEntry
+        {
+            Id = "transcript-fail",
+            Actor = "test-agent",
+            SessionId = ReadOsMspHost.DefaultSessionId,
+            CommandText = "missing-command",
+            ExitCode = 127,
+            Stderr = "Command not found: missing-command",
+            Decision = "Allow",
+            Effects = "None",
+            DiagnosticsSummary = "error msp.command_not_found: Command not found: missing-command",
+            RecoveryHint = "Run help to list available MSP commands."
+        };
+        workspace.MspTranscript.Add(success);
+        workspace.MspTranscript.Add(failure);
+        var session = new MspSessionEntry
+        {
+            Id = ReadOsMspHost.DefaultSessionId,
+            Title = "ReadOS Workbench MSP Session",
+            Actor = "test-agent",
+            LastCommandText = failure.CommandText,
+            LastExitCode = failure.ExitCode,
+            CommandCount = 2,
+            ApprovalCount = 1,
+            FailureCount = 1,
+            LastDiagnosticsSummary = failure.DiagnosticsSummary,
+            LastRecoveryHint = failure.RecoveryHint
+        };
+        session.TranscriptIds.Add(success.Id);
+        session.TranscriptIds.Add(failure.Id);
+        session.ArtifactPaths.Add("/artifacts/search/alpha.tsv");
+        workspace.MspSessions.Add(session);
+        var host = CreateHost(workspace, document);
+        const string commandText = "workflow summary current --artifact /artifacts/workflows/current.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
+            pendingAudit.Effects);
+        Assert.Contains("/artifacts/workflows/current.md", pendingAudit.Preview.Targets);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("# MSP Workflow Summary", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/current.md", approved.Stdout);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/current.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Contains("/sessions/reados-workbench.json", resultArtifact.SourcePaths);
+        Assert.Contains("/transcripts/transcript-ok.json", resultArtifact.SourcePaths);
+        Assert.Contains("/transcripts/transcript-fail.json", resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/workflows/current.md", persisted.Path);
+        Assert.Contains("ReadOS Workbench MSP Session", persisted.Content);
+        Assert.Contains("missing-command", persisted.Content);
+        Assert.Contains("msp.command_not_found", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Contains("/sessions/reados-workbench.json", persisted.SourcePaths);
+        Assert.Contains("/transcripts/transcript-fail.json", persisted.SourcePaths);
+    }
+
     private static ReadOsMspHost CreateHost(
         WorkspaceState workspace,
         LibraryItem document,

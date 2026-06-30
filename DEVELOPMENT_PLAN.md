@@ -30,10 +30,11 @@ Implemented:
 - Structured MSP command diagnostics with stable codes, recovery hints, transcript summaries, and session failure counts.
 - `pdf text --artifact` and `pdf search --artifact` command outputs that create durable evidence artifacts with automatic source document/page provenance.
 - `chat ask --artifact` command output that writes model answers into durable Markdown artifacts with queued-evidence provenance.
+- `workflow summary current|<session-id>` command output that summarizes session commands, failures, artifacts, and recovery hints, with optional Markdown artifact output carrying session/transcript provenance.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
-The main gap is not another reader feature. The remaining service-layer gaps are automatic evidence provenance, workflow-level diagnostics, and orchestration that can safely drive vertical document work.
+The main gap is not another reader feature. The remaining service-layer gaps are named workflow orchestration, richer recovery previews, and automatic provenance for multi-step workflow outputs.
 
 ## Target Solution Shape
 
@@ -118,7 +119,7 @@ Status: started.
 - Attach provenance: command text, source paths, document IDs, page ranges, timestamps, and actor.
 - Add `artifact list`, `artifact show`, and `artifact write`.
 
-Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and artifact-producing commands are treated as mutating operations by policy. Artifact results and persisted records now include source command, actor, session ID, timestamps, preview, media type, and source reference fields, with readable sidecar manifests such as `/artifacts/summary.md.manifest.json`. `pdf text --artifact` writes extracted PDF text directly to artifacts and records source document IDs, virtual page paths, and page ranges. `pdf search --artifact` writes tab-separated hit lists and records the matched source pages. `chat ask --artifact` writes model answers to Markdown artifacts and records queued evidence attachments as source document/page provenance.
+Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and artifact-producing commands are treated as mutating operations by policy. Artifact results and persisted records now include source command, actor, session ID, timestamps, preview, media type, and source reference fields, with readable sidecar manifests such as `/artifacts/summary.md.manifest.json`. `pdf text --artifact` writes extracted PDF text directly to artifacts and records source document IDs, virtual page paths, and page ranges. `pdf search --artifact` writes tab-separated hit lists and records the matched source pages. `chat ask --artifact` writes model answers to Markdown artifacts and records queued evidence attachments as source document/page provenance. `workflow summary --artifact` writes workflow-level Markdown reports and records `/sessions` plus `/transcripts` source paths.
 
 ### Milestone 4: Vertical Document Commands
 
@@ -130,6 +131,7 @@ Read-only:
 - `pdf text current 12 14`
 - `pdf search current "query"`
 - `cat /documents/{id}/pages/12.txt`
+- `workflow summary current`
 
 Mutating or approval-gated:
 
@@ -142,6 +144,7 @@ Mutating or approval-gated:
 - `pdf text current 12 14 --artifact /artifacts/excerpts/chapter.md`
 - `pdf search current "query" --artifact /artifacts/search/query.tsv`
 - `chat ask current "explain attached pages" --artifact /artifacts/chat/explanation.md`
+- `workflow summary current --artifact /artifacts/workflows/current.md`
 
 ### Milestone 5: Agent Bridge
 
@@ -154,9 +157,13 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 
 ### Milestone 6: Workflow Runtime
 
+Status: started.
+
 - Add command scripts or named workflows once single commands are reliable.
 - Support document-centered workflows such as "summarize this chapter", "extract evidence", and "build review notes".
 - Keep workflow outputs inspectable as artifacts.
+
+Current status: `workflow summary current|<session-id>` creates a workflow-level Markdown report from durable `/sessions` and `/transcripts` projections. With `--artifact`, the report is approval-gated, persisted under `/artifacts`, and records session/transcript source provenance.
 
 ### Milestone 7: Native Core And SDK Extraction
 
@@ -168,8 +175,8 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 ## Immediate Backlog
 
 - Add command-specific recovery previews for document metadata and model-provider failures.
-- Expand automatic source document/page provenance to named workflows.
-- Add workflow grouping and workflow-level failure summaries.
+- Add `workflow run` or command scripts for named document workflows.
+- Expand automatic source document/page provenance to named workflow artifacts.
 
 ## Verification
 

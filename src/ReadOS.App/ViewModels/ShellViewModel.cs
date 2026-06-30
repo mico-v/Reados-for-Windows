@@ -2457,6 +2457,8 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("artifact write /artifacts/summary.md \"摘要内容\"");
         builder.AppendLine("artifact list /artifacts");
         builder.AppendLine("artifact show /artifacts/summary.md");
+        builder.AppendLine("workflow summary current");
+        builder.AppendLine("workflow summary current --artifact /artifacts/workflows/current.md");
         builder.AppendLine("page-label set current 12 \"iii\"");
         builder.AppendLine("outline add current 42 \"Chapter 3\" --level 1");
         builder.AppendLine("attach page current 12");

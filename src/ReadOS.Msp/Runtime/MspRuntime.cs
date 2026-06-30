@@ -38,7 +38,8 @@ public sealed class MspRuntime
             .Register(new EchoCommand())
             .Register(new LsCommand())
             .Register(new CatCommand())
-            .Register(new ArtifactCommand());
+            .Register(new ArtifactCommand())
+            .Register(new WorkflowCommand());
         registry.Register(new HelpCommand(registry));
         return registry;
     }

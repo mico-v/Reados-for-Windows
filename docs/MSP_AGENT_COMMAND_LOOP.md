@@ -21,6 +21,8 @@ artifact write /artifacts/summary.md "summary"
 artifact list /artifacts
 artifact show /artifacts/summary.md
 artifact show /artifacts/summary.md.manifest.json
+workflow summary current
+workflow summary current --artifact /artifacts/workflows/current.md
 page-label set current 12 "iii"
 outline add current 42 "Chapter 3" --level 1
 attach page current 12
@@ -58,6 +60,7 @@ MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries
 - `artifact list/show` read durable `/artifacts/...` workspace files and their `.manifest.json` provenance sidecars; `artifact write` creates them behind policy approval.
 - `/sessions/{id}.json` exposes durable MSP session summaries that group transcripts, artifacts, approvals, last command state, failure counts, and the latest recovery hint.
 - `/transcripts/{id}.json` exposes prior MSP command records, diagnostics summaries, and recovery hints for later inspection.
+- `workflow summary current|<session-id>` reads `/sessions` and `/transcripts` to produce a workflow-level Markdown summary; `--artifact <path>` persists it with session/transcript provenance.
 - `page-label` and `outline` commands mutate ReadOS document metadata through app services.
 - `attach page/range` queues page evidence into the current chat after operator approval.
 - `chat ask` calls the configured chat service with queued evidence and writes the exchange to the document conversation after operator approval.
