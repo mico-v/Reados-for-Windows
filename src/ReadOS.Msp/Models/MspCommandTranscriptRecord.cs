@@ -28,6 +28,10 @@ public sealed record MspCommandTranscriptRecord
 
     public string PolicyPreview { get; init; } = string.Empty;
 
+    public string DiagnosticsSummary { get; init; } = string.Empty;
+
+    public string RecoveryHint { get; init; } = string.Empty;
+
     public string ProgressMessage { get; init; } = string.Empty;
 
     public int? ProgressPercent { get; init; }

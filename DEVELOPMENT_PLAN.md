@@ -27,10 +27,11 @@ Implemented:
 - Streaming MSP command events for started, policy decision, progress, completed, and canceled states.
 - Workbench transcript progress display and operator cancellation for running MSP commands.
 - Durable MSP session records that group transcript entries, artifacts, approvals, and last command state.
+- Structured MSP command diagnostics with stable codes, recovery hints, transcript summaries, and session failure counts.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
-The main gap is not another reader feature. The remaining service-layer gaps are richer diagnostics, automatic evidence provenance, and workflow orchestration that can safely drive vertical document work.
+The main gap is not another reader feature. The remaining service-layer gaps are automatic evidence provenance, workflow-level diagnostics, and orchestration that can safely drive vertical document work.
 
 ## Target Solution Shape
 
@@ -88,9 +89,11 @@ Status: in progress.
 ### Milestone 1: MSP Contract Hardening
 
 - Add command metadata: name, summary, argument shape, mutability, external effects, and artifact outputs.
-- Extend `MspCommandResult` with policy decision and structured diagnostics where useful.
+- Keep `MspCommandResult` structured with exit code, stdout/stderr, artifacts, audit records, and diagnostics.
 - Add test coverage for quoting, unknown commands, command failure, audit records, and workspace path normalization.
 - Define stable JSON examples for command request/result/audit/artifact.
+
+Current status: command metadata, previews, artifacts, audit records, streaming events, and structured diagnostics are implemented in the .NET runtime. Failure diagnostics use stable codes and recovery hints for parse errors, unknown commands, policy confirmation, cancellation, and runtime exceptions.
 
 ### Milestone 2: Service Host Layer
 
@@ -102,7 +105,7 @@ Status: started.
 - Add approval requests for write-capable commands.
 - Persist transcripts under the local workspace.
 
-Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, grouped into durable session records under `/sessions`, and replayable through one-shot approval tokens for approved mutating commands. Runtime requests now carry a session ID into policy, audit, command execution context, transcripts, artifacts, and sessions. `MspRuntime.ExecuteStreamingAsync` and `ReadOsMspHost.ExecuteStreamingAsync` publish command lifecycle/progress events, and `pdf text`, `pdf search`, and `chat ask` report progress during long-running work. The workbench consumes those events to update transcript progress and cancel the active MSP command.
+Current status: command transcripts are visible in the workbench, persisted with workspace state, readable under `/transcripts`, grouped into durable session records under `/sessions`, and replayable through one-shot approval tokens for approved mutating commands. Runtime requests now carry a session ID into policy, audit, command execution context, transcripts, artifacts, and sessions. `MspRuntime.ExecuteStreamingAsync` and `ReadOsMspHost.ExecuteStreamingAsync` publish command lifecycle/progress events, and `pdf text`, `pdf search`, and `chat ask` report progress during long-running work. The workbench consumes those events to update transcript progress and cancel the active MSP command. Failed commands now carry structured diagnostics and recovery hints into audit records, transcript summaries, agent reports, and session failure counts.
 
 ### Milestone 3: Artifact System
 
@@ -159,9 +162,9 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 
 ## Immediate Backlog
 
-- Add richer previews and recovery guidance for approval-gated commands.
+- Add command-specific recovery previews for document metadata and model-provider failures.
 - Populate source document/page provenance automatically from future document workflow commands.
-- Add richer session diagnostics such as failure summaries, retry hints, and workflow grouping.
+- Add workflow grouping and workflow-level failure summaries.
 
 ## Verification
 

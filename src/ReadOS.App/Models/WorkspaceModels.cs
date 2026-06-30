@@ -393,6 +393,12 @@ public sealed partial class MspTranscriptEntry : ObservableObject
     public partial string PolicyPreview { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string DiagnosticsSummary { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string RecoveryHint { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial string ProgressMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -421,6 +427,8 @@ public sealed partial class MspTranscriptEntry : ObservableObject
             Effects = record.Effects,
             ArtifactsSummary = record.ArtifactsSummary,
             PolicyPreview = record.PolicyPreview,
+            DiagnosticsSummary = record.DiagnosticsSummary,
+            RecoveryHint = record.RecoveryHint,
             ProgressMessage = record.ProgressMessage,
             ProgressPercent = record.ProgressPercent,
             WasCanceled = record.WasCanceled
@@ -444,6 +452,8 @@ public sealed partial class MspTranscriptEntry : ObservableObject
             Effects = Effects,
             ArtifactsSummary = ArtifactsSummary,
             PolicyPreview = PolicyPreview,
+            DiagnosticsSummary = DiagnosticsSummary,
+            RecoveryHint = RecoveryHint,
             ProgressMessage = ProgressMessage,
             ProgressPercent = ProgressPercent,
             WasCanceled = WasCanceled
@@ -484,6 +494,8 @@ public sealed partial class MspTranscriptEntry : ObservableObject
                 ? PolicyPreview
                 : WasCanceled && !string.IsNullOrWhiteSpace(ProgressMessage)
                     ? ProgressMessage
+                : !Succeeded && !string.IsNullOrWhiteSpace(DiagnosticsSummary)
+                    ? DiagnosticsSummary
                 : string.IsNullOrWhiteSpace(Stdout) ? Stderr : Stdout;
             if (string.IsNullOrWhiteSpace(output))
             {
@@ -521,6 +533,11 @@ public sealed partial class MspTranscriptEntry : ObservableObject
     }
 
     partial void OnPolicyPreviewChanged(string value)
+    {
+        OnPropertyChanged(nameof(OutputPreview));
+    }
+
+    partial void OnDiagnosticsSummaryChanged(string value)
     {
         OnPropertyChanged(nameof(OutputPreview));
     }
@@ -589,10 +606,19 @@ public sealed partial class MspSessionEntry : ObservableObject
     public partial string LastProgressMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string LastDiagnosticsSummary { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string LastRecoveryHint { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial int CommandCount { get; set; }
 
     [ObservableProperty]
     public partial int ApprovalCount { get; set; }
+
+    [ObservableProperty]
+    public partial int FailureCount { get; set; }
 
     public ObservableCollection<string> TranscriptIds { get; } = new();
 
@@ -611,8 +637,11 @@ public sealed partial class MspSessionEntry : ObservableObject
             LastDecision = record.LastDecision,
             LastExitCode = record.LastExitCode,
             LastProgressMessage = record.LastProgressMessage,
+            LastDiagnosticsSummary = record.LastDiagnosticsSummary,
+            LastRecoveryHint = record.LastRecoveryHint,
             CommandCount = record.CommandCount,
-            ApprovalCount = record.ApprovalCount
+            ApprovalCount = record.ApprovalCount,
+            FailureCount = record.FailureCount
         };
 
         foreach (var transcriptId in record.TranscriptIds)
@@ -641,15 +670,18 @@ public sealed partial class MspSessionEntry : ObservableObject
             LastDecision = LastDecision,
             LastExitCode = LastExitCode,
             LastProgressMessage = LastProgressMessage,
+            LastDiagnosticsSummary = LastDiagnosticsSummary,
+            LastRecoveryHint = LastRecoveryHint,
             CommandCount = CommandCount,
             ApprovalCount = ApprovalCount,
+            FailureCount = FailureCount,
             TranscriptIds = TranscriptIds.ToArray(),
             ArtifactPaths = ArtifactPaths.ToArray()
         };
     }
 
     [JsonIgnore]
-    public string Summary => $"{CommandCount} commands · {ArtifactPaths.Count} artifacts";
+    public string Summary => $"{CommandCount} commands · {FailureCount} failures · {ArtifactPaths.Count} artifacts";
 }
 
 public sealed partial class PageImageItem : ObservableObject

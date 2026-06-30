@@ -33,6 +33,7 @@ Internally, the result can remain structured:
   "exitCode": 0,
   "stdout": "12\t...preview...\n",
   "stderr": "",
+  "diagnostics": [],
   "artifacts": [],
   "auditRecords": []
 }
@@ -171,9 +172,19 @@ Minimum fields:
 - `exitCode`
 - `stdout`
 - `stderr`
+- `diagnostics`
 - `artifacts`
 - `auditRecords`
-- `diagnostics`
+
+### Command Diagnostics
+
+Diagnostics make failures machine-readable for the agent and actionable for the operator. Each diagnostic includes:
+
+- severity;
+- stable code such as `msp.command_not_found` or `msp.policy.require_confirmation`;
+- message;
+- optional target;
+- recovery hint.
 
 ### Session Record
 
@@ -181,7 +192,9 @@ Session records group command transcripts and artifacts for a single agent/workb
 
 - session ID, title, actor, start and update times;
 - last command text, decision, exit code, and progress message;
+- last diagnostics summary and recovery hint;
 - command and approval counts;
+- failure count;
 - transcript IDs;
 - artifact paths.
 
@@ -248,7 +261,7 @@ Audit records should answer:
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index before reading individual transcript files. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Failed transcript records include diagnostic summaries and recovery hints. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index with failure counts and the latest recovery hint before reading individual transcript files. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
 
 ## Artifact Model
 

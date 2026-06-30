@@ -20,9 +20,15 @@ public sealed record MspSessionRecord
 
     public string LastProgressMessage { get; init; } = string.Empty;
 
+    public string LastDiagnosticsSummary { get; init; } = string.Empty;
+
+    public string LastRecoveryHint { get; init; } = string.Empty;
+
     public int CommandCount { get; init; }
 
     public int ApprovalCount { get; init; }
+
+    public int FailureCount { get; init; }
 
     public IReadOnlyList<string> TranscriptIds { get; init; } = Array.Empty<string>();
 

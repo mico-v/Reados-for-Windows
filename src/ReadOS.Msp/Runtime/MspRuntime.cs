@@ -68,7 +68,11 @@ public sealed class MspRuntime
             }
             catch (OperationCanceledException)
             {
-                var canceled = MspCommandResult.Failure("Command execution was canceled.", exitCode: 130);
+                var canceled = MspCommandResult.Failure(
+                    "Command execution was canceled.",
+                    exitCode: 130,
+                    code: "msp.canceled",
+                    recoveryHint: "Rerun the command if the canceled operation is still needed.");
                 eventSink.TryPublish(new MspCommandEvent
                 {
                     Kind = MspCommandEventKind.Canceled,
@@ -82,13 +86,18 @@ public sealed class MspRuntime
             }
             catch (Exception ex)
             {
+                var failed = MspCommandResult.Failure(
+                    ex.Message,
+                    code: "msp.runtime.exception",
+                    recoveryHint: "Inspect the command and runtime host state before retrying.");
                 eventSink.TryPublish(new MspCommandEvent
                 {
                     Kind = MspCommandEventKind.Completed,
                     Actor = request.Actor,
                     SessionId = request.SessionId,
                     CommandText = request.CommandText,
-                    ExitCode = 1,
+                    ExitCode = failed.ExitCode,
+                    Result = failed,
                     Message = ex.Message
                 });
             }
@@ -118,7 +127,13 @@ public sealed class MspRuntime
         }
         catch (MspParseException ex)
         {
-            return MspCommandResult.Failure(ex.Message, exitCode: 2);
+            var parsedFailure = MspCommandResult.Failure(
+                ex.Message,
+                exitCode: 2,
+                code: "msp.parse",
+                recoveryHint: "Check quoting, command name, and reserved shell syntax.");
+            await PublishCompletedAsync(eventSink, request, string.Empty, parsedFailure, cancellationToken);
+            return parsedFailure;
         }
 
         var requestContext = context
@@ -145,7 +160,12 @@ public sealed class MspRuntime
 
         if (!requestContext.Registry.TryGet(parsed.Name, out var command))
         {
-            var missing = MspCommandResult.Failure($"Command not found: {parsed.Name}", exitCode: 127);
+            var missing = MspCommandResult.Failure(
+                $"Command not found: {parsed.Name}",
+                exitCode: 127,
+                code: "msp.command_not_found",
+                target: parsed.Name,
+                recoveryHint: "Run help to list available MSP commands.");
             await PublishCompletedAsync(eventSink, request, parsed.Name, missing, cancellationToken);
             return missing;
         }
@@ -180,7 +200,12 @@ public sealed class MspRuntime
 
         if (decision != MspPolicyDecision.Allow)
         {
-            var denied = MspCommandResult.Failure($"Policy decision: {decision}", exitCode: 126);
+            var denied = MspCommandResult.Failure(
+                $"Policy decision: {decision}",
+                exitCode: 126,
+                code: GetPolicyDiagnosticCode(decision),
+                target: parsed.Name,
+                recoveryHint: GetPolicyRecoveryHint(decision));
             var deniedAuditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, denied, cancellationToken);
             var deniedResult = denied with { AuditRecords = new[] { deniedAuditRecord } };
             await PublishCompletedAsync(eventSink, request, parsed.Name, deniedResult, cancellationToken);
@@ -200,7 +225,11 @@ public sealed class MspRuntime
         }
         catch (Exception ex)
         {
-            result = MspCommandResult.Failure(ex.Message);
+            result = MspCommandResult.Failure(
+                ex.Message,
+                code: "msp.exception",
+                target: parsed.Name,
+                recoveryHint: "Inspect stderr, command arguments, and workspace state before retrying.");
         }
 
         var auditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, result, cancellationToken);
@@ -230,7 +259,8 @@ public sealed class MspRuntime
             Preview = commandPreview,
             ExitCode = result.ExitCode,
             WorkingDirectory = context.WorkingDirectory,
-            Message = result.Succeeded ? null : result.Stderr
+            Message = result.Succeeded ? null : result.Stderr,
+            Diagnostics = result.Diagnostics
         };
         await context.Audit.RecordAsync(record, cancellationToken);
         return record;
@@ -264,6 +294,26 @@ public sealed class MspRuntime
         return eventSink is null
             ? ValueTask.CompletedTask
             : eventSink.PublishAsync(commandEvent, cancellationToken);
+    }
+
+    private static string GetPolicyDiagnosticCode(MspPolicyDecision decision)
+    {
+        return decision switch
+        {
+            MspPolicyDecision.RequireConfirmation => "msp.policy.require_confirmation",
+            MspPolicyDecision.Deny => "msp.policy.denied",
+            _ => "msp.policy"
+        };
+    }
+
+    private static string GetPolicyRecoveryHint(MspPolicyDecision decision)
+    {
+        return decision switch
+        {
+            MspPolicyDecision.RequireConfirmation => "Approve the pending command in the workbench transcript, or replay it with a host approval token.",
+            MspPolicyDecision.Deny => "Revise the command or host policy before retrying.",
+            _ => "Review the policy decision before retrying."
+        };
     }
 
     private sealed class ChannelMspCommandEventSink : IMspCommandEventSink

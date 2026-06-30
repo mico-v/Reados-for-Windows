@@ -446,6 +446,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             entry.Stderr.Length +
             entry.ArtifactsSummary.Length +
             entry.ProgressMessage.Length +
+            entry.DiagnosticsSummary.Length +
+            entry.RecoveryHint.Length +
             256;
     }
 
@@ -455,6 +457,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             session.Title.Length +
             session.LastCommandText.Length +
             session.LastProgressMessage.Length +
+            session.LastDiagnosticsSummary.Length +
+            session.LastRecoveryHint.Length +
             session.TranscriptIds.Sum(id => id.Length) +
             session.ArtifactPaths.Sum(path => path.Length) +
             512;
@@ -634,8 +638,11 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.LastDecision,
             record.LastExitCode,
             record.LastProgressMessage,
+            record.LastDiagnosticsSummary,
+            record.LastRecoveryHint,
             record.CommandCount,
             record.ApprovalCount,
+            record.FailureCount,
             record.TranscriptIds,
             record.ArtifactPaths
         };
@@ -659,6 +666,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.Effects,
             record.ArtifactsSummary,
             record.PolicyPreview,
+            record.DiagnosticsSummary,
+            record.RecoveryHint,
             record.ProgressMessage,
             record.ProgressPercent,
             record.WasCanceled

@@ -40,6 +40,32 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Run_msp_command_records_policy_diagnostics_in_session()
+    {
+        var workspace = new WorkspaceState();
+        var viewModel = new ShellViewModel(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            new TestFileDialogService(),
+            new TestAiChatService());
+
+        await viewModel.InitializeAsync();
+        viewModel.MspCommandDraft = "artifact write /artifacts/pending.md \"pending\"";
+
+        await viewModel.RunMspCommandCommand.ExecuteAsync(null);
+
+        var transcript = Assert.Single(workspace.MspTranscript);
+        Assert.Equal("RequireConfirmation", transcript.Decision);
+        Assert.Contains("msp.policy.require_confirmation", transcript.DiagnosticsSummary);
+        Assert.Contains("Approve", transcript.RecoveryHint);
+
+        var session = Assert.Single(workspace.MspSessions);
+        Assert.Equal(1, session.FailureCount);
+        Assert.Contains("msp.policy.require_confirmation", session.LastDiagnosticsSummary);
+        Assert.Contains("Approve", session.LastRecoveryHint);
+    }
+
+    [Fact]
     public async Task Initialize_rebuilds_sessions_and_removes_stale_records()
     {
         var workspace = new WorkspaceState();

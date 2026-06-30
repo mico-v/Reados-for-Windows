@@ -52,6 +52,25 @@ public sealed class MspRuntimeTests
     }
 
     [Fact]
+    public async Task Runtime_returns_recovery_diagnostics_for_unknown_commands()
+    {
+        var runtime = MspRuntime.CreateDefault();
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "missing-command"
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(127, result.ExitCode);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal(MspDiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal("msp.command_not_found", diagnostic.Code);
+        Assert.Equal("missing-command", diagnostic.Target);
+        Assert.Contains("Run help", diagnostic.RecoveryHint);
+    }
+
+    [Fact]
     public async Task Artifact_command_writes_lists_and_shows_workspace_artifacts()
     {
         var workspace = new InMemoryMspWorkspace();
@@ -178,6 +197,10 @@ public sealed class MspRuntimeTests
         Assert.Equal(MspPolicyDecision.RequireConfirmation, record.Decision);
         Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, record.Effects);
         Assert.Equal(126, record.ExitCode);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("msp.policy.require_confirmation", diagnostic.Code);
+        Assert.Contains("Approve", diagnostic.RecoveryHint);
+        Assert.Equal(result.Diagnostics, record.Diagnostics);
     }
 
     [Fact]
@@ -269,6 +292,29 @@ public sealed class MspRuntimeTests
         Assert.NotNull(completed.Result);
         Assert.Equal("done", completed.Result.Stdout);
         Assert.All(events, item => Assert.Equal("stream-session", item.SessionId));
+    }
+
+    [Fact]
+    public async Task Runtime_streams_completed_result_for_parse_failures()
+    {
+        var runtime = MspRuntime.CreateDefault();
+        var events = new List<MspCommandEvent>();
+
+        await foreach (var commandEvent in runtime.ExecuteStreamingAsync(new MspCommandRequest
+        {
+            CommandText = "echo \"unterminated"
+        }))
+        {
+            events.Add(commandEvent);
+        }
+
+        var completed = Assert.Single(events);
+        Assert.Equal(MspCommandEventKind.Completed, completed.Kind);
+        Assert.Equal(2, completed.ExitCode);
+        Assert.NotNull(completed.Result);
+        var diagnostic = Assert.Single(completed.Result!.Diagnostics);
+        Assert.Equal("msp.parse", diagnostic.Code);
+        Assert.Contains("quoting", diagnostic.RecoveryHint);
     }
 
     [Fact]

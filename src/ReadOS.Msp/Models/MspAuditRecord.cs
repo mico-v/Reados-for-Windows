@@ -25,4 +25,6 @@ public sealed record MspAuditRecord
     public string WorkingDirectory { get; init; } = "/";
 
     public string? Message { get; init; }
+
+    public IReadOnlyList<MspCommandDiagnostic> Diagnostics { get; init; } = Array.Empty<MspCommandDiagnostic>();
 }

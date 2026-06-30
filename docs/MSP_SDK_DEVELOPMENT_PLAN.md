@@ -58,6 +58,7 @@ Implemented:
 
 - `MspCommandRequest`
 - `MspCommandResult`
+- `MspCommandDiagnostic`
 - `MspArtifact`
 - `MspAuditRecord`
 - `MspCommandTranscriptRecord`
@@ -74,6 +75,7 @@ Implemented:
 - command previews through `IMspCommand.GetPreview(arguments)`
 - read/write workspace abstraction
 - command event sink and `MspCommandContext.ReportProgressAsync`
+- structured command diagnostics with stable codes and recovery hints
 - in-memory workspace
 - policy interface and allow-all policy
 - effect-based policy for mutating/external command confirmation
@@ -87,14 +89,15 @@ Implemented:
 - persisted workbench transcript state and `/transcripts/{id}.json` workspace projection
 - durable session state and `/sessions/{id}.json` workspace projection
 - policy/audit/transcript preview diagnostics for approval-gated commands
+- transcript/session diagnostic summaries and recovery hints for failed commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
 - streaming execution events for command start, policy decision, progress, completion, and cancellation
 - workbench transcript consumption of streaming progress plus operator command cancellation
 
 Next:
 
-- richer command result diagnostics;
 - automatic source document/page provenance for generated workflow artifacts;
+- richer command-specific recovery diagnostics for document/provider failures;
 - more ReadOS virtual workspace tests.
 
 ## Phase 2: Hosting Layer
@@ -110,7 +113,7 @@ Responsibilities:
 - persist audit and artifact records;
 - expose a model-facing `exec_command` bridge.
 
-Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, live transcript progress/cancel UI, durable workspace-backed transcript records, and durable session records. It still needs richer diagnostics and workflow grouping before it should become a separate `ReadOS.Msp.Hosting` project.
+Current app status: `ReadOsMspHost` now sits above the raw runtime with an effect-based policy, one-shot approval token path, streaming command event APIs, live transcript progress/cancel UI, durable workspace-backed transcript records, durable session records, and structured failure diagnostics. It still needs workflow grouping before it should become a separate `ReadOS.Msp.Hosting` project.
 
 Candidate APIs:
 
@@ -146,7 +149,7 @@ All mutating commands should support:
 - audit record;
 - rollback note or recovery guidance where practical.
 
-Current status: generic mutating-command confirmation is wired into the workbench transcript, and `page-label`, `outline`, `artifact write`, `attach page/range`, and `chat ask` all run through the same policy/audit path. Per-command preview text is now present in policy/audit/transcripts; recovery guidance is still pending.
+Current status: generic mutating-command confirmation is wired into the workbench transcript, and `page-label`, `outline`, `artifact write`, `attach page/range`, and `chat ask` all run through the same policy/audit path. Per-command preview text is now present in policy/audit/transcripts, and policy confirmation failures include structured recovery hints. Command-specific rollback notes are still pending for richer document/provider failures.
 
 ## Phase 4: Artifact And Workspace Contracts
 
@@ -183,6 +186,7 @@ Every command added to MSP must have:
 - argument-specific metadata coverage when subcommands have different side effects;
 - preview coverage for approval-gated commands;
 - audit coverage;
+- diagnostic coverage for failure code and recovery hints;
 - policy behavior if it can mutate user state;
 - artifact coverage if it creates durable output;
 - session coverage if it affects transcript grouping, artifacts, approvals, or persisted host state;

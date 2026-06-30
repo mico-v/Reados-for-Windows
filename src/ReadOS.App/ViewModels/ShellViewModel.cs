@@ -504,7 +504,9 @@ public sealed partial class ShellViewModel : ObservableObject
             Decision = "Deny",
             Effects = entry.Effects,
             ArtifactsSummary = entry.ArtifactsSummary,
-            PolicyPreview = entry.PolicyPreview
+            PolicyPreview = entry.PolicyPreview,
+            DiagnosticsSummary = "error msp.policy.denied: Operator denied MSP command." + Environment.NewLine + "recovery: Revise the command before retrying.",
+            RecoveryHint = "Revise the command before retrying."
         });
 
         var insertIndex = Math.Max(0, index);
@@ -2075,13 +2077,20 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            result = MspCommandResult.Failure("Operator canceled MSP command.", exitCode: 130);
+            result = MspCommandResult.Failure(
+                "Operator canceled MSP command.",
+                exitCode: 130,
+                code: "msp.canceled",
+                recoveryHint: "Rerun the command if the canceled operation is still needed.");
             entry.WasCanceled = true;
             entry.ProgressMessage = "MSP 命令已取消。";
         }
         catch (Exception ex)
         {
-            result = MspCommandResult.Failure(ex.Message);
+            result = MspCommandResult.Failure(
+                ex.Message,
+                code: "msp.workbench.exception",
+                recoveryHint: "Inspect the command, workspace state, and provider settings before retrying.");
         }
         finally
         {
@@ -2164,6 +2173,8 @@ public sealed partial class ShellViewModel : ObservableObject
         entry.Effects = auditRecord?.Effects.ToString() ?? entry.Effects;
         entry.ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path));
         entry.PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? entry.PolicyPreview;
+        entry.DiagnosticsSummary = FormatMspDiagnostics(result.Diagnostics);
+        entry.RecoveryHint = GetMspRecoveryHint(result.Diagnostics);
         if (entry.WasCanceled && string.IsNullOrWhiteSpace(entry.ProgressMessage))
         {
             entry.ProgressMessage = "MSP 命令已取消。";
@@ -2329,10 +2340,13 @@ public sealed partial class ShellViewModel : ObservableObject
         session.LastDecision = lastTranscript?.Decision ?? "Allow";
         session.LastExitCode = lastTranscript?.ExitCode ?? 0;
         session.LastProgressMessage = lastTranscript?.ProgressMessage ?? string.Empty;
+        session.LastDiagnosticsSummary = lastTranscript?.DiagnosticsSummary ?? string.Empty;
+        session.LastRecoveryHint = lastTranscript?.RecoveryHint ?? string.Empty;
         session.CommandCount = sessionTranscripts.Length;
         session.ApprovalCount = sessionTranscripts.Count(entry =>
             string.Equals(entry.Decision, "RequireConfirmation", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(entry.Decision, "Deny", StringComparison.OrdinalIgnoreCase));
+        session.FailureCount = sessionTranscripts.Count(entry => !entry.Succeeded);
         ReplaceValues(session.TranscriptIds, sessionTranscripts.Select(entry => entry.Id));
         ReplaceValues(session.ArtifactPaths, sessionArtifacts.Select(artifact => artifact.Path));
     }
@@ -2366,6 +2380,22 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    private static string FormatMspDiagnostics(IReadOnlyList<MspCommandDiagnostic> diagnostics)
+    {
+        return string.Join(
+            Environment.NewLine,
+            diagnostics
+                .Where(diagnostic => !string.IsNullOrWhiteSpace(diagnostic.Message) || !string.IsNullOrWhiteSpace(diagnostic.Code))
+                .Select(diagnostic => diagnostic.ToDisplayText()));
+    }
+
+    private static string GetMspRecoveryHint(IReadOnlyList<MspCommandDiagnostic> diagnostics)
+    {
+        return diagnostics
+            .Select(diagnostic => diagnostic.RecoveryHint)
+            .LastOrDefault(hint => !string.IsNullOrWhiteSpace(hint)) ?? string.Empty;
+    }
+
     private async Task<string> ExecuteAgentMspCommandsAsync(IReadOnlyList<string> commandTexts)
     {
         var builder = new StringBuilder();
@@ -2392,6 +2422,17 @@ public sealed partial class ShellViewModel : ObservableObject
             {
                 builder.AppendLine("stderr:");
                 builder.AppendLine(TrimForMspReport(entry.Stderr, 2000));
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.DiagnosticsSummary))
+            {
+                builder.AppendLine("diagnostics:");
+                builder.AppendLine(TrimForMspReport(entry.DiagnosticsSummary, 2000));
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.RecoveryHint))
+            {
+                builder.AppendLine($"recovery: {entry.RecoveryHint}");
             }
         }
 
@@ -2422,7 +2463,7 @@ public sealed partial class ShellViewModel : ObservableObject
         builder.AppendLine("windows info");
         builder.AppendLine("windows path current");
         builder.AppendLine("```");
-        builder.AppendLine("ReadOS 会解析这些命令，通过 MSP runtime 翻译到受控的 ReadOS 服务和 Windows/.NET API，然后把 stdout、stderr、exitCode、policy audit 返回给你。");
+        builder.AppendLine("ReadOS 会解析这些命令，通过 MSP runtime 翻译到受控的 ReadOS 服务和 Windows/.NET API，然后把 stdout、stderr、exitCode、policy audit、diagnostics 和 recovery 返回给你。");
         builder.AppendLine("不要调用 PowerShell、cmd、bash 或主机文件系统路径；只使用 MSP 虚拟路径和已列出的命令。");
         builder.AppendLine("如果已有足够上下文，直接回答；如果需要执行命令，先只输出 msp 代码块和极短说明。");
         return builder.ToString().Trim();
