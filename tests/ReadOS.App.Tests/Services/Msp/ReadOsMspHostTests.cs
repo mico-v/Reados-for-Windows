@@ -180,10 +180,58 @@ public sealed class ReadOsMspHostTests
         Assert.Equal("contentLength: 11", persisted.Preview);
     }
 
+    [Fact]
+    public async Task Pdf_text_artifact_requires_approval_and_persists_source_provenance()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var pdfService = new TestPdfDocumentService
+        {
+            ExtractedText = "page 2 text\npage 3 text"
+        };
+        var host = CreateHost(workspace, document, pdfService: pdfService);
+        const string commandText = "pdf text current 2 3 --artifact /artifacts/excerpts/guide-pages.txt";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, pendingAudit.Effects);
+        Assert.Contains("/artifacts/excerpts/guide-pages.txt", pendingAudit.Preview.Targets);
+        Assert.Contains(document.Id, pendingAudit.Preview.Targets);
+        Assert.Contains("pages: 2-3", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("artifact\t/artifacts/excerpts/guide-pages.txt\t23", approved.Stdout);
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/excerpts/guide-pages.txt", resultArtifact.Path);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:2-3", Assert.Single(resultArtifact.SourcePages));
+        Assert.Equal(new[]
+        {
+            $"/documents/{document.Id}/pages/2.txt",
+            $"/documents/{document.Id}/pages/3.txt"
+        }, resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/excerpts/guide-pages.txt", persisted.Path);
+        Assert.Equal("page 2 text\npage 3 text", persisted.Content);
+        Assert.Equal("text/plain", persisted.MediaType);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal("reados-workbench", persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:2-3", Assert.Single(persisted.SourcePages));
+        Assert.Contains("contentLength: 23", persisted.Preview);
+    }
+
     private static ReadOsMspHost CreateHost(
         WorkspaceState workspace,
         LibraryItem document,
         IAiChatService? chatService = null,
+        IPdfDocumentService? pdfService = null,
         Func<IReadOnlyList<ChatAttachment>>? pendingAttachmentsProvider = null,
         Action<ChatAttachment>? attachmentSink = null,
         Action? clearAttachments = null,
@@ -191,7 +239,7 @@ public sealed class ReadOsMspHostTests
     {
         return new ReadOsMspHost(
             new TestWorkspaceStore(workspace),
-            new TestPdfDocumentService(),
+            pdfService ?? new TestPdfDocumentService(),
             chatService ?? new TestAiChatService("unused"),
             () => workspace,
             () => workspace.Settings,
@@ -284,6 +332,8 @@ public sealed class ReadOsMspHostTests
 
     private sealed class TestPdfDocumentService : IPdfDocumentService
     {
+        public string ExtractedText { get; init; } = string.Empty;
+
         public Task<PdfDocumentInfo> InspectAsync(string path, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
@@ -306,7 +356,7 @@ public sealed class ReadOsMspHostTests
 
         public Task<string> ExtractPageTextAsync(string path, int startPage, int endPage, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException();
+            return Task.FromResult(ExtractedText);
         }
     }
 

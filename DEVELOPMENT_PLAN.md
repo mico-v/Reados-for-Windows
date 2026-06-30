@@ -28,6 +28,7 @@ Implemented:
 - Workbench transcript progress display and operator cancellation for running MSP commands.
 - Durable MSP session records that group transcript entries, artifacts, approvals, and last command state.
 - Structured MSP command diagnostics with stable codes, recovery hints, transcript summaries, and session failure counts.
+- `pdf text --artifact` command output that creates durable text artifacts with automatic source document/page provenance.
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
@@ -116,7 +117,7 @@ Status: started.
 - Attach provenance: command text, source paths, document IDs, page ranges, timestamps, and actor.
 - Add `artifact list`, `artifact show`, and `artifact write`.
 
-Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and only `artifact write` is treated as a mutating artifact operation by policy. Artifact results and persisted records now include source command, actor, session ID, timestamps, preview, media type, and source reference fields, with readable sidecar manifests such as `/artifacts/summary.md.manifest.json`.
+Current status: `/artifacts` is projected in the ReadOS virtual workspace, text artifacts are persisted in workspace state, `artifact list/show/write` are available through MSP, and artifact-producing commands are treated as mutating operations by policy. Artifact results and persisted records now include source command, actor, session ID, timestamps, preview, media type, and source reference fields, with readable sidecar manifests such as `/artifacts/summary.md.manifest.json`. `pdf text --artifact` now writes extracted PDF text directly to artifacts and automatically records source document IDs, virtual page paths, and page ranges.
 
 ### Milestone 4: Vertical Document Commands
 
@@ -137,6 +138,7 @@ Mutating or approval-gated:
 - `attach range current 12 18`
 - `chat ask current "explain attached pages"`
 - `artifact write /artifacts/summary.md`
+- `pdf text current 12 14 --artifact /artifacts/excerpts/chapter.md`
 
 ### Milestone 5: Agent Bridge
 
@@ -163,7 +165,7 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 ## Immediate Backlog
 
 - Add command-specific recovery previews for document metadata and model-provider failures.
-- Populate source document/page provenance automatically from future document workflow commands.
+- Expand automatic source document/page provenance to search extracts, chat-generated notes, and named workflows.
 - Add workflow grouping and workflow-level failure summaries.
 
 ## Verification

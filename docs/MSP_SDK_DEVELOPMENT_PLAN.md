@@ -91,12 +91,13 @@ Implemented:
 - policy/audit/transcript preview diagnostics for approval-gated commands
 - transcript/session diagnostic summaries and recovery hints for failed commands
 - artifact provenance fields and `/artifacts/*.manifest.json` sidecar projections
+- PDF text extraction to durable artifacts with automatic source document/page provenance
 - streaming execution events for command start, policy decision, progress, completion, and cancellation
 - workbench transcript consumption of streaming progress plus operator command cancellation
 
 Next:
 
-- automatic source document/page provenance for generated workflow artifacts;
+- expand automatic source document/page provenance to search, chat, and named workflow artifacts;
 - richer command-specific recovery diagnostics for document/provider failures;
 - more ReadOS virtual workspace tests.
 
@@ -162,7 +163,7 @@ Required behavior:
 - commands can return artifact references;
 - artifacts can be listed, shown, exported, and reused by later commands.
 
-Current status: `artifact write` creates durable text artifacts and returns provenance-rich `MspArtifact` records. The ReadOS workspace persists source command, actor, session, timestamps, preview, and source reference fields, and exposes manifest JSON sidecars beside artifact content.
+Current status: `artifact write` creates durable text artifacts and returns provenance-rich `MspArtifact` records. `pdf text ... --artifact <path>` creates durable extraction artifacts with source document IDs, virtual page paths, and page range provenance populated automatically. The ReadOS workspace persists source command, actor, session, timestamps, preview, and source reference fields, and exposes manifest JSON sidecars beside artifact content.
 
 ## Phase 5: Native Core Extraction
 

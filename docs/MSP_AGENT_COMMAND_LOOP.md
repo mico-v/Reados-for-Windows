@@ -15,6 +15,7 @@ library list
 pdf inspect current
 pdf search current "keyword"
 pdf text current 1 3
+pdf text current 1 3 --artifact /artifacts/excerpt.txt
 artifact write /artifacts/summary.md "summary"
 artifact list /artifacts
 artifact show /artifacts/summary.md
@@ -50,6 +51,7 @@ The host also exposes streaming command events for UI and bridge consumers. Long
 MSP commands do not call PowerShell, `cmd.exe`, Bash, or arbitrary host binaries. The current translation layer maps commands into controlled ReadOS services:
 
 - `workspace`, `library`, and `pdf` commands translate to workspace/PDF services.
+- `pdf text ... --artifact <path>` extracts PDF page text into a durable artifact and records source document/page provenance automatically.
 - `artifact list/show` read durable `/artifacts/...` workspace files and their `.manifest.json` provenance sidecars; `artifact write` creates them behind policy approval.
 - `/sessions/{id}.json` exposes durable MSP session summaries that group transcripts, artifacts, approvals, last command state, failure counts, and the latest recovery hint.
 - `/transcripts/{id}.json` exposes prior MSP command records, diagnostics summaries, and recovery hints for later inspection.
