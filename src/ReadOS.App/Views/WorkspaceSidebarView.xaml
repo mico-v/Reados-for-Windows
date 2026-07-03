@@ -29,8 +29,8 @@
                 <Button Grid.Column="1" Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="新建线程" Command="{Binding NewConversationCommand}">
                     <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="14" />
                 </Button>
-                <Button Grid.Column="2" Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="隐藏侧栏" Command="{Binding ToggleLibraryCommand}">
-                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BB;" FontSize="14" />
+                <Button Grid.Column="2" Width="34" Height="34" Padding="0" Background="Transparent" BorderThickness="0" CornerRadius="6" ToolTipService.ToolTip="隐藏侧栏" Command="{Binding ToggleSidebarCommand}">
+                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE76B;" FontSize="14" />
                 </Button>
             </Grid>
 

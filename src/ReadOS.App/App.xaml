@@ -8,6 +8,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- ═══════════════════════════════════════════════════════════
+                 Theme dictionaries (keep original order — before direct resources)
+                 ═══════════════════════════════════════════════════════════ -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#FFFFFF" />
@@ -21,12 +25,14 @@
                     <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#6B7280" />
                     <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#111827" />
                     <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#2563EB" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#1D4ED8" />
                     <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#DBEAFE" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#15803D" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#B45309" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#DC2626" />
                     <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#D6DBE3" />
+                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#9CA3AF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#171A1F" />
@@ -42,12 +48,44 @@
                     <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#111318" />
                     <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#60A5FA" />
                     <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#0B1220" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#1E293B" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#4ADE80" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#FBBF24" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#F87171" />
                     <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#252B34" />
+                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#6B7280" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
+
+            <!-- ═══════════════════════════════════════════════════════════
+                 Spacing / sizing tokens
+                 ═══════════════════════════════════════════════════════════ -->
+            <x:Double x:Key="SpacingXxs">4</x:Double>
+            <x:Double x:Key="SpacingXs">6</x:Double>
+            <x:Double x:Key="SpacingSm">8</x:Double>
+            <x:Double x:Key="SpacingMd">12</x:Double>
+            <x:Double x:Key="SpacingLg">16</x:Double>
+            <x:Double x:Key="SpacingXl">20</x:Double>
+            <x:Double x:Key="SpacingXxl">24</x:Double>
+
+            <x:Double x:Key="ControlHeightSm">28</x:Double>
+            <x:Double x:Key="ControlHeightMd">34</x:Double>
+            <x:Double x:Key="ControlHeightLg">40</x:Double>
+
+            <x:Double x:Key="IconSizeSm">12</x:Double>
+            <x:Double x:Key="IconSizeMd">14</x:Double>
+            <x:Double x:Key="IconSizeLg">16</x:Double>
+
+            <CornerRadius x:Key="RadiusSm">4</CornerRadius>
+            <CornerRadius x:Key="RadiusMd">6</CornerRadius>
+            <CornerRadius x:Key="RadiusLg">8</CornerRadius>
+
+            <x:Double x:Key="FontSizeXs">11</x:Double>
+            <x:Double x:Key="FontSizeSm">12</x:Double>
+            <x:Double x:Key="FontSizeMd">14</x:Double>
+            <x:Double x:Key="FontSizeLg">16</x:Double>
+            <x:Double x:Key="FontSizeXl">18</x:Double>
+
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </ResourceDictionary>
     </Application.Resources>

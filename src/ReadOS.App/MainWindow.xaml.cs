@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,13 +9,13 @@ namespace ReadOS.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const double SidebarHideThreshold = 112;
-    private const double SidebarSoftMinimum = 220;
-    private const double SurfaceFocusThreshold = 220;
+    private readonly LayoutService layoutService;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        layoutService = new LayoutService();
 
         var pdfService = new PdfDocumentService();
         var workspaceStore = new WorkspaceStore(pdfService);
@@ -30,9 +29,9 @@ public sealed partial class MainWindow : Window
         RootShell.DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         RootShell.Loaded += MainWindow_Loaded;
+        RootShell.SizeChanged += RootShell_SizeChanged;
         ConfigureTitleBar();
         ApplyTheme();
-        ApplyPaneWidths();
     }
 
     public ShellViewModel ViewModel { get; }
@@ -41,22 +40,21 @@ public sealed partial class MainWindow : Window
     {
         await ViewModel.InitializeAsync();
         ApplyTheme();
-        ApplyPaneWidths();
+        ApplyLayout();
+    }
+
+    private void RootShell_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyLayout();
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ViewModel.IsLibraryVisible)
-            or nameof(ViewModel.IsChatVisible)
-            or nameof(ViewModel.IsThumbnailsVisible)
-            or nameof(ViewModel.IsOutlineVisible)
-            or nameof(ViewModel.WorkspaceLayout)
-            or nameof(ViewModel.SidebarWidth)
-            or nameof(ViewModel.ChatWidth)
-            or nameof(ViewModel.PresenterWidth)
+        if (e.PropertyName is nameof(ViewModel.IsSidebarVisible)
+            or nameof(ViewModel.IsInspectorVisible)
             or nameof(ViewModel.CurrentRoute))
         {
-            ApplyPaneWidths();
+            ApplyLayout();
         }
 
         if (e.PropertyName is nameof(ViewModel.IsDarkTheme))
@@ -65,45 +63,77 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SidebarResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    // ── Splitter drag handlers ──────────────────────────────────────────
+
+    private void SidebarSplitter_DragDelta(object sender, DragDeltaEventArgs e)
     {
         var proposed = ViewModel.SidebarWidth + e.HorizontalChange;
-        if (proposed <= SidebarHideThreshold)
+        if (proposed <= LayoutService.SidebarMin)
         {
-            ViewModel.IsLibraryVisible = false;
+            ViewModel.IsSidebarVisible = false;
         }
         else
         {
-            ViewModel.IsLibraryVisible = true;
-            ViewModel.SidebarWidth = Math.Max(SidebarSoftMinimum, proposed);
+            ViewModel.IsSidebarVisible = true;
+            ViewModel.SidebarWidth = Math.Max(LayoutService.SidebarMin, proposed);
         }
 
-        ApplyPaneWidths();
+        ApplyLayout();
     }
 
-    private void WorkspaceSurfaceResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    private void InspectorSplitter_DragDelta(object sender, DragDeltaEventArgs e)
     {
-        ApplyWorkspaceSurfaceDrag(e.HorizontalChange);
-        ApplyPaneWidths();
+        var proposed = ViewModel.InspectorWidth - e.HorizontalChange;
+        if (proposed <= LayoutService.InspectorMin)
+        {
+            ViewModel.IsInspectorVisible = false;
+        }
+        else
+        {
+            ViewModel.IsInspectorVisible = true;
+            ViewModel.InspectorWidth = Math.Max(LayoutService.InspectorMin, proposed);
+        }
+
+        ApplyLayout();
     }
 
-    private void ApplyPaneWidths()
-    {
-        var workspaceVisible = ViewModel.IsWorkspaceRoute;
-        var sidebarVisible = workspaceVisible && ViewModel.IsLibraryVisible;
-        var chatVisible = workspaceVisible && ViewModel.IsChatWorkspaceVisible;
-        var presenterVisible = workspaceVisible && ViewModel.IsPresenterVisible;
+    // ── Layout application ──────────────────────────────────────────────
 
-        SidebarColumn.Width = sidebarVisible ? new GridLength(ViewModel.SidebarWidth) : new GridLength(0);
-        SidebarSplitterColumn.Width = sidebarVisible ? new GridLength(1) : new GridLength(0);
-        ChatColumn.Width = ResolveChatWidth(chatVisible);
-        PresenterSplitterColumn.Width = chatVisible && presenterVisible ? new GridLength(1) : new GridLength(0);
-        PresenterColumn.Width = ResolvePresenterWidth(presenterVisible);
+    private void ApplyLayout()
+    {
+        var windowWidth = RootShell.ActualWidth;
+        if (windowWidth <= 0) windowWidth = 1400;
+
+        var config = layoutService.ComputeConfiguration(
+            windowWidth,
+            ViewModel.IsSidebarVisible,
+            ViewModel.IsInspectorVisible,
+            dragSidebarWidth: ViewModel.SidebarWidth,
+            dragInspectorWidth: ViewModel.InspectorWidth);
+
+        SidebarColumn.Width = config.SidebarVisible
+            ? new GridLength(config.SidebarWidth)
+            : new GridLength(0);
+        SidebarSplitterColumn.Width = config.SidebarSplitterVisible
+            ? new GridLength(6)
+            : new GridLength(0);
+
+        InspectorColumn.Width = config.InspectorVisible
+            ? new GridLength(config.InspectorWidth)
+            : new GridLength(0);
+        InspectorSplitterColumn.Width = config.InspectorSplitterVisible
+            ? new GridLength(6)
+            : new GridLength(0);
+
+        ViewModel.SidebarWidth = config.SidebarWidth;
+        ViewModel.InspectorWidth = config.InspectorWidth;
     }
 
     private void ApplyTheme()
     {
-        RootShell.RequestedTheme = ViewModel.IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
+        RootShell.RequestedTheme = ViewModel.IsDarkTheme
+            ? ElementTheme.Dark
+            : ElementTheme.Light;
     }
 
     private void ConfigureTitleBar()
@@ -111,69 +141,4 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDragRegion);
     }
-
-    private GridLength ResolveChatWidth(bool chatVisible)
-    {
-        if (!chatVisible)
-        {
-            return new GridLength(0);
-        }
-
-        return ViewModel.WorkspaceLayout == WorkspaceLayoutMode.PresenterPrimary
-            ? new GridLength(ViewModel.ChatWidth)
-            : new GridLength(1, GridUnitType.Star);
-    }
-
-    private GridLength ResolvePresenterWidth(bool presenterVisible)
-    {
-        if (!presenterVisible)
-        {
-            return new GridLength(0);
-        }
-
-        return ViewModel.WorkspaceLayout is WorkspaceLayoutMode.FocusPresenter or WorkspaceLayoutMode.PresenterPrimary
-            ? new GridLength(1, GridUnitType.Star)
-            : new GridLength(ViewModel.PresenterWidth);
-    }
-
-    private void ApplyWorkspaceSurfaceDrag(double horizontalChange)
-    {
-        var chatWidth = ChatSurface.ActualWidth;
-        var presenterWidth = PresenterSurface.ActualWidth;
-        if (chatWidth <= 0 || presenterWidth <= 0)
-        {
-            ViewModel.ApplyWorkspaceLayoutPreset(horizontalChange < 0
-                ? WorkspaceLayoutMode.PresenterPrimary
-                : WorkspaceLayoutMode.ChatPrimary);
-            return;
-        }
-
-        var proposedChat = chatWidth + horizontalChange;
-        var proposedPresenter = presenterWidth - horizontalChange;
-        if (proposedPresenter <= SurfaceFocusThreshold)
-        {
-            ViewModel.ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusChat);
-            return;
-        }
-
-        if (proposedChat <= SurfaceFocusThreshold)
-        {
-            ViewModel.ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusPresenter);
-            return;
-        }
-
-        if (proposedPresenter >= proposedChat)
-        {
-            ViewModel.WorkspaceLayout = WorkspaceLayoutMode.PresenterPrimary;
-            ViewModel.CurrentRoute = ShellRoute.Reader;
-            ViewModel.ChatWidth = proposedChat;
-        }
-        else
-        {
-            ViewModel.WorkspaceLayout = WorkspaceLayoutMode.ChatPrimary;
-            ViewModel.CurrentRoute = ShellRoute.Home;
-            ViewModel.PresenterWidth = proposedPresenter;
-        }
-    }
-
 }

@@ -49,7 +49,8 @@ public enum InspectorTab
     Evidence,
     Attachments,
     Outline,
-    Search
+    Search,
+    Preview
 }
 
 public enum PresenterKind
@@ -221,6 +222,22 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsRegionModeActive { get; set; }
 
+    /// <summary>
+    /// Aliases IsLibraryVisible for the 3-column layout.  Sidebar == library panel.
+    /// </summary>
+    public bool IsSidebarVisible
+    {
+        get => IsLibraryVisible;
+        set => IsLibraryVisible = value;
+    }
+
+    /// <summary>
+    /// Controls the unified inspector column (replaces the old IsChatVisible-based
+    /// visibility formula and the separate presenter column).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsInspectorVisible { get; set; } = true;
+
     [ObservableProperty]
     public partial double SidebarWidth { get; set; } = 280;
 
@@ -351,19 +368,13 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool IsSearchInspectorSelected => SelectedInspectorTab == InspectorTab.Search;
 
-    public bool IsPresenterVisible => WorkspaceLayout != WorkspaceLayoutMode.FocusChat;
+    public bool IsPreviewInspectorSelected => SelectedInspectorTab == InspectorTab.Preview;
 
-    public bool IsChatWorkspaceVisible => WorkspaceLayout != WorkspaceLayoutMode.FocusPresenter;
+    public bool IsPresenterVisible => IsInspectorVisible;
 
-    public bool IsInspectorVisible => IsChatVisible && WorkspaceLayout != WorkspaceLayoutMode.FocusPresenter;
+    public bool IsChatWorkspaceVisible => true;
 
-    public string WorkspaceModeLabel => WorkspaceLayout switch
-    {
-        WorkspaceLayoutMode.PresenterPrimary => "演示器优先",
-        WorkspaceLayoutMode.FocusChat => "专注对话",
-        WorkspaceLayoutMode.FocusPresenter => "专注演示",
-        _ => "对话优先"
-    };
+    public string WorkspaceModeLabel => IsInspectorVisible ? "审查面板已打开" : "对话模式";
 
     public PresenterKind CurrentPresenterKind => SelectedDocument?.Kind switch
     {
@@ -717,9 +728,6 @@ public sealed partial class ShellViewModel : ObservableObject
 
     partial void OnWorkspaceLayoutChanged(WorkspaceLayoutMode value)
     {
-        OnPropertyChanged(nameof(IsPresenterVisible));
-        OnPropertyChanged(nameof(IsChatWorkspaceVisible));
-        OnPropertyChanged(nameof(IsInspectorVisible));
         OnPropertyChanged(nameof(WorkspaceModeLabel));
     }
 
@@ -737,23 +745,36 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsAttachmentsInspectorSelected));
         OnPropertyChanged(nameof(IsOutlineInspectorSelected));
         OnPropertyChanged(nameof(IsSearchInspectorSelected));
+        OnPropertyChanged(nameof(IsPreviewInspectorSelected));
     }
 
     partial void OnIsChatVisibleChanged(bool value)
     {
-        OnPropertyChanged(nameof(IsInspectorVisible));
+        // IsInspectorVisible is now a standalone toggle, not dependent on chat visibility.
+    }
+
+    partial void OnIsLibraryVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsSidebarVisible));
+    }
+
+    partial void OnIsInspectorVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsPresenterVisible));
     }
 
     [RelayCommand]
     private void NavigateHome()
     {
-        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusChat);
+        CurrentRoute = ShellRoute.Home;
     }
 
     [RelayCommand]
     private void NavigateReader()
     {
-        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.PresenterPrimary);
+        CurrentRoute = ShellRoute.Home;
+        IsInspectorVisible = true;
+        SelectedInspectorTab = InspectorTab.Preview;
         SidebarMode = WorkspaceSidebarMode.Materials;
     }
 
@@ -792,14 +813,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void SwapPrimaryPane()
     {
-        var layout = WorkspaceLayout switch
-        {
-            WorkspaceLayoutMode.PresenterPrimary => WorkspaceLayoutMode.ChatPrimary,
-            WorkspaceLayoutMode.FocusPresenter => WorkspaceLayoutMode.FocusChat,
-            WorkspaceLayoutMode.FocusChat => WorkspaceLayoutMode.FocusPresenter,
-            _ => WorkspaceLayoutMode.PresenterPrimary
-        };
-        ApplyWorkspaceLayoutPreset(layout);
+        IsInspectorVisible = !IsInspectorVisible;
     }
 
     [RelayCommand]
@@ -1391,13 +1405,25 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void CloseSettings()
     {
-        ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode.FocusChat);
+        CurrentRoute = ShellRoute.Home;
     }
 
     [RelayCommand]
     private void ToggleLibrary()
     {
         IsLibraryVisible = !IsLibraryVisible;
+    }
+
+    [RelayCommand]
+    private void ToggleSidebar()
+    {
+        IsLibraryVisible = !IsLibraryVisible;
+    }
+
+    [RelayCommand]
+    private void ToggleInspector()
+    {
+        IsInspectorVisible = !IsInspectorVisible;
     }
 
     [RelayCommand]
@@ -1475,31 +1501,19 @@ public sealed partial class ShellViewModel : ObservableObject
     public void ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode layout)
     {
         WorkspaceLayout = layout;
-        CurrentRoute = layout is WorkspaceLayoutMode.PresenterPrimary or WorkspaceLayoutMode.FocusPresenter
-            ? ShellRoute.Reader
-            : ShellRoute.Home;
 
         switch (layout)
         {
-            case WorkspaceLayoutMode.PresenterPrimary:
-                ChatWidth = 520;
-                PresenterWidth = 740;
-                InspectorWidth = 316;
+            case WorkspaceLayoutMode.FocusChat:
+                IsInspectorVisible = false;
                 break;
             case WorkspaceLayoutMode.FocusPresenter:
-                ChatWidth = 520;
-                PresenterWidth = 760;
-                InspectorWidth = 316;
-                break;
-            case WorkspaceLayoutMode.FocusChat:
-                ChatWidth = 560;
-                PresenterWidth = 520;
-                InspectorWidth = 316;
+            case WorkspaceLayoutMode.PresenterPrimary:
+                IsInspectorVisible = true;
+                SelectedInspectorTab = InspectorTab.Preview;
                 break;
             default:
-                ChatWidth = 560;
-                PresenterWidth = 520;
-                InspectorWidth = 316;
+                IsInspectorVisible = true;
                 break;
         }
     }

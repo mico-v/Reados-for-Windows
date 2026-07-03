@@ -24,7 +24,9 @@
 
   <ItemGroup>
     <Page Include="MainWindow.xaml" />
+    <Page Include="Controls\SplitPane.xaml" />
     <Page Include="Views\ChatSurfaceView.xaml" />
+    <Page Include="Views\InspectorView.xaml" />
     <Page Include="Views\PresenterSurfaceView.xaml" />
     <Page Include="Views\SettingsView.xaml" />
     <Page Include="Views\WorkspaceSidebarView.xaml" />
