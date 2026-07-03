@@ -177,7 +177,7 @@
                                   DragDelta="InspectorSplitter_DragDelta" />
             </Grid>
 
-            <!-- ── Unified inspector (context / actions / evidence / attachments / preview) ── -->
+            <!-- ── Unified inspector ── -->
             <views:InspectorView Grid.Column="4"
                                  x:Name="InspectorSurface"
                                  Visibility="{Binding IsInspectorVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />

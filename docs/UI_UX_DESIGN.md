@@ -72,3 +72,25 @@ The document preview remains available as a secondary pane, but the primary job 
 - Borders over heavy shadows.
 - Cards only for repeated records such as messages, attachments, and status modules.
 - Avoid oversized hero areas; the app opens directly into work.
+
+## Current Implementation Status (2026-07-03)
+
+The layout redesign is substantially complete for Phase 1:
+
+**Implemented:**
+- Flat 3-column workspace: `Sidebar | Chat thread | Unified inspector` (replaced old 5-column nesting).
+- Responsive column widths via `LayoutService` with Compact/Medium/Wide/ExtraWide breakpoints.
+- Title bar with left-side function buttons (import, new thread, theme, settings) — right side reserved for native caption buttons.
+- Splitter drag with 6px columns and 16px Thumb elements; auto-collapse at `SidebarMin`/`InspectorMin`.
+- Chevron direction arrows for panel collapse (ChevronLeft `&#xE76B;`, ChevronRight `&#xE76C;`).
+- `InspectorView` — unified review panel merging context, actions, evidence, attachments, outline, search, and preview tabs.
+- `Controls/SplitPane.xaml` — reusable split-pane UserControl for future refactoring.
+- Status bar (28px) with status message, model label, and progress ring.
+- Theme-aware palette (Light/Dark) with spacing/sizing/radius design tokens in `App.xaml`.
+
+**Pending (Phase 2+):**
+- Replace ad-hoc service construction with DI container (`App.xaml.cs`).
+- Split `ShellViewModel` into `SidebarViewModel`, `ThreadViewModel`, `InspectorViewModel`, `SettingsViewModel`.
+- Add visual state animations for panel expand/collapse.
+- Refine palette accent colors and spacing system as design tokens stabilize.
+- Replace `PresenterSurfaceView` entirely (content now lives in InspectorView preview tab).

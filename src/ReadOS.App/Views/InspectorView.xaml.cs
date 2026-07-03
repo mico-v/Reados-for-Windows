@@ -16,11 +16,12 @@ public sealed partial class InspectorView : UserControl
         InitializeComponent();
     }
 
-    private ShellViewModel? ViewModel => DataContext as ShellViewModel;
+    private ShellViewModel? Shell => DataContext as ShellViewModel;
+    private InspectorViewModel? Inspector => Shell?.Inspector;
 
     private void RegionCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (ViewModel is null || !ViewModel.IsRegionModeActive) return;
+        if (Inspector is not { IsRegionModeActive: true }) return;
 
         selectingRegion = true;
         regionStart = e.GetCurrentPoint(RegionCanvas).Position;
@@ -49,7 +50,7 @@ public sealed partial class InspectorView : UserControl
 
     private void RegionCanvas_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (ViewModel is null || !selectingRegion) return;
+        if (Inspector is null || !selectingRegion) return;
 
         selectingRegion = false;
         RegionCanvas.ReleasePointerCapture(e.Pointer);
@@ -63,7 +64,7 @@ public sealed partial class InspectorView : UserControl
         if (width >= 12 && height >= 12)
         {
             var bounds = RegionCanvas.RenderSize;
-            ViewModel.AttachRegionSelection(
+            Inspector.AttachRegionSelection(
                 bounds.Width <= 0 ? 0 : left / bounds.Width,
                 bounds.Height <= 0 ? 0 : top / bounds.Height,
                 bounds.Width <= 0 ? 0 : width / bounds.Width,

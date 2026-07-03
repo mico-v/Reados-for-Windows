@@ -7,7 +7,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Border Background="{ThemeResource ReadOSCanvasBrush}"
+    <Border DataContext="{Binding Thread}"
+            Background="{ThemeResource ReadOSCanvasBrush}"
             BorderBrush="{ThemeResource ReadOSBorderBrush}"
             BorderThickness="0">
 

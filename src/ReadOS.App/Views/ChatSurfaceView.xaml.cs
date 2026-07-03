@@ -18,7 +18,6 @@ public sealed partial class ChatSurfaceView : UserControl
     private void RestoreSidebarButton_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel is null) return;
-
         ViewModel.SidebarWidth = Math.Max(ViewModel.SidebarWidth, 260);
         ViewModel.IsSidebarVisible = true;
     }
@@ -26,7 +25,6 @@ public sealed partial class ChatSurfaceView : UserControl
     private void RestoreInspectorButton_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel is null) return;
-
         ViewModel.InspectorWidth = Math.Max(ViewModel.InspectorWidth, InspectorRestoreWidth);
         ViewModel.IsInspectorVisible = true;
     }

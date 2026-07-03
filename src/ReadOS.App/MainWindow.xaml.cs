@@ -11,19 +11,12 @@ public sealed partial class MainWindow : Window
 {
     private readonly LayoutService layoutService;
 
-    public MainWindow()
+    public MainWindow(ShellViewModel viewModel, LayoutService layoutService)
     {
         InitializeComponent();
 
-        layoutService = new LayoutService();
-
-        var pdfService = new PdfDocumentService();
-        var workspaceStore = new WorkspaceStore(pdfService);
-        ViewModel = new ShellViewModel(
-            workspaceStore,
-            pdfService,
-            new FileDialogService(),
-            new AiChatService());
+        this.layoutService = layoutService;
+        ViewModel = viewModel;
         ViewModel.SetHostWindow(this);
 
         RootShell.DataContext = ViewModel;

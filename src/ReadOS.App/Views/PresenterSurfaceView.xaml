@@ -1,3 +1,9 @@
+<!--
+    DEPRECATED — The PresenterSurfaceView content has been merged into
+    InspectorView's "Preview" tab (InspectorTab.Preview).
+    This file is kept only for compilation; it is no longer instantiated
+    by MainWindow.xaml and will be removed in a future cleanup pass.
+-->
 <UserControl
     x:Class="ReadOS.App.Views.PresenterSurfaceView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

@@ -69,7 +69,6 @@ Create a Windows x64 release package:
 - [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): practical implementation roadmap.
 - [docs/MSP_PLAN.md](docs/MSP_PLAN.md): service architecture and runtime model.
 - [docs/MSP_SDK_DEVELOPMENT_PLAN.md](docs/MSP_SDK_DEVELOPMENT_PLAN.md): SDK and native extraction plan.
-- [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md): desktop conversation workbench UI/UX design.
+- [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md): desktop conversation workbench UI/UX design and implementation status.
 - [docs/MSP_AGENT_COMMAND_LOOP.md](docs/MSP_AGENT_COMMAND_LOOP.md): prompt-injected MSP command loop.
-- [docs/APP_FRAME_DESIGN.md](docs/APP_FRAME_DESIGN.md): current WinUI frame notes.
 - [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, WinUI, and CLI setup.

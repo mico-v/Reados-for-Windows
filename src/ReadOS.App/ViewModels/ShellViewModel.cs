@@ -20,48 +20,12 @@ public enum ShellRoute
     Settings
 }
 
-public enum SettingsRoute
-{
-    General,
-    Provider,
-    Prompts,
-    Workspace
-}
-
 public enum WorkspaceLayoutMode
 {
     ChatPrimary,
     PresenterPrimary,
     FocusChat,
     FocusPresenter
-}
-
-public enum WorkspaceSidebarMode
-{
-    Conversations,
-    Materials
-}
-
-public enum InspectorTab
-{
-    Context,
-    Actions,
-    Evidence,
-    Attachments,
-    Outline,
-    Search,
-    Preview
-}
-
-public enum PresenterKind
-{
-    None,
-    Pdf,
-    Markdown,
-    Text,
-    ImagePlaceholder,
-    VideoPlaceholder,
-    DocumentPlaceholder
 }
 
 public sealed partial class ShellViewModel : ObservableObject
@@ -105,7 +69,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
+
+        Sidebar = new SidebarViewModel(this);
+        Thread = new ThreadViewModel(this);
+        Inspector = new InspectorViewModel(this);
+        Settings = new SettingsViewModel(this);
     }
+
+    // ── Child ViewModels ────────────────────────────────────────────────────
+
+    public SidebarViewModel Sidebar { get; }
+    public ThreadViewModel Thread { get; }
+    public InspectorViewModel Inspector { get; }
+    public SettingsViewModel Settings { get; }
+
+    // ── Shared collections ──────────────────────────────────────────────────
 
     public ObservableCollection<LanguageOption> LanguageOptions { get; } = new();
 

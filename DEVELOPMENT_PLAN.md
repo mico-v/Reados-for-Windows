@@ -34,6 +34,27 @@ Implemented:
 - Rust `native/msp-core` prototype and FFI smoke script.
 - MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
 
+### UI Layout Redesign (2026-07-03)
+
+The app frame was reworked from a nested 5-column layout into a flat 3-column responsive shell:
+
+- **MainWindow.xaml** — 3-column layout: Sidebar | Chat thread | Unified Inspector, replacing the old nested ChatSurface+Inspector+PresenterSurface stacking.
+- **Title bar** — Right-side toolbar buttons removed (no longer overlap with native caption buttons). Import, new thread, theme, and settings moved to compact 28×28 icon buttons left of the drag region.
+- **Splitter interaction** — Drag columns widened from 1px to 6px, Thumb from 10px to 16px. Auto-collapse threshold raised from `Min/2` to full `Min` (Sidebar 200px, Inspector 280px).
+- **Collapse icons** — Replaced `&#xE8BB;`/`&#xE8A0;` with `&#xE76B;` (ChevronLeft) and `&#xE76C;` (ChevronRight) for clearer direction affordance.
+- **InspectorView** — New unified review panel that merges the old inspector (context/actions/evidence/attachments tabs) with the presenter surface (preview/outline/search tabs).
+- **LayoutService** — Centralised responsive column-width computation with four breakpoints (Compact/Medium/Wide/ExtraWide), replacing ad-hoc code-behind width logic.
+- **LayoutModels** — `LayoutConfiguration` and `LayoutBreakpoint` types for the computed layout state.
+- **SplitPane control** — Reusable `Controls/SplitPane.xaml` UserControl with `PrimaryContent`/`SecondaryContent` dependency properties and built-in drag-to-collapse.
+
+### XAML Compiler Bug Workarounds
+
+Two WinUI 3 / .NET 10 XAML compiler issues were discovered and fixed during the redesign:
+
+1. **WMC9999 internal crash** — Mixing `{StaticResource}` markup extensions with literal values inside `Thickness`-typed properties (e.g. `Padding="{StaticResource SpacingMd},0"`) crashes the XAML compiler. Fixed by using hardcoded values where a Thickness is needed.
+
+2. **Runtime XamlParseException** — Assigning a `{StaticResource x:Double}` to a `Thickness` property (e.g. `Padding="{StaticResource SpacingMd}"`) compiles but fails at runtime because WinUI 3 `Thickness` has no implicit conversion from `Double`. The compiler generates a direct property assignment without invoking the type converter. All such occurrences in `MainWindow.xaml`, `ChatSurfaceView.xaml`, and `InspectorView.xaml` were replaced with literal values.
+
 The main gap is not another reader feature. The remaining service-layer gaps are named workflow orchestration, richer recovery previews, and automatic provenance for multi-step workflow outputs.
 
 ## Target Solution Shape
@@ -43,13 +64,18 @@ Current layout:
 ```text
 src/
   ReadOS.App/        WinUI operator workbench and domain host adapters
+    Controls/          SplitPane reusable control
+    Models/            LayoutConfiguration, LayoutBreakpoint
+    Services/          LayoutService, PdfDocumentService, WorkspaceStore, AiChatService, MSP host
+    Views/             InspectorView, ChatSurfaceView, WorkspaceSidebarView, SettingsView, PresenterSurfaceView
+    ViewModels/        ShellViewModel
   ReadOS.Msp/        .NET MSP runtime, SDK contracts, command model
 tests/
   ReadOS.Msp.Tests/  parser/runtime/workspace tests
 native/
   msp-core/          Rust native core prototype
 docs/
-  MSP plans, environment notes, app frame notes
+  UI_UX_DESIGN.md, MSP_PLAN.md, MSP_SDK_DEVELOPMENT_PLAN.md, MSP_AGENT_COMMAND_LOOP.md, ENVIRONMENT_SETUP.md
 ```
 
 Near-term target:
