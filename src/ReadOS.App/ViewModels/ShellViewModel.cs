@@ -107,6 +107,12 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ObservableCollection<MspTranscriptEntry> MspTranscript { get; } = new();
 
+    public ObservableCollection<MspSessionEntry> MspSessions { get; } = new();
+
+    public ObservableCollection<WorkspaceArtifact> Artifacts { get; } = new();
+
+    public ObservableCollection<ThreadTimelineItem> TimelineItems { get; } = new();
+
     [ObservableProperty]
     public partial AppStrings Strings { get; set; } = LocalizationCatalog.GetStrings("zh-CN");
 
@@ -124,6 +130,12 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial ChatConversation? SelectedConversation { get; set; }
+
+    [ObservableProperty]
+    public partial MspSessionEntry? SelectedMspSession { get; set; }
+
+    [ObservableProperty]
+    public partial WorkspaceArtifact? SelectedArtifact { get; set; }
 
     [ObservableProperty]
     public partial PageImageItem? SelectedThumbnail { get; set; }
@@ -183,7 +195,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial WorkspaceSidebarMode SidebarMode { get; set; } = WorkspaceSidebarMode.Conversations;
 
     [ObservableProperty]
-    public partial InspectorTab SelectedInspectorTab { get; set; } = InspectorTab.Context;
+    public partial InspectorTab SelectedInspectorTab { get; set; } = InspectorTab.Evidence;
 
     [ObservableProperty]
     public partial bool IsLibraryVisible { get; set; } = true;
@@ -217,6 +229,12 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial bool IsInspectorVisible { get; set; } = true;
 
     [ObservableProperty]
+    public partial bool IsRunDrawerOpen { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsRunDrawerPinned { get; set; }
+
+    [ObservableProperty]
     public partial double SidebarWidth { get; set; } = 280;
 
     [ObservableProperty]
@@ -227,6 +245,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial double InspectorWidth { get; set; } = 316;
+
+    [ObservableProperty]
+    public partial double RunDrawerHeight { get; set; } = 240;
 
     [ObservableProperty]
     public partial double PresenterDrawerWidth { get; set; } = 148;
@@ -306,6 +327,74 @@ public sealed partial class ShellViewModel : ObservableObject
         ? "暂无 MSP 执行记录"
         : $"{MspTranscript.Count} 条 MSP 执行记录";
 
+    public int PendingApprovalCount => MspTranscript.Count(entry => entry.IsApprovalRequired);
+
+    public bool HasPendingApprovals => PendingApprovalCount > 0;
+
+    public bool IsAnyMspRunning => MspTranscript.Any(entry => entry.IsRunning);
+
+    public string PendingApprovalLabel => HasPendingApprovals
+        ? $"{PendingApprovalCount} 个审批待处理"
+        : "无待审批";
+
+    public string MspActivitySummary
+    {
+        get
+        {
+            var running = MspTranscript.Count(entry => entry.IsRunning);
+            var failed = MspTranscript.Count(entry => !entry.IsRunning && !entry.IsApprovalRequired && !entry.Succeeded);
+            if (running > 0)
+            {
+                return $"{running} 个 MSP 命令运行中";
+            }
+
+            if (PendingApprovalCount > 0)
+            {
+                return $"{PendingApprovalCount} 个 MSP 命令待审批";
+            }
+
+            return failed > 0
+                ? $"{failed} 个 MSP 命令需要复查"
+                : MspTranscriptSummary;
+        }
+    }
+
+    public string ArtifactSummary => Artifacts.Count == 0
+        ? "暂无产物"
+        : $"{Artifacts.Count} 个产物";
+
+    public string RuntimeStatusLabel => IsAnyMspRunning
+        ? "MSP 运行中"
+        : HasPendingApprovals
+            ? "等待审批"
+            : IsBusy ? "处理中" : "就绪";
+
+    public string ApprovalModeLabel => "按策略审批";
+
+    public string SendButtonLabel => IsAnyMspRunning ? "队列" : "发送";
+
+    public string SelectedArtifactPreview
+    {
+        get
+        {
+            if (SelectedArtifact is null)
+            {
+                return "选择一个产物查看内容。";
+            }
+
+            var preview = string.IsNullOrWhiteSpace(SelectedArtifact.Content)
+                ? SelectedArtifact.Preview
+                : SelectedArtifact.Content;
+            if (string.IsNullOrWhiteSpace(preview))
+            {
+                return "(empty artifact)";
+            }
+
+            preview = preview.Trim();
+            return preview.Length <= 8000 ? preview : preview[..8000] + "...";
+        }
+    }
+
     public string ActiveModelLabel => UseOfflineResponses
         ? "离线阅读模式"
         : $"{ProviderName} / {ModelName}";
@@ -334,9 +423,19 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool IsMaterialsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Materials;
 
+    public bool IsSessionsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Sessions;
+
+    public bool IsArtifactsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Artifacts;
+
     public bool IsContextInspectorSelected => SelectedInspectorTab == InspectorTab.Context;
 
     public bool IsActionsInspectorSelected => SelectedInspectorTab == InspectorTab.Actions;
+
+    public bool IsRunInspectorSelected => SelectedInspectorTab is InspectorTab.Run or InspectorTab.Actions;
+
+    public bool IsArtifactsInspectorSelected => SelectedInspectorTab == InspectorTab.Artifacts;
+
+    public bool IsPolicyInspectorSelected => SelectedInspectorTab == InspectorTab.Policy;
 
     public bool IsEvidenceInspectorSelected => SelectedInspectorTab == InspectorTab.Evidence;
 
@@ -503,7 +602,7 @@ public sealed partial class ShellViewModel : ObservableObject
         PersistTranscriptEntry(deniedEntry, insertIndex);
         await SaveWorkspaceAsync();
         StatusMessage = $"已拒绝 MSP 命令：{entry.CommandText}";
-        OnPropertyChanged(nameof(MspTranscriptSummary));
+        NotifyMspActivityState();
     }
 
     [RelayCommand]
@@ -531,6 +630,8 @@ public sealed partial class ShellViewModel : ObservableObject
             workspace = await workspaceStore.LoadAsync();
             LoadSettings(workspace.Settings);
             RefreshMspTranscript();
+            RefreshArtifacts();
+            RefreshMspSessions();
             RefreshProjects();
             var firstProject = workspace.Projects.FirstOrDefault();
             if (firstProject is not null)
@@ -582,6 +683,12 @@ public sealed partial class ShellViewModel : ObservableObject
             ? project.LibraryItems.FirstOrDefault(item => item.Kind == LibraryItemKind.Pdf)
             : project.LibraryItems.FirstOrDefault(item => item.Id == value.DocumentId);
         await SelectProjectAsync(project, document);
+    }
+
+    partial void OnSelectedConversationChanged(ChatConversation? value)
+    {
+        RefreshChatMessages();
+        OnPropertyChanged(nameof(ActiveTitle));
     }
 
     async partial void OnSelectedDocumentChanged(LibraryItem? value)
@@ -640,6 +747,8 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         RefreshNavigation();
         RefreshLibrary();
+        RefreshMspSessions();
+        RefreshArtifacts();
     }
 
     async partial void OnReaderImageWidthChanged(double value)
@@ -713,10 +822,15 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsConversationsSidebarSelected));
         OnPropertyChanged(nameof(IsMaterialsSidebarSelected));
+        OnPropertyChanged(nameof(IsSessionsSidebarSelected));
+        OnPropertyChanged(nameof(IsArtifactsSidebarSelected));
     }
 
     partial void OnSelectedInspectorTabChanged(InspectorTab value)
     {
+        OnPropertyChanged(nameof(IsRunInspectorSelected));
+        OnPropertyChanged(nameof(IsArtifactsInspectorSelected));
+        OnPropertyChanged(nameof(IsPolicyInspectorSelected));
         OnPropertyChanged(nameof(IsContextInspectorSelected));
         OnPropertyChanged(nameof(IsActionsInspectorSelected));
         OnPropertyChanged(nameof(IsEvidenceInspectorSelected));
@@ -724,6 +838,30 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsOutlineInspectorSelected));
         OnPropertyChanged(nameof(IsSearchInspectorSelected));
         OnPropertyChanged(nameof(IsPreviewInspectorSelected));
+    }
+
+    partial void OnSelectedMspSessionChanged(MspSessionEntry? value)
+    {
+        if (value is not null)
+        {
+            SelectedInspectorTab = InspectorTab.Run;
+            IsInspectorVisible = true;
+        }
+    }
+
+    partial void OnSelectedArtifactChanged(WorkspaceArtifact? value)
+    {
+        OnPropertyChanged(nameof(SelectedArtifactPreview));
+        if (value is not null)
+        {
+            SelectedInspectorTab = InspectorTab.Artifacts;
+            IsInspectorVisible = true;
+        }
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        NotifyMspActivityState();
     }
 
     partial void OnIsChatVisibleChanged(bool value)
@@ -1405,6 +1543,69 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ToggleRunDrawer()
+    {
+        IsRunDrawerOpen = !IsRunDrawerOpen;
+    }
+
+    [RelayCommand]
+    private void PinRunDrawer()
+    {
+        IsRunDrawerPinned = !IsRunDrawerPinned;
+        if (IsRunDrawerPinned)
+        {
+            IsRunDrawerOpen = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelActiveMspCommand()
+    {
+        var runningEntry = MspTranscript.FirstOrDefault(entry => entry.IsRunning);
+        if (runningEntry is not null)
+        {
+            CancelMspCommand(runningEntry);
+        }
+    }
+
+    [RelayCommand]
+    private void SelectArtifact(WorkspaceArtifact? artifact)
+    {
+        if (artifact is null)
+        {
+            return;
+        }
+
+        SelectedArtifact = artifact;
+        SelectedInspectorTab = InspectorTab.Artifacts;
+        IsInspectorVisible = true;
+    }
+
+    [RelayCommand]
+    private void AttachSelectedArtifact()
+    {
+        if (SelectedArtifact is null)
+        {
+            StatusMessage = "请选择一个产物。";
+            return;
+        }
+
+        PendingAttachments.Add(new ChatAttachment
+        {
+            Kind = AttachmentKind.File,
+            DocumentId = SelectedDocument?.Id ?? string.Empty,
+            Title = $"产物 · {SelectedArtifact.Path}",
+            FilePath = SelectedArtifact.Path
+        });
+        ComposerDraft = string.IsNullOrWhiteSpace(ComposerDraft)
+            ? "请基于我附加的产物继续分析。"
+            : ComposerDraft;
+        NotifyAttachmentState();
+        SelectedInspectorTab = InspectorTab.Evidence;
+        StatusMessage = $"已附加产物：{SelectedArtifact.Path}";
+    }
+
+    [RelayCommand]
     private void ToggleChat()
     {
         IsChatVisible = !IsChatVisible;
@@ -1414,7 +1615,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private void ToggleOutline()
     {
         IsOutlineVisible = !IsOutlineVisible;
-        SelectedInspectorTab = InspectorTab.Outline;
+        SelectedInspectorTab = InspectorTab.Evidence;
         IsChatVisible = IsOutlineVisible;
     }
 
@@ -1469,9 +1670,12 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        workspace = await workspaceStore.ImportWorkspaceAsync(path);
-        LoadSettings(workspace.Settings);
-        RefreshProjects();
+            workspace = await workspaceStore.ImportWorkspaceAsync(path);
+            LoadSettings(workspace.Settings);
+            RefreshMspTranscript();
+            RefreshArtifacts();
+            RefreshMspSessions();
+            RefreshProjects();
         await SelectProjectAsync(workspace.Projects.First(), workspace.Projects.First().LibraryItems.FirstOrDefault());
         StatusMessage = "工作区已导入并重新加载。";
     }
@@ -1757,12 +1961,94 @@ public sealed partial class ShellViewModel : ObservableObject
         ChatMessages.Clear();
         if (SelectedConversation is null)
         {
+            RefreshTimelineItems();
             return;
         }
 
         foreach (var message in SelectedConversation.Messages)
         {
             ChatMessages.Add(message);
+        }
+
+        RefreshTimelineItems();
+    }
+
+    private void RefreshArtifacts()
+    {
+        Artifacts.Clear();
+        if (workspace is null)
+        {
+            NotifyArtifactState();
+            RefreshTimelineItems();
+            return;
+        }
+
+        var query = SearchQuery.Trim();
+        foreach (var artifact in workspace.Artifacts
+            .Where(item => string.IsNullOrWhiteSpace(query) ||
+                item.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.MediaType.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.SourceCommand.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.Preview.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.UpdatedAt)
+            .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase))
+        {
+            Artifacts.Add(artifact);
+        }
+
+        if (SelectedArtifact is not null &&
+            Artifacts.All(item => item.Id != SelectedArtifact.Id))
+        {
+            SelectedArtifact = null;
+        }
+
+        NotifyArtifactState();
+        RefreshTimelineItems();
+    }
+
+    private void RefreshMspSessions()
+    {
+        MspSessions.Clear();
+        if (workspace is null)
+        {
+            return;
+        }
+
+        var query = SearchQuery.Trim();
+        foreach (var session in workspace.MspSessions
+            .Where(item => string.IsNullOrWhiteSpace(query) ||
+                item.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.LastCommandText.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.LastDiagnosticsSummary.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.UpdatedAt)
+            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase))
+        {
+            MspSessions.Add(session);
+        }
+
+        if (SelectedMspSession is not null &&
+            MspSessions.All(item => item.Id != SelectedMspSession.Id))
+        {
+            SelectedMspSession = null;
+        }
+    }
+
+    private void RefreshTimelineItems()
+    {
+        TimelineItems.Clear();
+
+        var items = ChatMessages.Select(ThreadTimelineItem.FromMessage)
+            .Concat(MspTranscript.Select(ThreadTimelineItem.FromMsp))
+            .Concat(Artifacts.Select(ThreadTimelineItem.FromArtifact))
+            .OrderBy(item => item.CreatedAt)
+            .ThenBy(item => item.Kind)
+            .ToArray();
+
+        foreach (var item in items)
+        {
+            TimelineItems.Add(item);
         }
     }
 
@@ -1823,6 +2109,13 @@ public sealed partial class ShellViewModel : ObservableObject
         var document = FindDocument(attachment.DocumentId);
         if (attachment.Kind == AttachmentKind.File)
         {
+            if (!string.IsNullOrWhiteSpace(attachment.FilePath) &&
+                attachment.FilePath.StartsWith("/artifacts/", StringComparison.OrdinalIgnoreCase))
+            {
+                return workspace?.Artifacts.FirstOrDefault(item =>
+                    string.Equals(item.Path, attachment.FilePath, StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
+            }
+
             var path = !string.IsNullOrWhiteSpace(attachment.FilePath)
                 ? attachment.FilePath
                 : document is null ? string.Empty : workspaceStore.GetAbsolutePath(document);
@@ -2000,13 +2293,32 @@ public sealed partial class ShellViewModel : ObservableObject
     private void NotifyAttachmentState()
     {
         OnPropertyChanged(nameof(PendingAttachmentSummary));
+        OnPropertyChanged(nameof(SendButtonLabel));
+    }
+
+    private void NotifyArtifactState()
+    {
+        OnPropertyChanged(nameof(ArtifactSummary));
+        OnPropertyChanged(nameof(SelectedArtifactPreview));
+    }
+
+    private void NotifyMspActivityState()
+    {
+        OnPropertyChanged(nameof(MspTranscriptSummary));
+        OnPropertyChanged(nameof(PendingApprovalCount));
+        OnPropertyChanged(nameof(HasPendingApprovals));
+        OnPropertyChanged(nameof(PendingApprovalLabel));
+        OnPropertyChanged(nameof(MspActivitySummary));
+        OnPropertyChanged(nameof(RuntimeStatusLabel));
+        OnPropertyChanged(nameof(SendButtonLabel));
+        OnPropertyChanged(nameof(IsAnyMspRunning));
     }
 
     private void QueueMspAttachment(ChatAttachment attachment)
     {
         PendingAttachments.Add(attachment);
         NotifyAttachmentState();
-        SelectedInspectorTab = InspectorTab.Attachments;
+        SelectedInspectorTab = InspectorTab.Evidence;
         StatusMessage = $"MSP 已加入附件：{attachment.Title}";
     }
 
@@ -2050,8 +2362,10 @@ public sealed partial class ShellViewModel : ObservableObject
         };
 
         MspTranscript.Insert(0, entry);
-        OnPropertyChanged(nameof(MspTranscriptSummary));
-        SelectedInspectorTab = InspectorTab.Actions;
+        RefreshTimelineItems();
+        NotifyMspActivityState();
+        SelectedInspectorTab = InspectorTab.Run;
+        IsRunDrawerOpen = true;
         activeMspCommandCancellation = commandCancellation;
         activeMspCommandEntryId = entry.Id;
 
@@ -2096,8 +2410,12 @@ public sealed partial class ShellViewModel : ObservableObject
         result ??= MspCommandResult.Failure("MSP command did not return a result.");
         CompleteMspTranscriptEntry(entry, result);
         PersistTranscriptEntry(entry, 0);
+        RefreshArtifacts();
+        RebuildAllMspSessions();
+        RefreshMspSessions();
+        RefreshTimelineItems();
         await SaveWorkspaceAsync();
-        OnPropertyChanged(nameof(MspTranscriptSummary));
+        NotifyMspActivityState();
         return entry;
     }
 
@@ -2130,6 +2448,13 @@ public sealed partial class ShellViewModel : ObservableObject
                 entry.Effects = commandEvent.Effects.ToString();
                 entry.PolicyPreview = commandEvent.Preview.ToDisplayText();
                 entry.ProgressPercent ??= 10;
+                if (entry.IsApprovalRequired)
+                {
+                    IsRunDrawerOpen = true;
+                    SelectedInspectorTab = InspectorTab.Policy;
+                }
+
+                RefreshTimelineItems();
                 break;
             case MspCommandEventKind.Progress:
                 break;
@@ -2137,6 +2462,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 entry.WasCanceled = true;
                 entry.IsRunning = false;
                 entry.ExitCode = commandEvent.ExitCode ?? 130;
+                RefreshTimelineItems();
                 break;
             case MspCommandEventKind.Completed:
                 entry.IsRunning = false;
@@ -2146,8 +2472,11 @@ public sealed partial class ShellViewModel : ObservableObject
                     entry.ProgressPercent = 100;
                 }
 
+                RefreshTimelineItems();
                 break;
         }
+
+        NotifyMspActivityState();
     }
 
     private static void CompleteMspTranscriptEntry(MspTranscriptEntry entry, MspCommandResult result)
@@ -2202,7 +2531,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
         RebuildAllMspSessions();
 
-        OnPropertyChanged(nameof(MspTranscriptSummary));
+        RefreshMspSessions();
+        RefreshTimelineItems();
+        NotifyMspActivityState();
     }
 
     private void PersistTranscriptEntry(MspTranscriptEntry entry, int index)
@@ -2236,6 +2567,10 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             RebuildMspSession(sessionId);
         }
+
+        RefreshMspSessions();
+        RefreshTimelineItems();
+        NotifyMspActivityState();
     }
 
     private void RemoveWorkspaceTranscriptEntry(MspTranscriptEntry entry)
@@ -2250,6 +2585,9 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             workspace.MspTranscript.Remove(existing);
             RebuildMspSession(NormalizeMspSessionId(existing.SessionId));
+            RefreshMspSessions();
+            RefreshTimelineItems();
+            NotifyMspActivityState();
         }
     }
 
@@ -2429,7 +2767,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         StatusMessage = $"已执行 {commandTexts.Count} 条 MSP 命令。";
-        SelectedInspectorTab = InspectorTab.Actions;
+        SelectedInspectorTab = InspectorTab.Run;
         return builder.ToString().Trim();
     }
 

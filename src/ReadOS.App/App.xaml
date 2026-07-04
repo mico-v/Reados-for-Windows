@@ -14,46 +14,120 @@
                  ═══════════════════════════════════════════════════════════ -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#F6F7F9" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#F1F4F8" />
-                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#FAFBFC" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#E3E7ED" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#C9D1DA" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#111827" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#4B5563" />
-                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#6B7280" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#111827" />
+                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#FAFAFA" />
+                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#F7F7F8" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#F7F7F8" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#F0F1F3" />
+                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ReadOSElevatedBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#E4E4E7" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#C9CBD1" />
+                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#ECEDEF" />
+                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#EDEEF1" />
+                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#E7F1FF" />
+                    <SolidColorBrush x:Key="ReadOSButtonBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#F0F1F3" />
+                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#E5E7EB" />
+                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#DADDE3" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#57606A" />
+                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#6E7781" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#1F2328" />
                     <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#1D4ED8" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#0285FF" />
                     <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#DBEAFE" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#E5F3FF" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#0076E5" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#0067C8" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#15803D" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#B45309" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#DC2626" />
                     <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#D6DBE3" />
                     <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#9CA3AF" />
+
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#F0F1F3" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E5E7EB" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#DADDE3" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#C9CBD1" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#B8BBC4" />
+                    <SolidColorBrush x:Key="ToggleButtonBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#F0F1F3" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#E5E7EB" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#30343A" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#111318" />
+                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#57606A" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPressed" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#DADDE3" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#C9CBD1" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#1F2328" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#171A1F" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#111318" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#20242B" />
-                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#1B1F26" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#2C333D" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#3E4653" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#F8FAFC" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#CBD5E1" />
-                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#94A3B8" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#F8FAFC" />
-                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#111318" />
-                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#60A5FA" />
-                    <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#0B1220" />
-                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#1E293B" />
+                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#111111" />
+                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#171717" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#171717" />
+                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#171717" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="ReadOSElevatedBrush" Color="#242424" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#303030" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#414141" />
+                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#102B42" />
+                    <SolidColorBrush x:Key="ReadOSButtonBrush" Color="#242424" />
+                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#303030" />
+                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#383838" />
+                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#3A3A3A" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#C7C7C7" />
+                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#A1A1AA" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#111111" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#4DA3FF" />
+                    <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#0F2A43" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#69B4FF" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#2F91F2" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#4ADE80" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#FBBF24" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#F87171" />
                     <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#252B34" />
                     <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#6B7280" />
+
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#242424" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#303030" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#383838" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#3A3A3A" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#525252" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#5F5F5F" />
+                    <SolidColorBrush x:Key="ToggleButtonBackground" Color="#242424" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#303030" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#383838" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#DADDE3" />
+                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#C7C7C7" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPressed" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#111111" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#111111" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#111111" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#3A3A3A" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#525252" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#F4F4F5" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -79,6 +153,8 @@
             <CornerRadius x:Key="RadiusSm">4</CornerRadius>
             <CornerRadius x:Key="RadiusMd">6</CornerRadius>
             <CornerRadius x:Key="RadiusLg">8</CornerRadius>
+            <CornerRadius x:Key="RadiusXl">10</CornerRadius>
+            <CornerRadius x:Key="RadiusPill">999</CornerRadius>
 
             <x:Double x:Key="FontSizeXs">11</x:Double>
             <x:Double x:Key="FontSizeSm">12</x:Double>
@@ -87,6 +163,220 @@
             <x:Double x:Key="FontSizeXl">18</x:Double>
 
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+            <!-- Codex-inspired shell styles: quiet surfaces, hairline borders, compact actions. -->
+            <Style x:Key="ReadOSBaseButtonStyle" TargetType="Button">
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeightSm}" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSButtonBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource ReadOSTextPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSButtonBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="{StaticResource FontSizeSm}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Padding="{TemplateBinding Padding}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{ThemeResource ReadOSButtonHoverBrush}" />
+                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource ReadOSStrongBorderBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{ThemeResource ReadOSButtonPressedBrush}" />
+                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource ReadOSStrongBorderBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Opacity" Value="0.45" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="Button" BasedOn="{StaticResource ReadOSBaseButtonStyle}" />
+
+            <Style x:Key="ReadOSPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ReadOSBaseButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource ReadOSAccentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource ReadOSAccentTextBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSAccentBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Padding="{TemplateBinding Padding}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{ThemeResource ReadOSPrimaryButtonHoverBrush}" />
+                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource ReadOSPrimaryButtonHoverBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{ThemeResource ReadOSPrimaryButtonPressedBrush}" />
+                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource ReadOSPrimaryButtonPressedBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Opacity" Value="0.45" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ReadOSGhostButtonStyle" TargetType="Button" BasedOn="{StaticResource ReadOSBaseButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource ReadOSTextSecondaryBrush}" />
+            </Style>
+
+            <Style x:Key="ReadOSIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ReadOSGhostButtonStyle}">
+                <Setter Property="Width" Value="30" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinHeight" Value="30" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="ReadOSBaseToggleButtonStyle" TargetType="ToggleButton">
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeightSm}" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSButtonBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource ReadOSTextSecondaryBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSButtonBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="{StaticResource FontSizeSm}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style TargetType="ToggleButton" BasedOn="{StaticResource ReadOSBaseToggleButtonStyle}" />
+
+            <Style x:Key="ReadOSSegmentButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource ReadOSBaseToggleButtonStyle}">
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Padding" Value="8,0" />
+            </Style>
+
+            <Style x:Key="ReadOSRailButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource ReadOSBaseToggleButtonStyle}">
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="ReadOSLeftPaneStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSPanelBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,1,0" />
+            </Style>
+
+            <Style x:Key="ReadOSRightPaneStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSPanelBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1,0,0,0" />
+            </Style>
+
+            <Style x:Key="ReadOSTopBarStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSChromeBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,0,1" />
+            </Style>
+
+            <Style x:Key="ReadOSPaneToolbarStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSChromeBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,0,1" />
+                <Setter Property="Padding" Value="12,0" />
+            </Style>
+
+            <Style x:Key="ReadOSCardStyle" TargetType="Border">
+                <Setter Property="Padding" Value="12" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSRaisedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+
+            <Style x:Key="ReadOSSubtleCardStyle" TargetType="Border" BasedOn="{StaticResource ReadOSCardStyle}">
+                <Setter Property="Padding" Value="9" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSSubtleBrush}" />
+            </Style>
+
+            <Style x:Key="ReadOSComposerPanelStyle" TargetType="Border" BasedOn="{StaticResource ReadOSCardStyle}">
+                <Setter Property="Padding" Value="10" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusXl}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSElevatedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSStrongBorderBrush}" />
+            </Style>
+
+            <Style x:Key="ReadOSChipStyle" TargetType="Border">
+                <Setter Property="Padding" Value="7,4" />
+                <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+                <Setter Property="Background" Value="{ThemeResource ReadOSSubtleBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+
+            <Style x:Key="ReadOSBottomDrawerStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSPanelBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,1,0,0" />
+            </Style>
+
+            <Style x:Key="ReadOSStatusBarStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ReadOSChromeBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,1,0,0" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

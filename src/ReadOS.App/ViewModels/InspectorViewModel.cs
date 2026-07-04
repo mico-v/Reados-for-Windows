@@ -11,13 +11,18 @@ namespace ReadOS.App.ViewModels;
 
 public enum InspectorTab
 {
+    Evidence,
+    Preview,
+    Run,
+    Artifacts,
+    Policy,
+
+    // Compatibility aliases for older commands/routes.
     Context,
     Actions,
-    Evidence,
     Attachments,
     Outline,
-    Search,
-    Preview
+    Search
 }
 
 public enum PresenterKind
@@ -47,6 +52,9 @@ public sealed partial class InspectorViewModel : ObservableObject
     public ObservableCollection<PdfTextHit> DocumentSearchResults => shell.DocumentSearchResults;
     public ObservableCollection<OutlineItem> Outline => shell.Outline;
     public ObservableCollection<PageImageItem> Thumbnails => shell.Thumbnails;
+    public ObservableCollection<WorkspaceArtifact> Artifacts => shell.Artifacts;
+    public ObservableCollection<MspSessionEntry> MspSessions => shell.MspSessions;
+    public ObservableCollection<ChatAttachment> PendingAttachments => shell.PendingAttachments;
 
     // ── State (pass-through to shell) ───────────────────────────────────
 
@@ -148,8 +156,23 @@ public sealed partial class InspectorViewModel : ObservableObject
 
     public LibraryItem? SelectedDocument => shell.SelectedDocument;
 
+    public WorkspaceArtifact? SelectedArtifact
+    {
+        get => shell.SelectedArtifact;
+        set => shell.SelectedArtifact = value;
+    }
+
+    public MspSessionEntry? SelectedMspSession
+    {
+        get => shell.SelectedMspSession;
+        set => shell.SelectedMspSession = value;
+    }
+
     // ── Computed ────────────────────────────────────────────────────────
 
+    public bool IsRunInspectorSelected => SelectedInspectorTab == InspectorTab.Run || SelectedInspectorTab == InspectorTab.Actions;
+    public bool IsArtifactsInspectorSelected => SelectedInspectorTab == InspectorTab.Artifacts;
+    public bool IsPolicyInspectorSelected => SelectedInspectorTab == InspectorTab.Policy;
     public bool IsContextInspectorSelected => SelectedInspectorTab == InspectorTab.Context;
     public bool IsActionsInspectorSelected => SelectedInspectorTab == InspectorTab.Actions;
     public bool IsEvidenceInspectorSelected => SelectedInspectorTab == InspectorTab.Evidence;
@@ -166,8 +189,16 @@ public sealed partial class InspectorViewModel : ObservableObject
     public string ActiveSubtitle => shell.ActiveSubtitle;
     public string ActiveWorkspaceScope => shell.ActiveWorkspaceScope;
     public string PendingAttachmentSummary => shell.PendingAttachmentSummary;
+    public string MspActivitySummary => shell.MspActivitySummary;
+    public string ArtifactSummary => shell.ArtifactSummary;
+    public string PendingApprovalLabel => shell.PendingApprovalLabel;
+    public string RuntimeStatusLabel => shell.RuntimeStatusLabel;
+    public string ApprovalModeLabel => shell.ApprovalModeLabel;
+    public string SelectedArtifactPreview => shell.SelectedArtifactPreview;
     public string StatusMessage => shell.StatusMessage;
     public bool IsBusy => shell.IsBusy;
+    public bool HasPendingApprovals => shell.HasPendingApprovals;
+    public bool HasSelectedArtifact => shell.SelectedArtifact is not null;
     public bool HasDocument => shell.HasDocument;
     public bool HasPdfDocument => shell.HasPdfDocument;
     public bool HasPageImage => shell.HasPageImage;
@@ -209,6 +240,7 @@ public sealed partial class InspectorViewModel : ObservableObject
     public IAsyncRelayCommand DeleteDocumentCommand => shell.DeleteDocumentCommand;
     public IRelayCommand AttachCurrentPageCommand => shell.AttachCurrentPageCommand;
     public IRelayCommand AttachRangeCommand => shell.AttachRangeCommand;
+    public IRelayCommand AttachSelectedArtifactCommand => shell.AttachSelectedArtifactCommand;
     public IRelayCommand StartRegionSelectionCommand => shell.StartRegionSelectionCommand;
     public IRelayCommand ClearAttachmentsCommand => shell.ClearAttachmentsCommand;
     public IRelayCommand NewConversationCommand => shell.NewConversationCommand;
@@ -232,6 +264,9 @@ public sealed partial class InspectorViewModel : ObservableObject
         {
             case nameof(ShellViewModel.SelectedInspectorTab):
                 OnPropertyChanged(nameof(SelectedInspectorTab));
+                OnPropertyChanged(nameof(IsRunInspectorSelected));
+                OnPropertyChanged(nameof(IsArtifactsInspectorSelected));
+                OnPropertyChanged(nameof(IsPolicyInspectorSelected));
                 OnPropertyChanged(nameof(IsContextInspectorSelected));
                 OnPropertyChanged(nameof(IsActionsInspectorSelected));
                 OnPropertyChanged(nameof(IsEvidenceInspectorSelected));
@@ -270,8 +305,27 @@ public sealed partial class InspectorViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedThumbnail)); break;
             case nameof(ShellViewModel.SelectedSearchResult):
                 OnPropertyChanged(nameof(SelectedSearchResult)); break;
+            case nameof(ShellViewModel.SelectedArtifact):
+                OnPropertyChanged(nameof(SelectedArtifact));
+                OnPropertyChanged(nameof(SelectedArtifactPreview));
+                OnPropertyChanged(nameof(HasSelectedArtifact));
+                break;
+            case nameof(ShellViewModel.SelectedMspSession):
+                OnPropertyChanged(nameof(SelectedMspSession)); break;
             case nameof(ShellViewModel.MspTranscriptSummary):
                 OnPropertyChanged(nameof(MspTranscriptSummary)); break;
+            case nameof(ShellViewModel.MspActivitySummary):
+                OnPropertyChanged(nameof(MspActivitySummary)); break;
+            case nameof(ShellViewModel.ArtifactSummary):
+                OnPropertyChanged(nameof(ArtifactSummary)); break;
+            case nameof(ShellViewModel.PendingApprovalLabel):
+                OnPropertyChanged(nameof(PendingApprovalLabel)); break;
+            case nameof(ShellViewModel.RuntimeStatusLabel):
+                OnPropertyChanged(nameof(RuntimeStatusLabel)); break;
+            case nameof(ShellViewModel.ApprovalModeLabel):
+                OnPropertyChanged(nameof(ApprovalModeLabel)); break;
+            case nameof(ShellViewModel.HasPendingApprovals):
+                OnPropertyChanged(nameof(HasPendingApprovals)); break;
             case nameof(ShellViewModel.CurrentPageIndicator):
                 OnPropertyChanged(nameof(CurrentPageIndicator)); break;
             case nameof(ShellViewModel.PresenterKindLabel):

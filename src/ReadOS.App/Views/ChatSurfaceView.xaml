@@ -8,20 +8,15 @@
     mc:Ignorable="d">
 
     <Border DataContext="{Binding Thread}"
-            Background="{ThemeResource ReadOSCanvasBrush}"
-            BorderBrush="{ThemeResource ReadOSBorderBrush}"
-            BorderThickness="0">
-
+            Background="{ThemeResource ReadOSCanvasBrush}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="46" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- ── Thread header ──────────────────────────────────────────── -->
-            <Border Background="{ThemeResource ReadOSCanvasBrush}"
-                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                    BorderThickness="0,0,0,1"
+            <!-- Thread header -->
+            <Border Style="{StaticResource ReadOSPaneToolbarStyle}"
                     Padding="14,0">
                 <Grid ColumnSpacing="{StaticResource SpacingMd}">
                     <Grid.ColumnDefinitions>
@@ -42,7 +37,7 @@
                             <TextBlock Text="·"
                                        Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
                                        FontSize="{StaticResource FontSizeXs}" />
-                            <TextBlock Text="{Binding PendingAttachmentSummary}"
+                            <TextBlock Text="{Binding MspActivitySummary}"
                                        Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
                                        FontSize="{StaticResource FontSizeXs}"
                                        TextTrimming="CharacterEllipsis" />
@@ -52,21 +47,20 @@
                                 Orientation="Horizontal"
                                 Spacing="4"
                                 VerticalAlignment="Center">
-                        <!-- Restore sidebar button -->
-                        <Button Width="28" Height="28" Padding="0"
-                                Background="Transparent" BorderThickness="0"
-                                CornerRadius="6"
+                        <Border Style="{StaticResource ReadOSChipStyle}">
+                            <TextBlock Text="{Binding RuntimeStatusLabel}"
+                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                       FontSize="{StaticResource FontSizeXs}" />
+                        </Border>
+                        <Button Style="{StaticResource ReadOSIconButtonStyle}"
                                 ToolTipService.ToolTip="显示侧栏"
                                 Click="RestoreSidebarButton_Click">
                             <FontIcon FontFamily="Segoe Fluent Icons"
                                       Glyph="&#xE700;"
                                       FontSize="12" />
                         </Button>
-                        <!-- Restore inspector button -->
-                        <Button Width="28" Height="28" Padding="0"
-                                Background="Transparent" BorderThickness="0"
-                                CornerRadius="6"
-                                ToolTipService.ToolTip="显示审查面板"
+                        <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="显示 Review Dock"
                                 Click="RestoreInspectorButton_Click">
                             <FontIcon FontFamily="Segoe Fluent Icons"
                                       Glyph="&#xE76B;"
@@ -76,134 +70,248 @@
                 </Grid>
             </Border>
 
-            <!-- ── Thread body ────────────────────────────────────────────── -->
+            <!-- Thread body -->
             <Grid Grid.Row="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Messages scroll -->
-                <ScrollViewer Grid.Row="0" Padding="20,14">
-                    <ItemsControl ItemsSource="{Binding ChatMessages}">
+                <ScrollViewer Grid.Row="0" Padding="24,18">
+                    <ItemsControl ItemsSource="{Binding TimelineItems}"
+                                  MaxWidth="960"
+                                  HorizontalAlignment="Stretch">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Margin="0,0,0,12"
-                                        Padding="14"
-                                        CornerRadius="{StaticResource RadiusLg}"
-                                        Background="{ThemeResource ReadOSRaisedBrush}"
-                                        BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                        BorderThickness="1">
-                                    <StackPanel Spacing="10">
-                                        <Grid ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <Border Width="28" Height="28"
-                                                    CornerRadius="{StaticResource RadiusLg}"
-                                                    Background="{ThemeResource ReadOSSubtleBrush}"
-                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                                    BorderThickness="1">
-                                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                                          Glyph="&#xE8BD;"
-                                                          FontSize="{StaticResource IconSizeSm}"
-                                                          Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center" />
-                                            </Border>
-                                            <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Author}"
-                                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                           FontWeight="SemiBold" />
-                                                <TextBlock Text="线程消息"
+                                <Grid Margin="0,0,0,12" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="32" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="28" Height="28"
+                                            Style="{StaticResource ReadOSSubtleCardStyle}"
+                                            Padding="0"
+                                            VerticalAlignment="Top">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="{Binding Glyph}"
+                                                  FontSize="{StaticResource IconSizeSm}"
+                                                  Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <Border Grid.Column="1"
+                                            Padding="12"
+                                            Style="{StaticResource ReadOSCardStyle}">
+                                        <StackPanel Spacing="9">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="1">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding StatusLabel}"
+                                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Subtitle}"
+                                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Timestamp}"
                                                            Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                                           FontSize="{StaticResource FontSizeXs}" />
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="2"
-                                                       Text="{Binding Timestamp}"
-                                                       Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                                       FontSize="{StaticResource FontSizeSm}"
-                                                       VerticalAlignment="Center" />
-                                        </Grid>
-                                        <ItemsControl ItemsSource="{Binding Attachments}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Margin="0,0,0,6"
-                                                            Padding="9"
-                                                            CornerRadius="{StaticResource RadiusLg}"
-                                                            Background="{ThemeResource ReadOSSubtleBrush}"
-                                                            BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                                            BorderThickness="1">
-                                                        <Grid ColumnSpacing="{StaticResource SpacingSm}">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <FontIcon FontFamily="Segoe Fluent Icons"
-                                                                      Glyph="&#xE8A5;"
-                                                                      FontSize="{StaticResource IconSizeSm}"
-                                                                      Foreground="{ThemeResource ReadOSAccentBrush}"
-                                                                      VerticalAlignment="Center" />
-                                                            <StackPanel Grid.Column="1" Spacing="1">
-                                                                <TextBlock Text="{Binding Title}"
-                                                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                                           FontSize="{StaticResource FontSizeSm}"
-                                                                           FontWeight="SemiBold"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Text="{Binding Detail}"
-                                                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                                                           FontSize="{StaticResource FontSizeSm}" />
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <TextBlock Text="{Binding Content}"
-                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                   TextWrapping="WrapWholeWords"
-                                                   LineHeight="21" />
-                                    </StackPanel>
-                                </Border>
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+
+                                            <ItemsControl ItemsSource="{Binding Attachments}"
+                                                          Visibility="{Binding HasAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Margin="0,0,0,6"
+                                                                Padding="8"
+                                                                Style="{StaticResource ReadOSSubtleCardStyle}">
+                                                            <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                                                          Glyph="&#xE8A5;"
+                                                                          FontSize="{StaticResource IconSizeSm}"
+                                                                          Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                                          VerticalAlignment="Center" />
+                                                                <StackPanel Grid.Column="1" Spacing="1">
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                               FontSize="{StaticResource FontSizeSm}"
+                                                                               FontWeight="SemiBold"
+                                                                               TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Text="{Binding Detail}"
+                                                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                               FontSize="{StaticResource FontSizeSm}" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock Text="{Binding Body}"
+                                                       Visibility="{Binding HasBody, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                       TextWrapping="WrapWholeWords"
+                                                       LineHeight="21" />
+
+                                            <Border Visibility="{Binding HasMspEntry, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Style="{StaticResource ReadOSSubtleCardStyle}">
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock Text="{Binding MspEntry.CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding MspEntry.OutputPreview}"
+                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               MaxLines="8" />
+                                                    <ProgressBar Height="4"
+                                                                 Value="{Binding MspEntry.ProgressPercentValue}"
+                                                                 IsIndeterminate="{Binding MspEntry.IsProgressIndeterminate}"
+                                                                 Visibility="{Binding MspEntry.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <TextBlock Text="{Binding MspEntry.PolicyPreview}"
+                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasPolicyPreview, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <TextBlock Text="{Binding MspEntry.ArtifactsSummary}"
+                                                               Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasArtifactsSummary, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <TextBlock Text="{Binding MspEntry.DiagnosticsSummary}"
+                                                               Foreground="{ThemeResource ReadOSDangerBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasDiagnostics, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                                        <Button Height="28" Padding="8,0"
+                                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding MspEntry}"
+                                                                Content="批准并重放" />
+                                                        <Button Height="28" Padding="8,0"
+                                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding MspEntry}"
+                                                                Content="拒绝" />
+                                                        <Button Height="28" Padding="8,0"
+                                                                Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding MspEntry}"
+                                                                Content="取消" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Visibility="{Binding HasArtifact, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Style="{StaticResource ReadOSSubtleCardStyle}">
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding Artifact.Path}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontFamily="Consolas"
+                                                                   FontSize="{StaticResource FontSizeSm}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Artifact.Description}"
+                                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Height="28"
+                                                            Padding="8,0"
+                                                            Command="{Binding DataContext.SelectArtifactCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding Artifact}"
+                                                            Content="打开" />
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>
 
-                <!-- ── Composer ─────────────────────────────────────────── -->
+                <!-- Composer -->
                 <Border Grid.Row="1"
                         Margin="14,0,14,14"
-                        Padding="12"
-                        CornerRadius="{StaticResource RadiusLg}"
-                        Background="{ThemeResource ReadOSCanvasBrush}"
-                        BorderBrush="{ThemeResource ReadOSStrongBorderBrush}"
-                        BorderThickness="1">
+                        Padding="10"
+                        Style="{StaticResource ReadOSComposerPanelStyle}">
                     <Grid RowSpacing="{StaticResource SpacingSm}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="36" />
                         </Grid.RowDefinitions>
+
                         <Grid ColumnSpacing="{StaticResource SpacingSm}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="{StaticResource SpacingSm}"
-                                        VerticalAlignment="Center">
-                                <TextBlock Text="{Binding PendingAttachmentSummary}"
-                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                           FontSize="{StaticResource FontSizeSm}" />
-                                <TextBlock Text="{Binding WorkspaceModeLabel}"
-                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                           FontSize="{StaticResource FontSizeSm}" />
-                            </StackPanel>
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                    <Border Style="{StaticResource ReadOSChipStyle}">
+                                        <TextBlock Text="{Binding PendingAttachmentSummary}"
+                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                   FontSize="{StaticResource FontSizeXs}" />
+                                    </Border>
+                                    <Border Style="{StaticResource ReadOSChipStyle}">
+                                        <TextBlock Text="{Binding ApprovalModeLabel}"
+                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                   FontSize="{StaticResource FontSizeXs}" />
+                                    </Border>
+                                    <Border Style="{StaticResource ReadOSChipStyle}">
+                                        <TextBlock Text="{Binding RuntimeStatusLabel}"
+                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                   FontSize="{StaticResource FontSizeXs}" />
+                                    </Border>
+                                    <Border Padding="7,4"
+                                            CornerRadius="{StaticResource RadiusMd}"
+                                            Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                            BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                            BorderThickness="1"
+                                            Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock Text="{Binding PendingApprovalLabel}"
+                                                   Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                   FontSize="{StaticResource FontSizeXs}"
+                                                   FontWeight="SemiBold" />
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
                             <Button Grid.Column="1"
-                                    Width="28" Height="28" Padding="0"
-                                    Background="Transparent" BorderThickness="0"
+                                    Style="{StaticResource ReadOSIconButtonStyle}"
                                     ToolTipService.ToolTip="清空附件"
                                     Command="{Binding ClearAttachmentsCommand}">
                                 <FontIcon FontFamily="Segoe Fluent Icons"
@@ -211,14 +319,17 @@
                                           FontSize="{StaticResource IconSizeSm}" />
                             </Button>
                         </Grid>
+
                         <TextBox Grid.Row="1"
-                                 MinHeight="72"
+                                 MinHeight="76"
+                                 MaxHeight="160"
                                  AcceptsReturn="True"
                                  Background="Transparent"
                                  BorderThickness="0"
                                  TextWrapping="Wrap"
-                                 PlaceholderText="向 MSP Agent 发起任务..."
+                                 PlaceholderText="让 ReadOS 执行阅读、证据或 MSP 任务..."
                                  Text="{Binding ComposerDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
                         <Grid Grid.Row="2" ColumnSpacing="{StaticResource SpacingSm}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -226,7 +337,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                                 <Button Width="32" Height="32" Padding="0"
-                                        Background="Transparent" BorderThickness="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
                                         ToolTipService.ToolTip="附加当前页或全文"
                                         Command="{Binding AttachCurrentPageCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
@@ -234,7 +345,7 @@
                                               FontSize="{StaticResource IconSizeSm}" />
                                 </Button>
                                 <Button Width="32" Height="32" Padding="0"
-                                        Background="Transparent" BorderThickness="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
                                         ToolTipService.ToolTip="框选证据"
                                         Command="{Binding StartRegionSelectionCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
@@ -245,7 +356,7 @@
                                          PlaceholderText="1-3, 8"
                                          Text="{Binding PageRangeDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <Button Height="32" Padding="10,0"
-                                        Background="Transparent" BorderThickness="0"
+                                        Style="{StaticResource ReadOSGhostButtonStyle}"
                                         Command="{Binding AttachRangeCommand}">
                                     <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
                                         <FontIcon FontFamily="Segoe Fluent Icons"
@@ -254,15 +365,21 @@
                                         <TextBlock Text="范围" />
                                     </StackPanel>
                                 </Button>
+                                <Button Width="32" Height="32" Padding="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                        ToolTipService.ToolTip="显示 Runtime Drawer"
+                                        Command="{Binding ToggleRunDrawerCommand}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE756;"
+                                              FontSize="{StaticResource IconSizeSm}" />
+                                </Button>
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Height="32" MinWidth="84" Padding="12,0"
-                                    Background="{ThemeResource ReadOSAccentBrush}"
-                                    Foreground="{ThemeResource ReadOSAccentTextBrush}"
-                                    BorderThickness="0"
+                                    Style="{StaticResource ReadOSPrimaryButtonStyle}"
                                     Command="{Binding SendPromptCommand}">
                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
-                                    <TextBlock Text="发送" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SendButtonLabel}" FontWeight="SemiBold" />
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE724;"
                                               FontSize="{StaticResource IconSizeSm}" />

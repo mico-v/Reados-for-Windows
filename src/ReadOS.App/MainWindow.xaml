@@ -11,32 +11,30 @@
 
     <Grid x:Name="RootShell" Background="{ThemeResource ReadOSCanvasBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="46" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="28" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- ═══════════════════════════════════════════════════════════════
-             Row 0 — Title bar / toolbar (48 px)
-             Left: brand + function buttons.  Right: reserved for native caption buttons.
+             Row 0 — Codex-native global toolbar
+             Global actions, active thread, runtime state, and transient status.
              ═══════════════════════════════════════════════════════════════ -->
         <Border Grid.Row="0"
-                Background="{ThemeResource ReadOSCanvasBrush}"
-                BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                BorderThickness="0,0,0,1">
+                Style="{StaticResource ReadOSTopBarStyle}">
             <Grid Padding="10,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ══ Left: brand + compact function buttons ══ -->
+                <!-- Left: brand + compact global actions -->
                 <StackPanel Grid.Column="0"
                             Orientation="Horizontal"
                             Spacing="4"
                             VerticalAlignment="Center">
-                    <Border Width="26" Height="26"
-                            CornerRadius="6"
+                    <Border Width="28" Height="28"
+                            CornerRadius="{StaticResource RadiusLg}"
                             Background="{ThemeResource ReadOSBrandBrush}">
                         <TextBlock Text="R"
                                    Foreground="{ThemeResource ReadOSBrandTextBrush}"
@@ -51,9 +49,7 @@
                             Margin="6,0,4,0" />
 
                     <!-- Import -->
-                    <Button Width="28" Height="28" Padding="0"
-                            Background="Transparent" BorderThickness="0"
-                            CornerRadius="6"
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="导入资料"
                             Command="{Binding ImportMaterialCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons"
@@ -62,9 +58,7 @@
                     </Button>
 
                     <!-- New thread -->
-                    <Button Width="28" Height="28" Padding="0"
-                            Background="Transparent" BorderThickness="0"
-                            CornerRadius="6"
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="新建线程"
                             Command="{Binding NewConversationCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons"
@@ -73,9 +67,7 @@
                     </Button>
 
                     <!-- Theme toggle -->
-                    <Button Width="28" Height="28" Padding="0"
-                            Background="Transparent" BorderThickness="0"
-                            CornerRadius="6"
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding ThemeToggleLabel}"
                             Command="{Binding ToggleThemeCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons"
@@ -84,30 +76,39 @@
                     </Button>
 
                     <!-- Settings -->
-                    <Button Width="28" Height="28" Padding="0"
-                            Background="Transparent" BorderThickness="0"
-                            CornerRadius="6"
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="设置"
                             Command="{Binding NavigateSettingsCommand}">
                         <FontIcon FontFamily="Segoe Fluent Icons"
                                   Glyph="&#xE713;"
                                   FontSize="13" />
                     </Button>
+
+                    <!-- Run drawer -->
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                            ToolTipService.ToolTip="运行抽屉"
+                            Command="{Binding ToggleRunDrawerCommand}">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE756;"
+                                  FontSize="13" />
+                    </Button>
                 </StackPanel>
 
-                <!-- ══ Drag region (system double-click / right-click) ══ -->
+                <!-- Drag region: active thread + runtime context -->
                 <Grid Grid.Column="1"
                       x:Name="TitleBarDragRegion"
                       Background="Transparent">
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="8"
-                                VerticalAlignment="Center"
-                                Margin="12,0,0,0">
-                        <Border Padding="5,3"
-                                CornerRadius="6"
-                                Background="{ThemeResource ReadOSSubtleBrush}"
-                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                BorderThickness="1">
+                    <Grid ColumnSpacing="10"
+                          Margin="12,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource ReadOSChipStyle}"
+                                Padding="6,3"
+                                VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal"
                                         Spacing="5">
                                 <Ellipse Width="5" Height="5"
@@ -119,28 +120,60 @@
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Border>
-                        <TextBlock Text="{Binding ActiveTitle}"
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding ActiveTitle}"
                                    Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                        <Border Grid.Column="2"
+                                Style="{StaticResource ReadOSChipStyle}"
+                                Padding="6,3"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding RuntimeStatusLabel}"
+                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Border>
+                        <TextBlock Grid.Column="3"
+                                   Text="{Binding StatusMessage}"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                   FontSize="{StaticResource FontSizeXs}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Border Grid.Column="3"
+                                Padding="6,3"
+                                CornerRadius="{StaticResource RadiusMd}"
+                                Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                BorderThickness="1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding PendingApprovalLabel}"
+                                       Foreground="{ThemeResource ReadOSAccentBrush}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Border>
+                    </Grid>
                 </Grid>
             </Grid>
         </Border>
 
         <!-- ═══════════════════════════════════════════════════════════════
-             Row 1 — Main 3-column workspace
-             Sidebar | Chat thread | Unified inspector
+             Row 1 — Codex-native workspace
+             Left rail/context | Thread workspace | Review dock
              ═══════════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1"
               Visibility="{Binding IsWorkspaceRoute, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="280" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="324" />
                 <ColumnDefinition x:Name="SidebarSplitterColumn" Width="6" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition x:Name="InspectorSplitterColumn" Width="6" />
-                <ColumnDefinition x:Name="InspectorColumn" Width="420" />
+                <ColumnDefinition x:Name="InspectorColumn" Width="440" />
             </Grid.ColumnDefinitions>
 
             <!-- ── Sidebar ──────────────────────────────────────────────── -->
@@ -163,11 +196,11 @@
                                    Grid.Column="2"
                                    Margin="0" />
 
-            <!-- Inspector resize splitter -->
+            <!-- Review dock resize splitter -->
             <Grid Grid.Column="3"
                   x:Name="InspectorSplitterGrid"
                   Background="Transparent"
-                  ToolTipService.ToolTip="拖动调整审查面板宽度">
+                  ToolTipService.ToolTip="拖动调整 Review Dock 宽度">
                 <Rectangle Width="1"
                            Fill="{ThemeResource ReadOSBorderBrush}"
                            HorizontalAlignment="Center" />
@@ -188,36 +221,134 @@
                             Visibility="{Binding IsSettingsRoute, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
         <!-- ═══════════════════════════════════════════════════════════════
-             Row 2 — Status bar (28 px)
+             Row 2 — Bottom runtime drawer
              ═══════════════════════════════════════════════════════════════ -->
         <Border Grid.Row="2"
-                Background="{ThemeResource ReadOSCanvasBrush}"
-                BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid Padding="10,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding StatusMessage}"
-                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                           FontSize="{StaticResource FontSizeXs}"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1"
-                           Text="{Binding ActiveModelLabel}"
-                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                           FontSize="{StaticResource FontSizeXs}"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center"
-                           Margin="12,0,0,0" />
-                <ProgressRing Grid.Column="2"
-                              Width="16" Height="16"
-                              IsActive="{Binding IsBusy}"
-                              Margin="8,0,0,0"
-                              VerticalAlignment="Center" />
+                Height="{Binding RunDrawerHeight}"
+                Style="{StaticResource ReadOSBottomDrawerStyle}"
+                Visibility="{Binding IsRunDrawerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="40" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0"
+                        Style="{StaticResource ReadOSPaneToolbarStyle}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="&#xE756;"
+                                      FontSize="13"
+                                      Foreground="{ThemeResource ReadOSAccentBrush}" />
+                            <TextBlock Text="Runtime"
+                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding MspActivitySummary}"
+                                       Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    VerticalAlignment="Center">
+                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="停止当前命令"
+                                    Command="{Binding CancelActiveMspCommandCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="&#xE711;"
+                                          FontSize="12" />
+                            </Button>
+                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="固定运行抽屉"
+                                    Command="{Binding PinRunDrawerCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="&#xE840;"
+                                          FontSize="12" />
+                            </Button>
+                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="关闭运行抽屉"
+                                    Command="{Binding ToggleRunDrawerCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="&#xE711;"
+                                          FontSize="12" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ListView Grid.Row="1"
+                          ItemsSource="{Binding MspTranscript}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="8"
+                          SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8"
+                                    Padding="10"
+                                    Style="{StaticResource ReadOSCardStyle}">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="8">
+                                            <TextBlock Text="{Binding StatusLabel}"
+                                                       Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="12" />
+                                            <TextBlock Text="{Binding CommandText}"
+                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="12"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding OutputPreview}"
+                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   MaxLines="3" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                VerticalAlignment="Center">
+                                        <Button Height="28" Padding="8,0"
+                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=RootShell}"
+                                                CommandParameter="{Binding}"
+                                                Content="批准" />
+                                        <Button Height="28" Padding="8,0"
+                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.DenyMspCommandCommand, ElementName=RootShell}"
+                                                CommandParameter="{Binding}"
+                                                Content="拒绝" />
+                                        <Button Height="28" Padding="8,0"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.CancelMspCommandCommand, ElementName=RootShell}"
+                                                CommandParameter="{Binding}"
+                                                Content="取消" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </Grid>
         </Border>
+
     </Grid>
 </Window>

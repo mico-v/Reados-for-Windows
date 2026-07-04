@@ -9,7 +9,9 @@ namespace ReadOS.App.ViewModels;
 public enum WorkspaceSidebarMode
 {
     Conversations,
-    Materials
+    Materials,
+    Sessions,
+    Artifacts
 }
 
 public sealed partial class SidebarViewModel : ObservableObject
@@ -27,6 +29,8 @@ public sealed partial class SidebarViewModel : ObservableObject
     public ObservableCollection<NavigationEntry> NavigationEntries => shell.NavigationEntries;
     public ObservableCollection<LibraryItem> LibraryItems => shell.LibraryItems;
     public ObservableCollection<ChatConversation> Conversations => shell.Conversations;
+    public ObservableCollection<MspSessionEntry> MspSessions => shell.MspSessions;
+    public ObservableCollection<WorkspaceArtifact> Artifacts => shell.Artifacts;
 
     // ── State (pass-through to shell) ───────────────────────────────────
 
@@ -54,11 +58,28 @@ public sealed partial class SidebarViewModel : ObservableObject
         set => shell.SelectedConversation = value;
     }
 
+    public MspSessionEntry? SelectedMspSession
+    {
+        get => shell.SelectedMspSession;
+        set => shell.SelectedMspSession = value;
+    }
+
+    public WorkspaceArtifact? SelectedArtifact
+    {
+        get => shell.SelectedArtifact;
+        set => shell.SelectedArtifact = value;
+    }
+
     // ── Computed ────────────────────────────────────────────────────────
 
     public bool IsConversationsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Conversations;
     public bool IsMaterialsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Materials;
+    public bool IsSessionsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Sessions;
+    public bool IsArtifactsSidebarSelected => SidebarMode == WorkspaceSidebarMode.Artifacts;
     public string LibrarySummary => shell.LibrarySummary;
+    public string MspActivitySummary => shell.MspActivitySummary;
+    public string ArtifactSummary => shell.ArtifactSummary;
+    public string RuntimeStatusLabel => shell.RuntimeStatusLabel;
 
     // ── Commands (delegate to shell's public command properties) ────────
 
@@ -80,6 +101,7 @@ public sealed partial class SidebarViewModel : ObservableObject
     public IRelayCommand ImportMaterialCommand => shell.ImportMaterialCommand;
     public IRelayCommand CreateProjectCommand => shell.CreateProjectCommand;
     public IRelayCommand OpenLocationCommand => shell.OpenLocationCommand;
+    public IRelayCommand ToggleRunDrawerCommand => shell.ToggleRunDrawerCommand;
 
     // ── Property change forwarding ──────────────────────────────────────
 
@@ -91,6 +113,8 @@ public sealed partial class SidebarViewModel : ObservableObject
                 OnPropertyChanged(nameof(SidebarMode));
                 OnPropertyChanged(nameof(IsConversationsSidebarSelected));
                 OnPropertyChanged(nameof(IsMaterialsSidebarSelected));
+                OnPropertyChanged(nameof(IsSessionsSidebarSelected));
+                OnPropertyChanged(nameof(IsArtifactsSidebarSelected));
                 break;
             case nameof(ShellViewModel.SearchQuery):
                 OnPropertyChanged(nameof(SearchQuery));
@@ -101,8 +125,23 @@ public sealed partial class SidebarViewModel : ObservableObject
             case nameof(ShellViewModel.SelectedConversation):
                 OnPropertyChanged(nameof(SelectedConversation));
                 break;
+            case nameof(ShellViewModel.SelectedMspSession):
+                OnPropertyChanged(nameof(SelectedMspSession));
+                break;
+            case nameof(ShellViewModel.SelectedArtifact):
+                OnPropertyChanged(nameof(SelectedArtifact));
+                break;
             case nameof(ShellViewModel.LibrarySummary):
                 OnPropertyChanged(nameof(LibrarySummary));
+                break;
+            case nameof(ShellViewModel.MspActivitySummary):
+                OnPropertyChanged(nameof(MspActivitySummary));
+                break;
+            case nameof(ShellViewModel.ArtifactSummary):
+                OnPropertyChanged(nameof(ArtifactSummary));
+                break;
+            case nameof(ShellViewModel.RuntimeStatusLabel):
+                OnPropertyChanged(nameof(RuntimeStatusLabel));
                 break;
         }
     }
