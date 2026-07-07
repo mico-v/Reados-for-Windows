@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ReadOS.App.Models;
+using ReadOS.Msp.Hosting.Sessions;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Workspace;
 
@@ -17,6 +18,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     private readonly IWorkspaceStore workspaceStore;
     private readonly IPdfDocumentService pdfService;
     private readonly Func<WorkspaceState?> workspaceProvider;
+    private readonly MspSessionWorkspaceProjectionService sessionWorkspaceProjectionService = new();
 
     public ReadOsVirtualWorkspace(
         IWorkspaceStore workspaceStore,
@@ -71,12 +73,10 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
                 .Select(document => Directory($"/documents/{document.Id}", document.Id))
                 .ToArray(),
             "/artifacts" => ListArtifactEntries(normalized, workspace),
-            "/sessions" => workspace.MspSessions
-                .Select(session => File($"/sessions/{session.Id}.json", $"{session.Id}.json", EstimateSessionSize(session), "application/json"))
-                .ToArray(),
-            "/transcripts" => workspace.MspTranscript
-                .Select(entry => File($"/transcripts/{entry.Id}.json", $"{entry.Id}.json", EstimateTranscriptSize(entry), "application/json"))
-                .ToArray(),
+            "/sessions" => sessionWorkspaceProjectionService.ListSessionEntries(
+                workspace.MspSessions.Select(session => session.ToRecord())),
+            "/transcripts" => sessionWorkspaceProjectionService.ListTranscriptEntries(
+                workspace.MspTranscript.Select(entry => entry.ToRecord())),
             _ => ListNested(normalized, workspace)
         };
 
@@ -113,18 +113,18 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
 
         if (normalized.StartsWith("/sessions/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
         {
-            var sessionId = Path.GetFileNameWithoutExtension(normalized);
-            var session = workspace.MspSessions.FirstOrDefault(item =>
-                string.Equals(item.Id, sessionId, StringComparison.OrdinalIgnoreCase));
+            var session = sessionWorkspaceProjectionService.FindSession(
+                workspace.MspSessions.Select(item => item.ToRecord()),
+                normalized);
             return session is null ? null : JsonSerializer.Serialize(ProjectSession(session), JsonOptions);
         }
 
         if (normalized.StartsWith("/transcripts/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
         {
-            var transcriptId = Path.GetFileNameWithoutExtension(normalized);
-            var entry = workspace.MspTranscript.FirstOrDefault(item =>
-                string.Equals(item.Id, transcriptId, StringComparison.OrdinalIgnoreCase));
-            return entry is null ? null : JsonSerializer.Serialize(ProjectTranscript(entry), JsonOptions);
+            var transcript = sessionWorkspaceProjectionService.FindTranscript(
+                workspace.MspTranscript.Select(item => item.ToRecord()),
+                normalized);
+            return transcript is null ? null : JsonSerializer.Serialize(ProjectTranscript(transcript), JsonOptions);
         }
 
         if (normalized.StartsWith("/library/", StringComparison.Ordinal) && normalized.EndsWith(".json", StringComparison.Ordinal))
@@ -265,6 +265,38 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         await workspaceStore.SaveAsync(workspace, cancellationToken);
     }
 
+    public async ValueTask<bool> TryDeleteAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var workspace = workspaceProvider();
+        if (workspace is null)
+        {
+            return false;
+        }
+
+        var normalized = NormalizePath(path);
+        if (TryResolveArtifactManifestPath(normalized, out var artifactPath))
+        {
+            normalized = artifactPath;
+        }
+
+        if (!normalized.StartsWith("/artifacts/", StringComparison.Ordinal) ||
+            normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var artifact = workspace.Artifacts.FirstOrDefault(item =>
+            string.Equals(item.Path, normalized, StringComparison.OrdinalIgnoreCase));
+        if (artifact is null)
+        {
+            return false;
+        }
+
+        workspace.Artifacts.Remove(artifact);
+        await workspaceStore.SaveAsync(workspace, cancellationToken);
+        return true;
+    }
+
     private static IReadOnlyList<MspWorkspaceEntry> RootEntries()
     {
         return new[]
@@ -279,7 +311,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         };
     }
 
-    private static IReadOnlyList<MspWorkspaceEntry> ListNested(string normalized, WorkspaceState workspace)
+    private IReadOnlyList<MspWorkspaceEntry> ListNested(string normalized, WorkspaceState workspace)
     {
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 2 && parts[0] == "projects")
@@ -338,18 +370,16 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         if (parts.Length >= 1 && parts[0] == "sessions")
         {
             return parts.Length == 1
-                ? workspace.MspSessions
-                    .Select(session => File($"/sessions/{session.Id}.json", $"{session.Id}.json", EstimateSessionSize(session), "application/json"))
-                    .ToArray()
+                ? sessionWorkspaceProjectionService.ListSessionEntries(
+                    workspace.MspSessions.Select(session => session.ToRecord()))
                 : Array.Empty<MspWorkspaceEntry>();
         }
 
         if (parts.Length >= 1 && parts[0] == "transcripts")
         {
             return parts.Length == 1
-                ? workspace.MspTranscript
-                    .Select(entry => File($"/transcripts/{entry.Id}.json", $"{entry.Id}.json", EstimateTranscriptSize(entry), "application/json"))
-                    .ToArray()
+                ? sessionWorkspaceProjectionService.ListTranscriptEntries(
+                    workspace.MspTranscript.Select(entry => entry.ToRecord()))
                 : Array.Empty<MspWorkspaceEntry>();
         }
 
@@ -437,31 +467,6 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     private static long EstimateDocumentInfoSize(LibraryItem document)
     {
         return document.Name.Length + 128;
-    }
-
-    private static long EstimateTranscriptSize(MspTranscriptEntry entry)
-    {
-        return entry.CommandText.Length +
-            entry.Stdout.Length +
-            entry.Stderr.Length +
-            entry.ArtifactsSummary.Length +
-            entry.ProgressMessage.Length +
-            entry.DiagnosticsSummary.Length +
-            entry.RecoveryHint.Length +
-            256;
-    }
-
-    private static long EstimateSessionSize(MspSessionEntry session)
-    {
-        return session.Id.Length +
-            session.Title.Length +
-            session.LastCommandText.Length +
-            session.LastProgressMessage.Length +
-            session.LastDiagnosticsSummary.Length +
-            session.LastRecoveryHint.Length +
-            session.TranscriptIds.Sum(id => id.Length) +
-            session.ArtifactPaths.Sum(path => path.Length) +
-            512;
     }
 
     private static long EstimateArtifactManifestSize(WorkspaceArtifact artifact)
@@ -624,9 +629,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         };
     }
 
-    private static object ProjectSession(MspSessionEntry session)
+    private static object ProjectSession(MspSessionRecord record)
     {
-        var record = session.ToRecord();
         return new
         {
             record.Id,
@@ -641,6 +645,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.LastDiagnosticsSummary,
             record.LastRecoveryHint,
             record.CommandCount,
+            record.RunningCount,
+            record.PendingApprovalCount,
             record.ApprovalCount,
             record.FailureCount,
             record.TranscriptIds,
@@ -648,9 +654,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         };
     }
 
-    private static object ProjectTranscript(MspTranscriptEntry entry)
+    private static object ProjectTranscript(MspCommandTranscriptRecord record)
     {
-        var record = entry.ToRecord();
         return new
         {
             record.Id,
@@ -670,6 +675,7 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
             record.RecoveryHint,
             record.ProgressMessage,
             record.ProgressPercent,
+            record.IsRunning,
             record.WasCanceled
         };
     }

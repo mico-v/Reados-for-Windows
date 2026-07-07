@@ -59,15 +59,16 @@ Implemented files:
 - `src/ReadOS.App/Views/InspectorView.xaml`: context, run, evidence, attachments, preview tabs.
 - `src/ReadOS.App/Services/LayoutService.cs`: responsive breakpoints and pane width calculation.
 - `src/ReadOS.App/ViewModels/ShellViewModel.cs`: MSP command execution, streaming status, approvals, audit transcript, artifacts/session rebuilding.
+- `src/ReadOS.App/Models/WorkbenchUiModels.cs`: timeline records project explicit message, MSP, approval, artifact, evidence, and error types for the thread surface.
 
 Main gaps:
 
-- The transcript still looks like generic chat cards; MSP actions, approvals, evidence, and artifacts are not visually distinct.
+- The transcript has moved beyond generic chat cards with typed record labels, MSP state titles, distinct body sections for approvals, running commands, failed commands, artifacts, evidence, and ordinary messages, plus actions that route artifacts/evidence/diagnostics into the inspector. Run and Policy inspector tabs now show selected transcript detail cards and visible selected-row state.
 - The inspector has too many peer tabs, so "run supervision" and "evidence review" feel buried.
 - MSP command output is trapped inside the `Run` tab instead of being available as a persistent runtime surface.
 - Approval exists in `MspTranscriptEntry`, but the UI does not make pending approval impossible to miss.
-- Composer does not yet expose the important operational controls: approval mode, model/runtime state, queued evidence, stop/steer/send, and command queue state.
-- Sidebar rows do not yet show thread status, pending approval count, artifact count, or active MSP session state.
+- Composer now exposes queued evidence as removable chips, approval-mode segmented controls, and runtime chips; its primary action switches between send and stop based on runtime state, pending approval chips open the Policy inspector, running-state drafts can be queued and restored, and selected artifacts can be steered into refinement workflow drafts from the current composer text.
+- MSP session sidebar rows now show active state, pending approvals, failures, and artifact counts. Thread row status and richer material/artifact row counters still need refinement.
 - Preview, outline, document search, and evidence attachments are functional but split across competing surfaces.
 
 ## Codex-Native Architecture Decision
@@ -228,9 +229,9 @@ Thread header should show:
 
 Composer should become the control center:
 
-- Top context row: queued evidence chips, page range, approval mode, model/runtime.
+- Top context row: queued evidence chips, page range, approval mode, model/runtime. Queued evidence chips are implemented with per-item removal, and approval mode is a segmented control wired to MSP policy.
 - Text input: stable, multi-line, no layout jump.
-- Bottom action row: attach page, attach range, region capture, command palette, stop/steer/send.
+- Bottom action row: attach page, attach range, region capture, command palette, stop/steer/send. Steer is implemented for selected artifacts by preparing a `workflow run refine-artifact` draft from the composer instruction.
 - Send button changes state: Send, Queue, Stop, Resume depending on runtime state.
 
 ### Review Dock
@@ -243,7 +244,7 @@ Reduce the top-level tabs to the surfaces a user naturally needs during work:
 - `Preview`: PDF/text preview, page navigation, region capture.
 - `Run`: current MSP session, command transcript, approvals, policy preview.
 - `Artifacts`: generated summaries, exports, search TSVs, answers, audit outputs.
-- `Policy`: approval mode, effects preview, safety diagnostics, recovery hints.
+- `Policy`: approval mode, effects preview, safety diagnostics, recovery hints, and failure-review workflow presets.
 
 The inspector should react to selection:
 
@@ -308,6 +309,14 @@ No independent status bar is needed. When the drawer is closed, compact runtime 
 2. Timeline shows an artifact-created record.
 3. Inspector `Artifacts` lists by session/thread.
 4. User opens, copies, exports, or attaches the artifact back into the conversation.
+5. Rename/delete remain audited MSP commands routed through Run/Policy approval rather than direct inspector icon actions.
+
+### Workflow Draft Review
+
+1. User prepares a workflow from a selected outline item, artifact, or failed MSP diagnostic.
+2. Inspector switches to `Run` and fills the command input without executing it.
+3. Run inspector keeps the latest prepared commands as a compact history.
+4. User restores any prepared draft, edits it if needed, then explicitly runs the MSP command.
 
 ## Visual Direction
 
@@ -373,9 +382,9 @@ Primary files:
 Scope: improve task entry ergonomics.
 
 - Add model/runtime chip.
-- Add approval mode chip.
+- Add approval mode segmented control. Current status: composer and Policy inspector expose policy, confirm-all, and allow-workspace modes.
 - Add queued evidence chips with remove actions.
-- Add stop/steer/send state handling.
+- Add stop/steer/send state handling. Current status: send/stop state is wired, and selected-artifact steer prepares a reviewable refinement workflow draft.
 - Add compact command palette entry for MSP commands and evidence operations.
 - Keep page range and region capture controls stable and keyboard-friendly.
 
@@ -407,8 +416,12 @@ Scope: make generated output inspectable and reusable.
 
 - Add an artifact list grouped by MSP session/thread.
 - Support artifact preview for markdown/text/TSV first.
-- Add open/copy/export/attach actions.
+- Add open/copy/export/attach actions. Current status: selected artifacts can be previewed, copied, exported, or attached directly from the Artifacts inspector.
 - Link artifact rows back to the command that created them.
+- Show selected-artifact lineage for source artifacts, manifests, virtual pages, source documents, and page ranges.
+- Allow openable source artifacts in lineage to become the selected artifact.
+- Add selected outline and artifact actions that prepare workflow command drafts and switch to the Run inspector.
+- Keep destructive artifact rename/delete behind explicit MSP command review and approval.
 - Link evidence chips back to page/range/region preview.
 
 Primary files:

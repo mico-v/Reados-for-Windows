@@ -104,6 +104,8 @@ Core pack:
 - `cat`
 - `echo`
 - `workflow summary`
+- `workflow run summarize-current`
+- `workflow run review-failures`
 
 ReadOS document pack:
 
@@ -114,15 +116,21 @@ ReadOS document pack:
 - `pdf text ... --artifact /artifacts/excerpt.txt`
 - `pdf search`
 - `pdf search ... --artifact /artifacts/search.tsv`
+- `workflow run explain-section --document current --outline "3.2" --artifact /artifacts/workflows/explanation.md`
+- `workflow run extract-evidence --document current --outline "3.2" --artifact /artifacts/workflows/evidence.json`
+- `workflow run review-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-review.md`
+- `workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md`
+- `workflow run refine-artifact --source /artifacts/workflows/evidence-synthesis.md --instruction "tighten caveats" --artifact /artifacts/workflows/evidence-synthesis-refined.md`
 
 Planned packs:
 
-- named workflow run commands.
+- additional document workflow run commands.
 
 Started packs:
 
 - artifact commands;
 - workflow summary commands;
+- document workflow commands;
 - page label commands;
 - outline commands;
 - attachment commands;
@@ -190,6 +198,8 @@ Diagnostics make failures machine-readable for the agent and actionable for the 
 - message;
 - optional target;
 - recovery hint.
+
+Current status: runtime failures include stable MSP codes for parse, unknown command, policy confirmation, cancellation, workflow lookup, and runtime exceptions. ReadOS command packs add domain-specific codes such as `reados.pdf.document_not_found` for unresolved PDF targets, `reados.pdf.invalid_page` and `reados.pdf.outline_item_not_found` for document metadata failures, and `reados.chat.model_provider_failed` for model-provider failures before any partial conversation or artifact write.
 
 ### Session Record
 
@@ -266,7 +276,7 @@ Audit records should answer:
 
 Evidence should be visible both as UI transcript and as workspace data that future commands can read.
 
-Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Failed transcript records include diagnostic summaries and recovery hints. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index with failure counts and the latest recovery hint before reading individual transcript files. `workflow summary current|<session-id>` turns those projections into a workflow-level Markdown report, and `--artifact` persists that report with session/transcript source paths. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
+Current workbench transcript records are persisted in workspace state and projected as read-only JSON files under `/transcripts`. Failed transcript records include diagnostic summaries and recovery hints. Session records are rebuilt from transcripts and artifacts and projected under `/sessions`, giving agents a compact history index with pending approval counts, failure counts, artifact references, and the latest recovery hint before reading individual transcript files. The workbench uses the same session projection to surface running, approval, failure, and completed state in the left context list. `workflow summary current|<session-id>` turns those projections into a workflow-level Markdown report, and `--artifact` persists that report with session/transcript source paths. Approval-gated commands also carry preview text with affected documents, pages, artifact paths, queued attachments, and model/provider details where available. Artifact manifests expose the command provenance that created durable outputs.
 
 ## Artifact Model
 
@@ -289,35 +299,99 @@ Each artifact should have:
 - creation time;
 - actor/session.
 
-Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. `pdf search ... --artifact <path>` creates tab-separated hit artifacts and records the matched page paths and page references. `chat ask ... --artifact <path>` creates Markdown answer artifacts and records queued evidence attachments as source document/page references. `workflow summary ... --artifact <path>` creates workflow report artifacts and records `/sessions/{id}.json` plus `/transcripts/{id}.json` source paths. ReadOS persists those fields with the workspace artifact and exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`.
+Current status: `artifact write` returns an `MspArtifact` with path, media type, size, description, source command, actor, session ID, timestamps, and preview. `pdf text ... --artifact <path>` creates extraction artifacts and automatically populates source document IDs, virtual page paths such as `/documents/{id}/pages/12.txt`, and page ranges such as `{id}:12-14`. `pdf search ... --artifact <path>` creates tab-separated hit artifacts and records the matched source pages. `chat ask ... --artifact <path>` creates Markdown answer artifacts and records queued evidence attachments as source document/page references. `workflow summary ... --artifact <path>`, `workflow run summarize-current --artifact <path>`, and `workflow run review-failures --artifact <path>` create workflow report artifacts and record `/sessions/{id}.json` plus `/transcripts/{id}.json` source paths. Named session workflow reports additionally read upstream artifact manifests referenced by the current session and inherit their source document/page provenance. `workflow run explain-section --artifact <path>` creates a document-section explanation artifact and records the resolved source document, page range, and virtual page text paths. `workflow run extract-evidence --artifact <path>` creates an `application/json` artifact with one evidence record per resolved source page and records the same source document/page provenance. `workflow run review-evidence --artifact <path>` reads structured evidence artifacts and writes Markdown review notes with evidence artifact, evidence manifest, and inherited source page provenance. `workflow run synthesize-evidence --artifact <path>` reads structured evidence artifacts, calls the configured chat model, and writes source-grounded Markdown synthesis with the same inherited provenance. `workflow run refine-artifact --artifact <path>` reads an existing artifact plus manifest, applies an operator instruction through the configured model, and writes a derived Markdown artifact with inherited source provenance. ReadOS persists those fields with the workspace artifact, exposes them through sidecar manifests such as `/artifacts/notes.md.manifest.json`, renders selected-artifact lineage in the Artifacts inspector for source artifacts, manifests, virtual pages, source documents, and page ranges, and lets the workbench preview, copy, export, or attach selected artifacts without changing the virtual artifact record.
 
 ## Workflow Model
 
 Workflows should be added after single-command semantics are reliable. A workflow is a named, inspectable sequence of MSP commands, not a hidden block of app logic.
 
-Current first step:
+Current first steps:
 
 ```text
 workflow summary current --artifact /artifacts/workflows/current.md
+workflow run summarize-current --artifact /artifacts/workflows/current.md
+workflow run review-failures --artifact /artifacts/workflows/failures.md
+workflow run explain-section --document current --outline "3.2" --artifact /artifacts/workflows/explanation.md
+workflow run extract-evidence --document current --outline "3.2" --artifact /artifacts/workflows/evidence.json
+workflow run review-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-review.md
+workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md
+workflow run refine-artifact --source /artifacts/workflows/evidence-synthesis.md --instruction "tighten caveats" --artifact /artifacts/workflows/evidence-synthesis-refined.md
 ```
 
-This summarizes an existing MSP session before the runtime grows `workflow run` or named command scripts.
+The `summary` form summarizes an existing MSP session directly. The `run summarize-current` form keeps the session summary inspectable as a named workflow command. The `run review-failures` form creates a focused recovery report from failed transcript entries. Both session workflows read session/transcript projections from the virtual workspace, write provenance-backed Markdown artifacts when `--artifact` is supplied, and inherit source document/page provenance from upstream artifacts referenced by the session. The ReadOS app command pack overrides `workflow` for document and artifact-composition workflows such as `run explain-section`, `run extract-evidence`, `run review-evidence`, `run synthesize-evidence`, and `run refine-artifact`; all other workflow forms delegate back to the core runtime command. The workbench Inspector can prepare these workflow command strings from selected outline sections, artifacts, or failed transcript diagnostics, but execution remains explicit through the Run inspector and normal MSP policy path.
 
-Example future workflow:
+Implemented section workflow:
 
 ```text
-workflow run explain-section --document current --outline "3.2"
+workflow run explain-section --document current --outline "3.2" --artifact /artifacts/workflows/explanation.md
 ```
 
-Possible internal steps:
+Internal steps:
 
 1. inspect current PDF;
 2. resolve outline section pages;
 3. extract text and page evidence;
-4. attach evidence;
-5. call chat model;
+4. pass section evidence as a temporary model attachment;
+5. call the configured chat model;
 6. write `/artifacts/.../explanation.md`;
-7. record audit and provenance.
+7. record audit and source document/page provenance.
+
+Implemented evidence workflow:
+
+```text
+workflow run extract-evidence --document current --outline "3.2" --artifact /artifacts/workflows/evidence.json
+```
+
+Internal steps:
+
+1. resolve the document and outline selector;
+2. derive the section page range;
+3. extract each page as a separate evidence record;
+4. write an `application/json` artifact;
+5. record audit and source document/page provenance.
+
+Implemented evidence review workflow:
+
+```text
+workflow run review-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-review.md
+```
+
+Internal steps:
+
+1. read a structured evidence artifact;
+2. parse evidence document, section, and page records;
+3. generate Markdown review notes and a citation table;
+4. write a `text/markdown` artifact;
+5. inherit source document/page provenance from the evidence artifact manifest.
+
+Implemented evidence synthesis workflow:
+
+```text
+workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md
+```
+
+Internal steps:
+
+1. read a structured evidence artifact;
+2. parse evidence document, section, and page records;
+3. pass the evidence artifact as model context;
+4. call the configured chat model;
+5. write a `text/markdown` synthesis artifact;
+6. inherit source document/page provenance from the evidence artifact manifest.
+
+Implemented artifact refinement workflow:
+
+```text
+workflow run refine-artifact --source /artifacts/workflows/evidence-synthesis.md --instruction "tighten caveats" --artifact /artifacts/workflows/evidence-synthesis-refined.md
+```
+
+Internal steps:
+
+1. read the source artifact and manifest;
+2. pass the source artifact content plus operator instruction as model context;
+3. call the configured chat model;
+4. write a `text/markdown` derived artifact;
+5. inherit source document/page provenance from the source artifact manifest.
 
 ## Implementation Path
 

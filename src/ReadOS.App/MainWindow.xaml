@@ -142,21 +142,29 @@
                                    FontSize="{StaticResource FontSizeXs}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" />
-                        <Border Grid.Column="3"
-                                Padding="6,3"
-                                CornerRadius="{StaticResource RadiusMd}"
-                                Background="{ThemeResource ReadOSAccentMutedBrush}"
-                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                BorderThickness="1"
+                        <Button Grid.Column="3"
+                                Height="28"
+                                Padding="8,0"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
+                                Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                ToolTipService.ToolTip="打开待审批 MSP 命令"
+                                Command="{Binding OpenPendingApprovalCommand}"
                                 Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock Text="{Binding PendingApprovalLabel}"
-                                       Foreground="{ThemeResource ReadOSAccentBrush}"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis" />
-                        </Border>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="6">
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="&#xE7BA;"
+                                          FontSize="11"
+                                          Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                <TextBlock Text="{Binding PendingApprovalLabel}"
+                                           Foreground="{ThemeResource ReadOSAccentBrush}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Button>
                     </Grid>
                 </Grid>
             </Grid>

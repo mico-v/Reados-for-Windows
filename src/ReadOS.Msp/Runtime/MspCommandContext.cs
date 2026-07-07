@@ -17,11 +17,16 @@ public sealed class MspCommandContext
         MspCommandInvocation? invocation = null,
         IMspCommandEventSink? events = null)
     {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(audit);
+
         Workspace = workspace;
         Registry = registry;
         Policy = policy;
         Audit = audit;
-        WorkingDirectory = workspace.NormalizePath(workingDirectory);
+        WorkingDirectory = workspace.NormalizePath(NormalizeWorkingDirectory(workingDirectory));
         Services = services;
         Invocation = invocation ?? MspCommandInvocation.Empty;
         Events = events;
@@ -56,6 +61,13 @@ public sealed class MspCommandContext
     public MspCommandContext WithEventSink(IMspCommandEventSink? events)
     {
         return new MspCommandContext(Workspace, Registry, Policy, Audit, WorkingDirectory, Services, Invocation, events);
+    }
+
+    private static string NormalizeWorkingDirectory(string? workingDirectory)
+    {
+        return string.IsNullOrWhiteSpace(workingDirectory)
+            ? "/"
+            : workingDirectory.Trim();
     }
 
     public ValueTask ReportProgressAsync(

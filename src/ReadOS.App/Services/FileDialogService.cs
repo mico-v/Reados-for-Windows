@@ -50,4 +50,26 @@ public sealed class FileDialogService : IFileDialogService
         var file = await picker.PickSaveFileAsync();
         return file?.Path;
     }
+
+    public async Task<string?> PickArtifactExportAsync(Window? window, string suggestedName, string extension)
+    {
+        if (window is null)
+        {
+            return null;
+        }
+
+        extension = string.IsNullOrWhiteSpace(extension)
+            ? ".txt"
+            : extension.StartsWith(".", StringComparison.Ordinal) ? extension : "." + extension;
+        var picker = new FileSavePicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = suggestedName
+        };
+        picker.FileTypeChoices.Add("ReadOS Artifact", new List<string> { extension });
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+
+        var file = await picker.PickSaveFileAsync();
+        return file?.Path;
+    }
 }

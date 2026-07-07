@@ -249,6 +249,34 @@ public sealed class ReadOsVirtualWorkspaceTests
         Assert.Contains("\"sourceDocuments\": [", manifest);
     }
 
+    [Fact]
+    public async Task Virtual_workspace_deletes_artifact_and_manifest_projection()
+    {
+        var workspace = new WorkspaceState();
+        workspace.Artifacts.Add(new WorkspaceArtifact
+        {
+            Path = "/artifacts/report.md",
+            Content = "# Report",
+            MediaType = "text/markdown",
+            SourceCommand = "artifact write /artifacts/report.md report",
+            Actor = "test-agent",
+            SessionId = "session-7"
+        });
+        var workspaceStore = new TestWorkspaceStore(workspace);
+        var virtualWorkspace = new ReadOsVirtualWorkspace(
+            workspaceStore,
+            new TestPdfDocumentService(),
+            () => workspace);
+
+        var removed = await virtualWorkspace.TryDeleteAsync("/artifacts/report.md.manifest.json");
+
+        Assert.True(removed);
+        Assert.Empty(workspace.Artifacts);
+        Assert.Null(await virtualWorkspace.TryReadTextAsync("/artifacts/report.md"));
+        Assert.Null(await virtualWorkspace.TryReadTextAsync("/artifacts/report.md.manifest.json"));
+        Assert.True(workspaceStore.SaveCount > 0);
+    }
+
     private sealed class TestWorkspaceStore : IWorkspaceStore
     {
         private readonly WorkspaceState workspace;
@@ -262,6 +290,8 @@ public sealed class ReadOsVirtualWorkspaceTests
 
         public string LibraryRoot => "V:\\ReadOS-Test\\Library";
 
+        public int SaveCount { get; private set; }
+
         public Task<WorkspaceState> LoadAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult(workspace);
@@ -269,6 +299,7 @@ public sealed class ReadOsVirtualWorkspaceTests
 
         public Task SaveAsync(WorkspaceState state, CancellationToken cancellationToken = default)
         {
+            SaveCount++;
             return Task.CompletedTask;
         }
 

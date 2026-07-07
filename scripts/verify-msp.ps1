@@ -46,6 +46,7 @@ if (-not $SkipDotNet) {
 
     & $dotnet restore (Join-Path $repoRoot "ReadOS.sln")
     & $dotnet test (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj") --no-restore
+    & $dotnet test (Join-Path $repoRoot "tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj") --no-restore
     & $dotnet test (Join-Path $repoRoot "tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj") --no-restore
     & $dotnet build (Join-Path $repoRoot "ReadOS.sln") --no-restore
 }

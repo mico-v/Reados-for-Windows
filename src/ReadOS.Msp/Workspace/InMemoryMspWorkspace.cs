@@ -141,6 +141,20 @@ public sealed class InMemoryMspWorkspace : IMspWorkspace
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask<bool> TryDeleteAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizePath(path);
+        if (TryResolveManifestPath(normalized, out var artifactPath))
+        {
+            normalized = artifactPath;
+        }
+
+        var removed = files.Remove(normalized);
+        removed = artifacts.Remove(normalized) || removed;
+        PruneEmptyDirectories();
+        return ValueTask.FromResult(removed);
+    }
+
     private void AddParentDirectories(string path)
     {
         var current = "/";
@@ -148,6 +162,26 @@ public sealed class InMemoryMspWorkspace : IMspWorkspace
         {
             current = current == "/" ? "/" + part : current + "/" + part;
             directories.Add(current);
+        }
+    }
+
+    private void PruneEmptyDirectories()
+    {
+        var usedDirectories = new SortedSet<string>(StringComparer.Ordinal) { "/" };
+        foreach (var path in files.Keys.Concat(artifacts.Keys))
+        {
+            var current = "/";
+            foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries).SkipLast(1))
+            {
+                current = current == "/" ? "/" + part : current + "/" + part;
+                usedDirectories.Add(current);
+            }
+        }
+
+        directories.Clear();
+        foreach (var directory in usedDirectories)
+        {
+            directories.Add(directory);
         }
     }
 

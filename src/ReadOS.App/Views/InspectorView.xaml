@@ -7,6 +7,16 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="MspTranscriptListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
+    </UserControl.Resources>
+
     <Border DataContext="{Binding Inspector}"
             Style="{StaticResource ReadOSRightPaneStyle}">
         <Grid Padding="12" RowSpacing="10">
@@ -204,6 +214,38 @@
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
+                                <Grid ColumnSpacing="{StaticResource SpacingXs}"
+                                      Visibility="{Binding HasSelectedOutlineWorkflowTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Height="30"
+                                            Padding="8,0"
+                                            ToolTipService.ToolTip="生成章节讲解工作流命令"
+                                            Command="{Binding PrepareExplainSectionWorkflowCommand}">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                                      Glyph="&#xE8F1;"
+                                                      FontSize="12" />
+                                            <TextBlock Text="讲解章节" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Grid.Column="1"
+                                            Height="30"
+                                            Padding="8,0"
+                                            ToolTipService.ToolTip="生成结构化证据抽取工作流命令"
+                                            Command="{Binding PrepareExtractEvidenceWorkflowCommand}">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                                      Glyph="&#xE8A5;"
+                                                      FontSize="12" />
+                                            <TextBlock Text="抽取证据" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
                                 <Grid ColumnSpacing="{StaticResource SpacingXs}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -390,60 +432,169 @@
                             </StackPanel>
                         </Border>
 
-                        <ListView ItemsSource="{Binding MspTranscript}"
-                                  Background="Transparent"
-                                  BorderThickness="0">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Margin="0,0,0,8"
-                                            Padding="10"
-                                            Style="{StaticResource ReadOSCardStyle}">
-                                        <StackPanel Spacing="6">
+                        <StackPanel Spacing="{StaticResource SpacingSm}"
+                                    Visibility="{Binding HasPreparedMspCommands, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="Prepared commands"
+                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                       FontWeight="SemiBold" />
+                            <ItemsControl ItemsSource="{Binding PreparedMspCommands}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8"
+                                                Padding="10"
+                                                Style="{StaticResource ReadOSCardStyle}">
                                             <Grid ColumnSpacing="{StaticResource SpacingSm}">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding CommandText}"
-                                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="{StaticResource FontSizeSm}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding StatusLabel}"
-                                                           Foreground="{ThemeResource ReadOSAccentBrush}"
-                                                           FontSize="{StaticResource FontSizeXs}" />
+                                                <StackPanel Spacing="4">
+                                                    <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeSm}"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding CreatedLabel}"
+                                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding Detail}"
+                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               MaxLines="3" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1"
+                                                        Width="30"
+                                                        Height="30"
+                                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                                        ToolTipService.ToolTip="恢复到命令输入框"
+                                                        Command="{Binding DataContext.RestorePreparedMspCommandCommand, ElementName=Root}"
+                                                        CommandParameter="{Binding}">
+                                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                                              Glyph="&#xE72C;"
+                                                              FontSize="12" />
+                                                </Button>
                                             </Grid>
-                                            <TextBlock Text="{Binding OutputPreview}"
-                                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                       FontFamily="Consolas"
-                                                       FontSize="{StaticResource FontSizeXs}"
-                                                       TextWrapping="Wrap"
-                                                       MaxLines="8" />
-                                            <ProgressBar Height="4"
-                                                         Value="{Binding ProgressPercentValue}"
-                                                         IsIndeterminate="{Binding IsProgressIndeterminate}"
-                                                         Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            <StackPanel Orientation="Horizontal"
-                                                        Spacing="{StaticResource SpacingXs}">
-                                                <Button Height="26" Padding="8,0"
-                                                        Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="批准并重放" />
-                                                <Button Height="26" Padding="8,0"
-                                                        Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="拒绝" />
-                                                <Button Height="26" Padding="8,0"
-                                                        Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="取消" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <Border Padding="12"
+                                Style="{StaticResource ReadOSCardStyle}"
+                                Visibility="{Binding HasSelectedMspTranscriptEntry, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel Spacing="{StaticResource SpacingSm}">
+                                <TextBlock Text="Selected command"
+                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.CommandText}"
+                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                           FontFamily="Consolas"
+                                           FontSize="{StaticResource FontSizeSm}"
+                                           TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SelectedMspTranscriptEntry.StatusLabel}"
+                                               Foreground="{ThemeResource ReadOSAccentBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SelectedMspTranscriptEntry.Decision}"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.OutputPreview}"
+                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                           FontFamily="Consolas"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap"
+                                           MaxLines="8" />
+                            </StackPanel>
+                        </Border>
+
+                        <ListView ItemsSource="{Binding MspTranscript}"
+                                  SelectedItem="{Binding SelectedMspTranscriptEntry, Mode=TwoWay}"
+                                  SelectionMode="Single"
+                                  IsItemClickEnabled="True"
+                                  IsTabStop="True"
+                                  ItemContainerStyle="{StaticResource MspTranscriptListViewItemStyle}"
+                                  Background="Transparent"
+                                  BorderThickness="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,8">
+                                        <Border Background="{ThemeResource ReadOSListSelectedBrush}"
+                                                BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource RadiusLg}"
+                                                Visibility="{Binding IsInspectorSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Border Width="4"
+                                                HorizontalAlignment="Left"
+                                                Background="{ThemeResource ReadOSAccentBrush}"
+                                                CornerRadius="6,0,0,6"
+                                                Visibility="{Binding IsInspectorSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Border Margin="4,0,0,0"
+                                                Padding="10"
+                                                Style="{StaticResource ReadOSCardStyle}">
+                                            <StackPanel Spacing="6">
+                                                <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding StatusLabel}"
+                                                               Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding OutputPreview}"
+                                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           TextWrapping="Wrap"
+                                                           MaxLines="8" />
+                                                <ProgressBar Height="4"
+                                                             Value="{Binding ProgressPercentValue}"
+                                                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                                             Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="{StaticResource SpacingXs}">
+                                                    <Button Height="26" Padding="8,0"
+                                                            Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="批准并重放" />
+                                                    <Button Height="26" Padding="8,0"
+                                                            Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="拒绝" />
+                                                    <Button Height="26" Padding="8,0"
+                                                            Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="取消" />
+                                                </StackPanel>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
+                                        </Border>
+                                    </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
@@ -453,7 +604,8 @@
                 <!-- Artifacts -->
                 <Grid Visibility="{Binding IsArtifactsInspectorSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="190" />
+                        <RowDefinition Height="170" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -482,40 +634,198 @@
                         </ListView.ItemTemplate>
                     </ListView>
 
-                    <Grid Grid.Row="1"
-                          Margin="0,8,0,8"
-                          ColumnSpacing="{StaticResource SpacingSm}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="1"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="{Binding ArtifactSummary}"
-                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding SelectedArtifact.Path}"
-                                       Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                       FontFamily="Consolas"
-                                       FontSize="{StaticResource FontSizeXs}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                Height="32"
-                                Padding="10,0"
-                                ToolTipService.ToolTip="把选中的 MSP 产物作为证据加入下一条消息"
-                                Command="{Binding AttachSelectedArtifactCommand}">
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                          Glyph="&#xE710;"
-                                          FontSize="12" />
-                                <TextBlock Text="附加" />
+                    <StackPanel Grid.Row="1"
+                                Margin="0,8,0,8"
+                                Spacing="8">
+                        <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="1"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ArtifactSummary}"
+                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedArtifact.Path}"
+                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                           FontFamily="Consolas"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                        </Button>
-                    </Grid>
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Spacing="{StaticResource SpacingXs}">
+                                <Button Width="32"
+                                        Height="32"
+                                        MinHeight="32"
+                                        Padding="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                        ToolTipService.ToolTip="打开产物预览"
+                                        Command="{Binding OpenSelectedArtifactPreviewCommand}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE8A7;"
+                                              FontSize="12" />
+                                </Button>
+                                <Button Width="32"
+                                        Height="32"
+                                        MinHeight="32"
+                                        Padding="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                        ToolTipService.ToolTip="复制产物内容"
+                                        Command="{Binding CopySelectedArtifactContentCommand}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE8C8;"
+                                              FontSize="12" />
+                                </Button>
+                                <Button Width="32"
+                                        Height="32"
+                                        MinHeight="32"
+                                        Padding="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                        ToolTipService.ToolTip="导出产物"
+                                        Command="{Binding ExportSelectedArtifactCommand}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE896;"
+                                              FontSize="12" />
+                                </Button>
+                                <Button Width="32"
+                                        Height="32"
+                                        MinHeight="32"
+                                        Padding="0"
+                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                        ToolTipService.ToolTip="把选中的 MSP 产物作为证据加入下一条消息"
+                                        Command="{Binding AttachSelectedArtifactCommand}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE710;"
+                                              FontSize="12" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="{StaticResource SpacingXs}"
+                                    Visibility="{Binding HasSelectedArtifactWorkflowTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Button Height="30"
+                                    Padding="8,0"
+                                    ToolTipService.ToolTip="生成证据复核工作流命令"
+                                    Command="{Binding PrepareReviewEvidenceWorkflowCommand}"
+                                    Visibility="{Binding HasSelectedEvidenceArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE8D4;"
+                                              FontSize="12" />
+                                    <TextBlock Text="复核" />
+                                </StackPanel>
+                            </Button>
+                            <Button Height="30"
+                                    Padding="8,0"
+                                    ToolTipService.ToolTip="生成证据综合工作流命令"
+                                    Command="{Binding PrepareSynthesizeEvidenceWorkflowCommand}"
+                                    Visibility="{Binding HasSelectedEvidenceArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE9D5;"
+                                              FontSize="12" />
+                                    <TextBlock Text="综合" />
+                                </StackPanel>
+                            </Button>
+                            <Button Height="30"
+                                    Padding="8,0"
+                                    ToolTipService.ToolTip="生成产物精炼工作流命令"
+                                    Command="{Binding PrepareRefineArtifactWorkflowCommand}">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE70F;"
+                                              FontSize="12" />
+                                    <TextBlock Text="精炼" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
 
-                    <TextBox Grid.Row="2"
+                    <StackPanel Grid.Row="2"
+                                Margin="0,0,0,8"
+                                Spacing="6"
+                                Visibility="{Binding HasSelectedArtifactLineage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="Source lineage"
+                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                   FontSize="{StaticResource FontSizeSm}"
+                                   FontWeight="SemiBold" />
+                        <ScrollViewer MaxHeight="150"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding SelectedArtifactLineage}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,6"
+                                                Padding="8"
+                                                Background="{ThemeResource ReadOSSubtleBrush}"
+                                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource RadiusMd}">
+                                            <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="28"
+                                                        Height="28"
+                                                        Style="{StaticResource ReadOSSubtleCardStyle}"
+                                                        Padding="0">
+                                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                                              Glyph="{Binding Glyph}"
+                                                              FontSize="{StaticResource IconSizeSm}"
+                                                              Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1"
+                                                            Spacing="1">
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="{StaticResource SpacingXs}">
+                                                        <Border Style="{StaticResource ReadOSChipStyle}">
+                                                            <TextBlock Text="{Binding KindLabel}"
+                                                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                                       FontSize="{StaticResource FontSizeXs}" />
+                                                        </Border>
+                                                        <TextBlock Text="{Binding Path}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontFamily="Consolas"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Detail}"
+                                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Visibility="{Binding HasDetail, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                </StackPanel>
+                                                <Button Grid.Column="2"
+                                                        Width="28"
+                                                        Height="28"
+                                                        MinHeight="28"
+                                                        Padding="0"
+                                                        Style="{StaticResource ReadOSIconButtonStyle}"
+                                                        ToolTipService.ToolTip="打开来源产物"
+                                                        Command="{Binding DataContext.OpenArtifactLineageItemCommand, ElementName=Root}"
+                                                        CommandParameter="{Binding}"
+                                                        Visibility="{Binding CanOpenArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                                              Glyph="&#xE8E5;"
+                                                              FontSize="12" />
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <TextBox Grid.Row="3"
                              Header="{Binding SelectedArtifact.Path}"
                              Text="{Binding SelectedArtifactPreview, Mode=OneWay}"
                              IsReadOnly="True"
@@ -540,6 +850,31 @@
                                 <TextBlock Text="{Binding ApprovalModeLabel}"
                                            Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
                                            TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ApprovalModeDetail}"
+                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="{StaticResource SpacingXs}">
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="62"
+                                                  IsChecked="{Binding IsPolicyApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="policy"
+                                                  Content="策略" />
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="74"
+                                                  IsChecked="{Binding IsConfirmAllApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="confirm-all"
+                                                  Content="每次确认" />
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="74"
+                                                  IsChecked="{Binding IsAllowWorkspaceApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="allow-workspace"
+                                                  Content="允许写入" />
+                                </StackPanel>
                                 <TextBlock Text="{Binding PendingApprovalLabel}"
                                            Foreground="{ThemeResource ReadOSAccentBrush}"
                                            FontSize="{StaticResource FontSizeSm}"
@@ -547,57 +882,115 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Padding="12"
+                                Style="{StaticResource ReadOSCardStyle}"
+                                Visibility="{Binding HasSelectedMspTranscriptEntry, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel Spacing="{StaticResource SpacingSm}">
+                                <TextBlock Text="Selected diagnostic"
+                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.CommandText}"
+                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                           FontFamily="Consolas"
+                                           FontSize="{StaticResource FontSizeSm}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.Effects}"
+                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.DiagnosticsSummary}"
+                                           Foreground="{ThemeResource ReadOSDangerBrush}"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedMspTranscriptEntry.RecoveryHint}"
+                                           Foreground="{ThemeResource ReadOSWarningBrush}"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+                                <Button Height="30"
+                                        Padding="8,0"
+                                        HorizontalAlignment="Left"
+                                        ToolTipService.ToolTip="生成失败复查工作流命令"
+                                        Command="{Binding PrepareReviewFailuresWorkflowCommand}"
+                                        Visibility="{Binding HasSelectedFailureReviewTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="6">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="&#xE9D9;"
+                                                  FontSize="12" />
+                                        <TextBlock Text="生成复查" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
                         <ListView ItemsSource="{Binding MspTranscript}"
+                                  SelectedItem="{Binding SelectedMspTranscriptEntry, Mode=TwoWay}"
+                                  SelectionMode="Single"
+                                  IsItemClickEnabled="True"
+                                  IsTabStop="True"
+                                  ItemContainerStyle="{StaticResource MspTranscriptListViewItemStyle}"
                                   Background="Transparent"
                                   BorderThickness="0">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Margin="0,0,0,8"
-                                            Padding="10"
-                                            Style="{StaticResource ReadOSCardStyle}">
-                                        <StackPanel Spacing="6">
-                                            <Grid ColumnSpacing="{StaticResource SpacingSm}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding CommandText}"
-                                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="{StaticResource FontSizeSm}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding Decision}"
-                                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                                           FontSize="{StaticResource FontSizeXs}" />
-                                            </Grid>
-                                            <TextBlock Text="{Binding Effects}"
-                                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                       FontSize="{StaticResource FontSizeXs}"
-                                                       TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding PolicyPreview}"
-                                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                       FontSize="{StaticResource FontSizeXs}"
-                                                       TextWrapping="Wrap"
-                                                       MaxLines="8" />
-                                            <TextBlock Text="{Binding RecoveryHint}"
-                                                       Foreground="{ThemeResource ReadOSWarningBrush}"
-                                                       FontSize="{StaticResource FontSizeXs}"
-                                                       TextWrapping="Wrap" />
-                                            <StackPanel Orientation="Horizontal"
-                                                        Spacing="{StaticResource SpacingXs}"
-                                                        Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <Button Height="26" Padding="8,0"
-                                                        Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="批准并重放" />
-                                                <Button Height="26" Padding="8,0"
-                                                        Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="拒绝" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Border Background="{ThemeResource ReadOSListSelectedBrush}"
+                                                BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource RadiusLg}"
+                                                Visibility="{Binding IsInspectorSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Border Width="4"
+                                                HorizontalAlignment="Left"
+                                                Background="{ThemeResource ReadOSAccentBrush}"
+                                                CornerRadius="6,0,0,6"
+                                                Visibility="{Binding IsInspectorSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Border Margin="4,0,0,0"
+                                                Padding="10"
+                                                Style="{StaticResource ReadOSCardStyle}">
+                                            <StackPanel Spacing="6">
+                                                <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Decision}"
+                                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding Effects}"
+                                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding PolicyPreview}"
+                                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           TextWrapping="Wrap"
+                                                           MaxLines="8" />
+                                                <TextBlock Text="{Binding RecoveryHint}"
+                                                           Foreground="{ThemeResource ReadOSWarningBrush}"
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           TextWrapping="Wrap" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="{StaticResource SpacingXs}"
+                                                            Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <Button Height="26" Padding="8,0"
+                                                            Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="批准并重放" />
+                                                    <Button Height="26" Padding="8,0"
+                                                            Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="拒绝" />
+                                                </StackPanel>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
+                                        </Border>
+                                    </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>

@@ -42,7 +42,25 @@ public sealed class ThreadTimelineItem
     public string Timestamp => CreatedAt.ToLocalTime().ToString("HH:mm:ss");
 
     [JsonIgnore]
+    public string KindLabel => Kind switch
+    {
+        TimelineItemKind.Message => "Message",
+        TimelineItemKind.MspCommand => "MSP",
+        TimelineItemKind.Approval => "Approval",
+        TimelineItemKind.Artifact => "Artifact",
+        TimelineItemKind.Evidence => "Evidence",
+        TimelineItemKind.Error => "Error",
+        _ => Kind.ToString()
+    };
+
+    [JsonIgnore]
     public bool HasBody => !string.IsNullOrWhiteSpace(Body);
+
+    [JsonIgnore]
+    public bool HasMessageBody => Kind == TimelineItemKind.Message && HasBody;
+
+    [JsonIgnore]
+    public bool HasEvidenceBody => Kind == TimelineItemKind.Evidence && HasBody;
 
     [JsonIgnore]
     public bool HasAttachments => Attachments.Count > 0;
@@ -52,6 +70,21 @@ public sealed class ThreadTimelineItem
 
     [JsonIgnore]
     public bool HasArtifact => Artifact is not null;
+
+    [JsonIgnore]
+    public bool IsMspApproval => Kind == TimelineItemKind.Approval && MspEntry is not null;
+
+    [JsonIgnore]
+    public bool IsMspRunning => MspEntry?.IsRunning == true;
+
+    [JsonIgnore]
+    public bool IsMspError => Kind == TimelineItemKind.Error && MspEntry is not null;
+
+    [JsonIgnore]
+    public bool IsMspResult => Kind == TimelineItemKind.MspCommand &&
+        MspEntry is not null &&
+        MspEntry.IsRunning == false &&
+        MspEntry.IsApprovalRequired == false;
 
     [JsonIgnore]
     public bool IsApprovalRequired => MspEntry?.IsApprovalRequired == true;
@@ -100,17 +133,35 @@ public sealed class ThreadTimelineItem
             : entry.Succeeded || entry.IsRunning || entry.WasCanceled
                 ? TimelineItemKind.MspCommand
                 : TimelineItemKind.Error;
+        var title = entry.IsApprovalRequired
+            ? "MSP approval required"
+            : entry.IsRunning
+                ? "MSP command running"
+                : entry.WasCanceled
+                    ? "MSP command canceled"
+                    : entry.Succeeded
+                        ? "MSP command completed"
+                        : "MSP command failed";
+        var glyph = entry.IsApprovalRequired
+            ? "\uE7BA"
+            : entry.IsRunning
+                ? "\uE768"
+                : entry.WasCanceled
+                    ? "\uE711"
+                    : entry.Succeeded
+                        ? "\uE756"
+                        : "\uEA39";
 
         return new ThreadTimelineItem
         {
             Kind = kind,
             MspEntry = entry,
             CreatedAt = entry.StartedAt,
-            Title = entry.IsApprovalRequired ? "MSP approval required" : "MSP command",
-            Subtitle = entry.Actor,
+            Title = title,
+            Subtitle = $"{entry.Actor} · {TrimPreview(entry.CommandText, 96)}",
             Body = entry.OutputPreview,
             StatusLabel = entry.StatusLabel,
-            Glyph = entry.IsApprovalRequired ? "\uE7BA" : entry.Succeeded ? "\uE756" : "\uEA39"
+            Glyph = glyph
         };
     }
 
@@ -139,4 +190,39 @@ public sealed class ThreadTimelineItem
         value = value.Trim();
         return value.Length <= maxLength ? value : value[..maxLength] + "...";
     }
+}
+
+public sealed class ArtifactLineageItem
+{
+    public string Path { get; init; } = string.Empty;
+
+    public string KindLabel { get; init; } = string.Empty;
+
+    public string Detail { get; init; } = string.Empty;
+
+    public string Glyph { get; init; } = "\uE71B";
+
+    public bool CanOpenArtifact { get; init; }
+
+    [JsonIgnore]
+    public bool HasDetail => !string.IsNullOrWhiteSpace(Detail);
+}
+
+public sealed class PreparedMspCommand
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    public string Title { get; init; } = string.Empty;
+
+    public string Detail { get; init; } = string.Empty;
+
+    public string CommandText { get; init; } = string.Empty;
+
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
+
+    [JsonIgnore]
+    public string CreatedLabel => CreatedAt.ToLocalTime().ToString("HH:mm:ss");
+
+    [JsonIgnore]
+    public bool HasDetail => !string.IsNullOrWhiteSpace(Detail);
 }

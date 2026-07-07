@@ -10,6 +10,36 @@ namespace ReadOS.Msp.Tests.Runtime;
 public sealed class MspRuntimeTests
 {
     [Fact]
+    public void Constructor_rejects_null_context()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new MspRuntime(null!));
+
+        Assert.Equal("context", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_rejects_null_request()
+    {
+        var runtime = MspRuntime.CreateDefault();
+
+        var exception = await Assert.ThrowsAsync<ArgumentNullException>(async () =>
+            await runtime.ExecuteAsync(null!));
+
+        Assert.Equal("request", exception.ParamName);
+    }
+
+    [Fact]
+    public void ExecuteStreamingAsync_rejects_null_request_before_enumeration()
+    {
+        var runtime = MspRuntime.CreateDefault();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            runtime.ExecuteStreamingAsync(null!));
+
+        Assert.Equal("request", exception.ParamName);
+    }
+
+    [Fact]
     public void Parser_preserves_quoted_arguments()
     {
         var parsed = MspCommandLineParser.Parse("echo \"hello world\" '/docs/a b.txt'");
@@ -113,6 +143,54 @@ public sealed class MspRuntimeTests
     }
 
     [Fact]
+    public async Task Artifact_command_renames_and_deletes_workspace_artifacts()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        var runtime = MspRuntime.CreateDefault(workspace);
+
+        await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "artifact-agent",
+            SessionId = "session-42",
+            CommandText = "artifact write /artifacts/summary.md \"hello artifacts\""
+        });
+
+        var rename = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "operator",
+            SessionId = "session-42",
+            CommandText = "artifact rename /artifacts/summary.md /artifacts/archive/summary.md"
+        });
+        var showRenamed = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "artifact show /artifacts/archive/summary.md"
+        });
+        var delete = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "operator",
+            CommandText = "artifact delete /artifacts/archive/summary.md"
+        });
+
+        Assert.True(rename.Succeeded, rename.Stderr);
+        Assert.Contains("renamed\t/artifacts/summary.md\t/artifacts/archive/summary.md", rename.Stdout);
+        var renamedArtifact = Assert.Single(rename.Artifacts);
+        Assert.Equal("/artifacts/archive/summary.md", renamedArtifact.Path);
+        Assert.Equal("operator", renamedArtifact.Actor);
+        Assert.Equal("artifact rename /artifacts/summary.md /artifacts/archive/summary.md", renamedArtifact.SourceCommand);
+        Assert.Contains("renamedFrom: /artifacts/summary.md", renamedArtifact.Preview);
+        Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.DeleteWorkspace, Assert.Single(rename.AuditRecords).Effects);
+        Assert.Equal("hello artifacts" + Environment.NewLine, showRenamed.Stdout);
+        Assert.Null(await workspace.TryReadTextAsync("/artifacts/summary.md"));
+        Assert.Null(await workspace.TryReadTextAsync("/artifacts/summary.md.manifest.json"));
+
+        Assert.True(delete.Succeeded, delete.Stderr);
+        Assert.Contains("deleted\t/artifacts/archive/summary.md", delete.Stdout);
+        Assert.Equal(MspCommandEffects.DeleteWorkspace, Assert.Single(delete.AuditRecords).Effects);
+        Assert.Null(await workspace.TryReadTextAsync("/artifacts/archive/summary.md"));
+        Assert.Null(await workspace.TryReadTextAsync("/artifacts/archive/summary.md.manifest.json"));
+    }
+
+    [Fact]
     public async Task Workflow_summary_writes_artifact_with_session_transcript_provenance()
     {
         var workspace = new InMemoryMspWorkspace();
@@ -204,6 +282,317 @@ public sealed class MspRuntimeTests
         Assert.Contains("\"sourcePaths\": [", manifest);
         Assert.Contains("\"/sessions/workflow-1.json\"", manifest);
         Assert.Contains("\"/transcripts/fail-1.json\"", manifest);
+    }
+
+    [Fact]
+    public async Task Workflow_run_summarize_current_writes_artifact_with_session_transcript_provenance()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        await workspace.WriteTextAsync("/sessions/workflow-run.json", """
+            {
+              "id": "workflow-run",
+              "title": "Named workflow run",
+              "actor": "workflow-agent",
+              "startedAt": "2026-07-07T01:00:00Z",
+              "updatedAt": "2026-07-07T01:05:00Z",
+              "lastCommandText": "pdf inspect current",
+              "lastDecision": "Allow",
+              "lastExitCode": 0,
+              "commandCount": 1,
+              "approvalCount": 0,
+              "failureCount": 0,
+              "transcriptIds": [ "inspect-1" ],
+              "artifactPaths": []
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/inspect-1.json", """
+            {
+              "id": "inspect-1",
+              "actor": "workflow-agent",
+              "sessionId": "workflow-run",
+              "commandText": "pdf inspect current",
+              "startedAt": "2026-07-07T01:01:00Z",
+              "completedAt": "2026-07-07T01:02:00Z",
+              "exitCode": 0,
+              "stdout": "{ \"id\": \"doc-1\" }\n",
+              "decision": "Allow",
+              "effects": "ReadWorkspace"
+            }
+            """);
+        var runtime = MspRuntime.CreateDefault(workspace);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "workflow-agent",
+            SessionId = "workflow-run",
+            CommandText = "workflow run summarize-current --artifact /artifacts/workflows/current.md"
+        });
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("# MSP Workflow Summary", result.Stdout);
+        Assert.Contains("- workflow: summarize-current", result.Stdout);
+        Assert.Contains("pdf inspect current", result.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/current.md", result.Stdout);
+
+        var artifact = Assert.Single(result.Artifacts);
+        Assert.Equal("/artifacts/workflows/current.md", artifact.Path);
+        Assert.Equal("text/markdown", artifact.MediaType);
+        Assert.Equal("workflow-agent", artifact.Actor);
+        Assert.Equal("workflow-run", artifact.SessionId);
+        Assert.Equal("workflow run summarize-current --artifact /artifacts/workflows/current.md", artifact.SourceCommand);
+        Assert.Equal(new[]
+        {
+            "/sessions/workflow-run.json",
+            "/transcripts/inspect-1.json"
+        }, artifact.SourcePaths);
+
+        var content = await workspace.TryReadTextAsync("/artifacts/workflows/current.md");
+        Assert.NotNull(content);
+        Assert.Contains("- workflow: summarize-current", content);
+
+        var manifest = await workspace.TryReadTextAsync("/artifacts/workflows/current.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"sourceCommand\": \"workflow run summarize-current", manifest);
+        Assert.Contains("\"/sessions/workflow-run.json\"", manifest);
+        Assert.Contains("\"/transcripts/inspect-1.json\"", manifest);
+    }
+
+    [Fact]
+    public async Task Workflow_run_summarize_current_inherits_source_document_page_provenance()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        await workspace.WriteTextAsync("/artifacts/excerpts/alpha.md", "source excerpt", new MspArtifact
+        {
+            Path = "/artifacts/excerpts/alpha.md",
+            MediaType = "text/markdown",
+            SourceCommand = "pdf text current 2 4 --artifact /artifacts/excerpts/alpha.md",
+            Actor = "workflow-agent",
+            SessionId = "workflow-source",
+            SourcePaths = new[]
+            {
+                "/documents/doc-1/pages/2.txt",
+                "/documents/doc-1/pages/3.txt",
+                "/documents/doc-1/pages/4.txt"
+            },
+            SourceDocuments = new[] { "doc-1" },
+            SourcePages = new[] { "doc-1:2-4" }
+        });
+        await workspace.WriteTextAsync("/sessions/workflow-source.json", """
+            {
+              "id": "workflow-source",
+              "title": "Source provenance workflow",
+              "actor": "workflow-agent",
+              "startedAt": "2026-07-07T01:00:00Z",
+              "updatedAt": "2026-07-07T01:05:00Z",
+              "lastCommandText": "pdf text current 2 4 --artifact /artifacts/excerpts/alpha.md",
+              "lastDecision": "Allow",
+              "lastExitCode": 0,
+              "commandCount": 1,
+              "approvalCount": 0,
+              "failureCount": 0,
+              "transcriptIds": [ "extract-1" ],
+              "artifactPaths": [ "/artifacts/excerpts/alpha.md" ]
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/extract-1.json", """
+            {
+              "id": "extract-1",
+              "actor": "workflow-agent",
+              "sessionId": "workflow-source",
+              "commandText": "pdf text current 2 4 --artifact /artifacts/excerpts/alpha.md",
+              "startedAt": "2026-07-07T01:01:00Z",
+              "completedAt": "2026-07-07T01:02:00Z",
+              "exitCode": 0,
+              "stdout": "artifact\t/artifacts/excerpts/alpha.md\t13\n",
+              "decision": "Allow",
+              "effects": "ReadWorkspace, WriteWorkspace, CreateArtifact",
+              "artifactsSummary": "/artifacts/excerpts/alpha.md"
+            }
+            """);
+        var runtime = MspRuntime.CreateDefault(workspace);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "workflow-agent",
+            SessionId = "workflow-source",
+            CommandText = "workflow run summarize-current --artifact /artifacts/workflows/source-summary.md"
+        });
+
+        Assert.True(result.Succeeded, result.Stderr);
+        var artifact = Assert.Single(result.Artifacts);
+        Assert.Equal("doc-1", Assert.Single(artifact.SourceDocuments));
+        Assert.Equal("doc-1:2-4", Assert.Single(artifact.SourcePages));
+        Assert.Contains("/sessions/workflow-source.json", artifact.SourcePaths);
+        Assert.Contains("/transcripts/extract-1.json", artifact.SourcePaths);
+        Assert.Contains("/artifacts/excerpts/alpha.md", artifact.SourcePaths);
+        Assert.Contains("/artifacts/excerpts/alpha.md.manifest.json", artifact.SourcePaths);
+        Assert.Contains("/documents/doc-1/pages/2.txt", artifact.SourcePaths);
+        Assert.Contains("/documents/doc-1/pages/4.txt", artifact.SourcePaths);
+
+        var manifest = await workspace.TryReadTextAsync("/artifacts/workflows/source-summary.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"sourceDocuments\": [", manifest);
+        Assert.Contains("\"doc-1\"", manifest);
+        Assert.Contains("\"doc-1:2-4\"", manifest);
+        Assert.Contains("\"/documents/doc-1/pages/3.txt\"", manifest);
+    }
+
+    [Fact]
+    public async Task Workflow_run_review_failures_writes_focused_artifact_with_provenance()
+    {
+        var workspace = new InMemoryMspWorkspace();
+        await workspace.WriteTextAsync("/artifacts/excerpts/failure-source.md", "source excerpt", new MspArtifact
+        {
+            Path = "/artifacts/excerpts/failure-source.md",
+            MediaType = "text/markdown",
+            SourceCommand = "pdf text current 5 6 --artifact /artifacts/excerpts/failure-source.md",
+            Actor = "workflow-agent",
+            SessionId = "failure-review",
+            SourcePaths = new[]
+            {
+                "/documents/doc-2/pages/5.txt",
+                "/documents/doc-2/pages/6.txt"
+            },
+            SourceDocuments = new[] { "doc-2" },
+            SourcePages = new[] { "doc-2:5-6" }
+        });
+        await workspace.WriteTextAsync("/sessions/failure-review.json", """
+            {
+              "id": "failure-review",
+              "title": "Failure review workflow",
+              "actor": "workflow-agent",
+              "startedAt": "2026-07-07T02:00:00Z",
+              "updatedAt": "2026-07-07T02:05:00Z",
+              "lastCommandText": "chat ask current \"explain\"",
+              "lastDecision": "Allow",
+              "lastExitCode": 1,
+              "lastDiagnosticsSummary": "error reados.chat.model_provider_failed: model unavailable",
+              "lastRecoveryHint": "Check provider settings.",
+              "commandCount": 2,
+              "approvalCount": 0,
+              "failureCount": 1,
+              "transcriptIds": [ "extract-ok", "chat-fail" ],
+              "artifactPaths": [ "/artifacts/excerpts/failure-source.md" ]
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/extract-ok.json", """
+            {
+              "id": "extract-ok",
+              "actor": "workflow-agent",
+              "sessionId": "failure-review",
+              "commandText": "pdf text current 5 6 --artifact /artifacts/excerpts/failure-source.md",
+              "startedAt": "2026-07-07T02:01:00Z",
+              "completedAt": "2026-07-07T02:02:00Z",
+              "exitCode": 0,
+              "stdout": "artifact\t/artifacts/excerpts/failure-source.md\t14\n",
+              "decision": "Allow",
+              "effects": "ReadWorkspace, WriteWorkspace, CreateArtifact",
+              "artifactsSummary": "/artifacts/excerpts/failure-source.md"
+            }
+            """);
+        await workspace.WriteTextAsync("/transcripts/chat-fail.json", """
+            {
+              "id": "chat-fail",
+              "actor": "workflow-agent",
+              "sessionId": "failure-review",
+              "commandText": "chat ask current \"explain\"",
+              "startedAt": "2026-07-07T02:03:00Z",
+              "completedAt": "2026-07-07T02:04:00Z",
+              "exitCode": 1,
+              "stderr": "model unavailable",
+              "decision": "Allow",
+              "effects": "ExternalNetwork",
+              "diagnosticsSummary": "error reados.chat.model_provider_failed: model unavailable",
+              "recoveryHint": "Check provider base URL, API key, and model name."
+            }
+            """);
+        var runtime = MspRuntime.CreateDefault(workspace);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "workflow-agent",
+            SessionId = "failure-review",
+            CommandText = "workflow run review-failures --artifact /artifacts/workflows/failures.md"
+        });
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("# MSP Failure Review", result.Stdout);
+        Assert.Contains("- workflow: review-failures", result.Stdout);
+        Assert.Contains("chat ask current", result.Stdout);
+        Assert.Contains("reados.chat.model_provider_failed", result.Stdout);
+        Assert.Contains("Check provider base URL", result.Stdout);
+        Assert.DoesNotContain("pdf text current 5 6", result.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/failures.md", result.Stdout);
+
+        var artifact = Assert.Single(result.Artifacts);
+        Assert.Equal("/artifacts/workflows/failures.md", artifact.Path);
+        Assert.Equal("workflow run review-failures --artifact /artifacts/workflows/failures.md", artifact.SourceCommand);
+        Assert.Equal("doc-2", Assert.Single(artifact.SourceDocuments));
+        Assert.Equal("doc-2:5-6", Assert.Single(artifact.SourcePages));
+        Assert.Contains("/sessions/failure-review.json", artifact.SourcePaths);
+        Assert.Contains("/transcripts/chat-fail.json", artifact.SourcePaths);
+        Assert.Contains("/artifacts/excerpts/failure-source.md.manifest.json", artifact.SourcePaths);
+
+        var content = await workspace.TryReadTextAsync("/artifacts/workflows/failures.md");
+        Assert.NotNull(content);
+        Assert.Contains("# MSP Failure Review", content);
+        Assert.Contains("reados.chat.model_provider_failed", content);
+
+        var manifest = await workspace.TryReadTextAsync("/artifacts/workflows/failures.md.manifest.json");
+        Assert.NotNull(manifest);
+        Assert.Contains("\"sourceDocuments\": [", manifest);
+        Assert.Contains("\"doc-2\"", manifest);
+        Assert.Contains("\"doc-2:5-6\"", manifest);
+    }
+
+    [Fact]
+    public async Task Workflow_run_returns_diagnostics_for_invalid_name_and_artifact_path()
+    {
+        var runtime = MspRuntime.CreateDefault();
+
+        var unknown = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "workflow run missing-workflow"
+        });
+        var badPath = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "workflow run summarize-current --artifact /notes/current.md"
+        });
+
+        Assert.False(unknown.Succeeded);
+        Assert.Equal(2, unknown.ExitCode);
+        Assert.Equal("msp.workflow.unknown_workflow", Assert.Single(unknown.Diagnostics).Code);
+        Assert.Contains("summarize-current", unknown.Diagnostics[0].RecoveryHint);
+
+        Assert.False(badPath.Succeeded);
+        Assert.Equal(2, badPath.ExitCode);
+        Assert.Equal("msp.workflow.invalid_artifact_path", Assert.Single(badPath.Diagnostics).Code);
+        Assert.Contains("/artifacts", badPath.Diagnostics[0].RecoveryHint);
+    }
+
+    [Fact]
+    public async Task Workflow_run_artifact_output_requires_policy_confirmation()
+    {
+        var registry = MspRuntime.CreateDefaultRegistry();
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new EffectBasedMspPolicy(),
+            new InMemoryMspAuditSink());
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "workflow run summarize-current --artifact /artifacts/workflows/current.md"
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(126, result.ExitCode);
+        var audit = Assert.Single(result.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, audit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact,
+            audit.Effects);
     }
 
     [Fact]
@@ -340,12 +729,28 @@ public sealed class MspRuntimeTests
         {
             CommandText = "artifact write /artifacts/new.md \"new artifact\""
         });
+        var rename = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "artifact rename /artifacts/summary.md /artifacts/archive/summary.md"
+        });
+        var delete = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "artifact delete /artifacts/summary.md"
+        });
 
         Assert.True(list.Succeeded, list.Stderr);
         Assert.Equal(MspCommandEffects.ReadWorkspace, Assert.Single(list.AuditRecords).Effects);
         Assert.False(write.Succeeded);
         Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(write.AuditRecords).Decision);
         Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, Assert.Single(write.AuditRecords).Effects);
+        Assert.False(rename.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(rename.AuditRecords).Decision);
+        Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.DeleteWorkspace, Assert.Single(rename.AuditRecords).Effects);
+        Assert.Contains("from: /artifacts/summary.md", rename.AuditRecords[0].Preview.Details);
+        Assert.False(delete.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(delete.AuditRecords).Decision);
+        Assert.Equal(MspCommandEffects.DeleteWorkspace, Assert.Single(delete.AuditRecords).Effects);
+        Assert.Contains("/artifacts/summary.md", Assert.Single(delete.AuditRecords).Preview.Targets);
     }
 
     [Fact]

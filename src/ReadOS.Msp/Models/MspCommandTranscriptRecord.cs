@@ -36,5 +36,7 @@ public sealed record MspCommandTranscriptRecord
 
     public int? ProgressPercent { get; init; }
 
+    public bool IsRunning { get; init; }
+
     public bool WasCanceled { get; init; }
 }

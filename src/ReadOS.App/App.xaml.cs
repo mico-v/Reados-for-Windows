@@ -24,6 +24,7 @@ public partial class App : Application
         services.AddSingleton<IPdfDocumentService, PdfDocumentService>();
         services.AddSingleton<IWorkspaceStore, WorkspaceStore>();
         services.AddSingleton<IFileDialogService, FileDialogService>();
+        services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IAiChatService, AiChatService>();
         services.AddSingleton<LayoutService>();
         services.AddTransient<ShellViewModel>();

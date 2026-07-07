@@ -96,15 +96,31 @@ public sealed class AiChatService : IAiChatService
         var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return $"模型请求失败：{(int)response.StatusCode} {response.ReasonPhrase}\n{Trim(responseText, 1200)}";
+            throw new AiChatServiceException($"模型请求失败：{(int)response.StatusCode} {response.ReasonPhrase}\n{Trim(responseText, 1200)}");
         }
 
-        using var documentJson = JsonDocument.Parse(responseText);
-        var content = documentJson.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString();
+        string? content;
+        try
+        {
+            using var documentJson = JsonDocument.Parse(responseText);
+            content = documentJson.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString();
+        }
+        catch (JsonException ex)
+        {
+            throw new AiChatServiceException("模型响应不是有效的 OpenAI 兼容 chat completion JSON。", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new AiChatServiceException("模型响应缺少 chat completion 文本内容。", ex);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw new AiChatServiceException("模型响应缺少 chat completion 文本内容。", ex);
+        }
 
         return string.IsNullOrWhiteSpace(content) ? "模型没有返回文本内容。" : content.Trim();
     }

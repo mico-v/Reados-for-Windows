@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
@@ -31,49 +31,132 @@ public enum WorkspaceLayoutMode
 public sealed partial class ShellViewModel : ObservableObject
 {
     private const int MaxMspTranscriptEntries = 200;
+    private const int MaxPreparedMspCommands = 8;
+    private const string DefaultArtifactRefinementInstruction = "tighten caveats and keep citations";
 
     private readonly IWorkspaceStore workspaceStore;
     private readonly IPdfDocumentService pdfService;
     private readonly IFileDialogService fileDialogService;
     private readonly IAiChatService aiChatService;
+    private readonly IClipboardService clipboardService;
+    private readonly ReadOsMspTranscriptWorkspaceService mspTranscriptWorkspaceService;
+    private readonly ReadOsMspCommandTranscriptService mspTranscriptService;
+    private readonly ReadOsArtifactService artifactService;
+    private readonly ReadOsArtifactLineageActionService artifactLineageActionService;
+    private readonly ReadOsArtifactReuseService artifactReuseService;
+    private readonly ReadOsPreparedMspCommandHistoryService preparedCommandHistoryService;
+    private readonly ReadOsActiveMspCommandService activeMspCommandService;
+    private readonly ReadOsAttachmentQueueService attachmentQueueService;
+    private readonly ReadOsMspApprovalReviewService approvalReviewService;
+    private readonly ReadOsMspPendingApprovalNavigationService pendingApprovalNavigationService;
+    private readonly ReadOsMspAgentBridgeService mspAgentBridgeService;
+    private readonly ReadOsChatTurnService chatTurnService;
+    private readonly ReadOsConversationService conversationService;
+    private readonly ReadOsMspSessionViewService mspSessionViewService;
+    private readonly ReadOsTimelineService timelineService;
+    private readonly ReadOsTimelineActionService timelineActionService;
+    private readonly ReadOsActiveDocumentContextService activeDocumentContextService;
+    private readonly ReadOsDocumentCollectionRefreshService documentCollectionRefreshService;
+    private readonly ReadOsPresenterLoadPreparationService presenterLoadPreparationService;
+    private readonly ReadOsThumbnailLoadPreparationService thumbnailLoadPreparationService;
+    private readonly ReadOsPageNavigationService pageNavigationService;
+    private readonly ReadOsPageLabelEditingService pageLabelEditingService;
+    private readonly ReadOsOutlineEditingService outlineEditingService;
+    private readonly ReadOsDocumentSearchService documentSearchService;
+    private readonly ReadOsReaderAttachmentService readerAttachmentService;
+    private readonly ReadOsReaderLayoutService readerLayoutService;
+    private readonly ReadOsWorkflowDraftService workflowDraftService;
+    private readonly ReadOsWorkflowPreparationService workflowPreparationService;
     private readonly ReadOsMspHost mspHost;
     private WorkspaceState? workspace;
     private Window? hostWindow;
     private bool suppressNavigationSelection;
     private bool suppressThumbnailSelection;
-    private CancellationTokenSource? activeMspCommandCancellation;
-    private string? activeMspCommandEntryId;
+    private bool isArtifactPreviewActive;
 
     public ShellViewModel(
         IWorkspaceStore workspaceStore,
         IPdfDocumentService pdfService,
         IFileDialogService fileDialogService,
-        IAiChatService aiChatService)
+        IAiChatService aiChatService,
+        IClipboardService? clipboardService = null)
     {
         this.workspaceStore = workspaceStore;
         this.pdfService = pdfService;
         this.fileDialogService = fileDialogService;
         this.aiChatService = aiChatService;
-        mspHost = new ReadOsMspHost(
+        this.clipboardService = clipboardService ?? new ClipboardService();
+        mspTranscriptWorkspaceService = new ReadOsMspTranscriptWorkspaceService(
+            ReadOsMspHost.DefaultSessionId,
+            MaxMspTranscriptEntries);
+        mspTranscriptService = new ReadOsMspCommandTranscriptService(ReadOsMspHost.DefaultSessionId);
+        artifactService = new ReadOsArtifactService();
+        artifactLineageActionService = new ReadOsArtifactLineageActionService(artifactService);
+        preparedCommandHistoryService = new ReadOsPreparedMspCommandHistoryService(MaxPreparedMspCommands);
+        activeMspCommandService = new ReadOsActiveMspCommandService();
+        attachmentQueueService = new ReadOsAttachmentQueueService();
+        artifactReuseService = new ReadOsArtifactReuseService(artifactService, attachmentQueueService);
+        approvalReviewService = new ReadOsMspApprovalReviewService();
+        pendingApprovalNavigationService = new ReadOsMspPendingApprovalNavigationService();
+        mspAgentBridgeService = new ReadOsMspAgentBridgeService();
+        chatTurnService = new ReadOsChatTurnService();
+        conversationService = new ReadOsConversationService();
+        mspSessionViewService = new ReadOsMspSessionViewService();
+        timelineService = new ReadOsTimelineService();
+        timelineActionService = new ReadOsTimelineActionService();
+        activeDocumentContextService = new ReadOsActiveDocumentContextService();
+        documentCollectionRefreshService = new ReadOsDocumentCollectionRefreshService(conversationService);
+        presenterLoadPreparationService = new ReadOsPresenterLoadPreparationService();
+        thumbnailLoadPreparationService = new ReadOsThumbnailLoadPreparationService();
+        pageNavigationService = new ReadOsPageNavigationService();
+        pageLabelEditingService = new ReadOsPageLabelEditingService();
+        outlineEditingService = new ReadOsOutlineEditingService();
+        documentSearchService = new ReadOsDocumentSearchService();
+        readerAttachmentService = new ReadOsReaderAttachmentService(pageNavigationService);
+        readerLayoutService = new ReadOsReaderLayoutService();
+        workflowDraftService = new ReadOsWorkflowDraftService();
+        workflowPreparationService = new ReadOsWorkflowPreparationService(artifactService, workflowDraftService);
+        mspHost = new ReadOsMspHost(new ReadOsMspHostDependencies(
             workspaceStore,
             pdfService,
             aiChatService,
             () => workspace,
             BuildSettingsFromInputs,
             () => SelectedDocument,
-            () => PendingAttachments.Select(CloneAttachment).ToArray(),
+            () => attachmentQueueService.Snapshot(PendingAttachments),
             GetAttachmentTextAsync,
             QueueMspAttachment,
             ClearMspAttachments,
-            ApplyMspChatResult);
+            ApplyMspChatResult));
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
+        ApprovalModeOptions.Add(new ApprovalModeOption
+        {
+            Code = MspApprovalModeCodes.Policy,
+            DisplayName = "策略",
+            Detail = "写入和产物命令需要审批"
+        });
+        ApprovalModeOptions.Add(new ApprovalModeOption
+        {
+            Code = MspApprovalModeCodes.ConfirmAll,
+            DisplayName = "每次确认",
+            Detail = "所有非 dry-run 命令都先审批"
+        });
+        ApprovalModeOptions.Add(new ApprovalModeOption
+        {
+            Code = MspApprovalModeCodes.AllowWorkspace,
+            DisplayName = "允许写入",
+            Detail = "工作区写入直接执行，外部和删除仍需审批"
+        });
 
         Sidebar = new SidebarViewModel(this);
         Thread = new ThreadViewModel(this);
         Inspector = new InspectorViewModel(this);
         Settings = new SettingsViewModel(this);
+        MspTranscript.CollectionChanged += OnMspTranscriptCollectionChanged;
+        PreparedMspCommands.CollectionChanged += OnPreparedMspCommandsCollectionChanged;
+        QueuedComposerPrompts.CollectionChanged += OnQueuedComposerPromptsCollectionChanged;
     }
 
     // ── Child ViewModels ────────────────────────────────────────────────────
@@ -86,6 +169,8 @@ public sealed partial class ShellViewModel : ObservableObject
     // ── Shared collections ──────────────────────────────────────────────────
 
     public ObservableCollection<LanguageOption> LanguageOptions { get; } = new();
+
+    public ObservableCollection<ApprovalModeOption> ApprovalModeOptions { get; } = new();
 
     public ObservableCollection<ProjectItem> Projects { get; } = new();
 
@@ -105,11 +190,17 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ObservableCollection<ChatAttachment> PendingAttachments { get; } = new();
 
+    public ObservableCollection<QueuedComposerPrompt> QueuedComposerPrompts { get; } = new();
+
     public ObservableCollection<MspTranscriptEntry> MspTranscript { get; } = new();
 
     public ObservableCollection<MspSessionEntry> MspSessions { get; } = new();
 
     public ObservableCollection<WorkspaceArtifact> Artifacts { get; } = new();
+
+    public ObservableCollection<ArtifactLineageItem> SelectedArtifactLineage { get; } = new();
+
+    public ObservableCollection<PreparedMspCommand> PreparedMspCommands { get; } = new();
 
     public ObservableCollection<ThreadTimelineItem> TimelineItems { get; } = new();
 
@@ -118,6 +209,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial LanguageOption? SelectedLanguageOption { get; set; }
+
+    [ObservableProperty]
+    public partial ApprovalModeOption? SelectedApprovalModeOption { get; set; }
 
     [ObservableProperty]
     public partial NavigationEntry? SelectedNavigationEntry { get; set; }
@@ -133,6 +227,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial MspSessionEntry? SelectedMspSession { get; set; }
+
+    [ObservableProperty]
+    public partial MspTranscriptEntry? SelectedMspTranscriptEntry { get; set; }
 
     [ObservableProperty]
     public partial WorkspaceArtifact? SelectedArtifact { get; set; }
@@ -308,7 +405,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool HasPdfDocument => SelectedDocument?.Kind == LibraryItemKind.Pdf;
 
-    public bool HasPageImage => CurrentPageImage is not null;
+    public bool HasPageImage => !isArtifactPreviewActive && CurrentPageImage is not null;
 
     public bool HasTextPresenter => !string.IsNullOrWhiteSpace(PresenterTextContent) &&
         CurrentPresenterKind is PresenterKind.Markdown or PresenterKind.Text;
@@ -322,6 +419,12 @@ public sealed partial class ShellViewModel : ObservableObject
     public string PendingAttachmentSummary => PendingAttachments.Count == 0
         ? "暂无附件"
         : $"{PendingAttachments.Count} 个附件待发送";
+
+    public string ComposerQueueSummary => QueuedComposerPrompts.Count == 0
+        ? "暂无队列"
+        : $"{QueuedComposerPrompts.Count} 个队列项";
+
+    public bool HasQueuedComposerPrompts => QueuedComposerPrompts.Count > 0;
 
     public string MspTranscriptSummary => MspTranscript.Count == 0
         ? "暂无 MSP 执行记录"
@@ -369,31 +472,52 @@ public sealed partial class ShellViewModel : ObservableObject
             ? "等待审批"
             : IsBusy ? "处理中" : "就绪";
 
-    public string ApprovalModeLabel => "按策略审批";
+    public string ApprovalModeCode => MspApprovalModeCodes.Normalize(SelectedApprovalModeOption?.Code);
 
-    public string SendButtonLabel => IsAnyMspRunning ? "队列" : "发送";
+    public string ApprovalModeLabel => SelectedApprovalModeOption is null
+        ? "策略审批"
+        : SelectedApprovalModeOption.DisplayName;
 
-    public string SelectedArtifactPreview
-    {
-        get
-        {
-            if (SelectedArtifact is null)
-            {
-                return "选择一个产物查看内容。";
-            }
+    public string ApprovalModeDetail => SelectedApprovalModeOption?.Detail ?? "写入和产物命令需要审批";
 
-            var preview = string.IsNullOrWhiteSpace(SelectedArtifact.Content)
-                ? SelectedArtifact.Preview
-                : SelectedArtifact.Content;
-            if (string.IsNullOrWhiteSpace(preview))
-            {
-                return "(empty artifact)";
-            }
+    public bool IsPolicyApprovalModeSelected => ApprovalModeCode == MspApprovalModeCodes.Policy;
 
-            preview = preview.Trim();
-            return preview.Length <= 8000 ? preview : preview[..8000] + "...";
-        }
-    }
+    public bool IsConfirmAllApprovalModeSelected => ApprovalModeCode == MspApprovalModeCodes.ConfirmAll;
+
+    public bool IsAllowWorkspaceApprovalModeSelected => ApprovalModeCode == MspApprovalModeCodes.AllowWorkspace;
+
+    public string SendButtonLabel => IsAnyMspRunning ? "停止" : "发送";
+
+    public string ComposerPrimaryGlyph => IsAnyMspRunning ? "\uE711" : "\uE724";
+
+    public string ComposerPrimaryToolTip => IsAnyMspRunning
+        ? "停止当前 MSP 命令"
+        : "发送当前提示";
+
+    public ICommand ComposerPrimaryCommand => IsAnyMspRunning
+        ? CancelActiveMspCommandCommand
+        : SendPromptCommand;
+
+    public string SelectedArtifactPreview => artifactService.GetArtifactPreviewText(SelectedArtifact);
+
+    public bool HasSelectedArtifactLineage => SelectedArtifactLineage.Count > 0;
+
+    public bool HasSelectedOutlineWorkflowTarget => HasPdfDocument && SelectedOutlineItem is not null;
+
+    public bool HasSelectedArtifactWorkflowTarget => SelectedArtifact is not null;
+
+    public bool HasComposerArtifactRefinementTarget =>
+        SelectedArtifact is not null &&
+        !string.IsNullOrWhiteSpace(ComposerDraft);
+
+    public bool HasSelectedEvidenceArtifact => artifactService.IsEvidenceArtifact(SelectedArtifact);
+
+    public bool HasSelectedFailureReviewTarget => SelectedMspTranscriptEntry is not null &&
+        !SelectedMspTranscriptEntry.IsRunning &&
+        !SelectedMspTranscriptEntry.IsApprovalRequired &&
+        !SelectedMspTranscriptEntry.Succeeded;
+
+    public bool HasPreparedMspCommands => PreparedMspCommands.Count > 0;
 
     public string ActiveModelLabel => UseOfflineResponses
         ? "离线阅读模式"
@@ -453,14 +577,19 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public string WorkspaceModeLabel => IsInspectorVisible ? "审查面板已打开" : "对话模式";
 
-    public PresenterKind CurrentPresenterKind => SelectedDocument?.Kind switch
-    {
-        LibraryItemKind.Pdf => PresenterKind.Pdf,
-        LibraryItemKind.Markdown => PresenterKind.Markdown,
-        LibraryItemKind.Note => PresenterKind.Text,
-        null => PresenterKind.None,
-        _ => PresenterKind.DocumentPlaceholder
-    };
+    public PresenterKind CurrentPresenterKind => isArtifactPreviewActive
+        ? SelectedArtifact?.MediaType.Contains("markdown", StringComparison.OrdinalIgnoreCase) == true ||
+            SelectedArtifact?.Path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) == true
+            ? PresenterKind.Markdown
+            : PresenterKind.Text
+        : SelectedDocument?.Kind switch
+        {
+            LibraryItemKind.Pdf => PresenterKind.Pdf,
+            LibraryItemKind.Markdown => PresenterKind.Markdown,
+            LibraryItemKind.Note => PresenterKind.Text,
+            null => PresenterKind.None,
+            _ => PresenterKind.DocumentPlaceholder
+        };
 
     public string PresenterKindLabel => CurrentPresenterKind switch
     {
@@ -542,7 +671,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task ApproveMspCommandAsync(MspTranscriptEntry? entry)
     {
-        if (entry is null || !entry.IsApprovalRequired)
+        if (!approvalReviewService.CanReview(entry) || entry is null)
         {
             return;
         }
@@ -550,9 +679,10 @@ public sealed partial class ShellViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            MspTranscript.Remove(entry);
+            approvalReviewService.RemovePendingApproval(MspTranscript, entry);
             RemoveWorkspaceTranscriptEntry(entry);
             var approved = await ExecuteAndRecordMspCommandAsync(entry.CommandText, entry.Actor, approved: true);
+            SelectedMspTranscriptEntry = approved;
             StatusMessage = approved.WasCanceled
                 ? $"已取消：{approved.CommandText}"
                 : approved.Succeeded
@@ -568,38 +698,19 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task DenyMspCommandAsync(MspTranscriptEntry? entry)
     {
-        if (entry is null || !entry.IsApprovalRequired)
+        if (!approvalReviewService.CanReview(entry) || entry is null)
         {
             return;
         }
 
-        var index = MspTranscript.IndexOf(entry);
-        if (index >= 0)
-        {
-            MspTranscript.RemoveAt(index);
-        }
-
+        var index = approvalReviewService.RemovePendingApproval(MspTranscript, entry);
         RemoveWorkspaceTranscriptEntry(entry);
-        var deniedEntry = MspTranscriptEntry.FromRecord(new MspCommandTranscriptRecord
-        {
-            Actor = entry.Actor,
-            SessionId = entry.SessionId,
-            CommandText = entry.CommandText,
-            StartedAt = entry.StartedAt,
-            CompletedAt = DateTimeOffset.Now,
-            ExitCode = 126,
-            Stderr = "Operator denied MSP command.",
-            Decision = "Deny",
-            Effects = entry.Effects,
-            ArtifactsSummary = entry.ArtifactsSummary,
-            PolicyPreview = entry.PolicyPreview,
-            DiagnosticsSummary = "error msp.policy.denied: Operator denied MSP command." + Environment.NewLine + "recovery: Revise the command before retrying.",
-            RecoveryHint = "Revise the command before retrying."
-        });
+        var deniedEntry = approvalReviewService.CreateDeniedEntry(entry, DateTimeOffset.Now);
 
         var insertIndex = Math.Max(0, index);
         MspTranscript.Insert(insertIndex, deniedEntry);
         PersistTranscriptEntry(deniedEntry, insertIndex);
+        SelectedMspTranscriptEntry = deniedEntry;
         await SaveWorkspaceAsync();
         StatusMessage = $"已拒绝 MSP 命令：{entry.CommandText}";
         NotifyMspActivityState();
@@ -608,18 +719,15 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void CancelMspCommand(MspTranscriptEntry? entry)
     {
-        if (entry is null ||
-            !entry.IsRunning ||
-            activeMspCommandCancellation is null ||
-            activeMspCommandEntryId != entry.Id)
+        if (!activeMspCommandService.CanCancel(entry) || entry is null)
         {
             return;
         }
 
+        activeMspCommandService.Cancel(entry);
         entry.ProgressMessage = "正在取消 MSP 命令...";
         entry.ProgressPercent = null;
         StatusMessage = $"正在取消 MSP 命令：{entry.CommandText}";
-        activeMspCommandCancellation.Cancel();
     }
 
     public async Task InitializeAsync()
@@ -666,6 +774,21 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    partial void OnSelectedApprovalModeOptionChanged(ApprovalModeOption? value)
+    {
+        NotifyApprovalModeState();
+        if (value is null)
+        {
+            return;
+        }
+
+        if (workspace is not null)
+        {
+            workspace.Settings.MspApprovalMode = MspApprovalModeCodes.Normalize(value.Code);
+            _ = SaveWorkspaceAsync();
+        }
+    }
+
     async partial void OnSelectedNavigationEntryChanged(NavigationEntry? value)
     {
         if (suppressNavigationSelection || value is null || workspace is null)
@@ -693,24 +816,42 @@ public sealed partial class ShellViewModel : ObservableObject
 
     async partial void OnSelectedDocumentChanged(LibraryItem? value)
     {
-        if (value is null)
+        var context = activeDocumentContextService.Resolve(value);
+        if (context.ShouldClearPresenter)
         {
             CurrentPageImage = null;
             PresenterTextContent = string.Empty;
-            CurrentPageNumber = 0;
-            RefreshDocumentCollections();
-            NotifyActiveContext();
+        }
+
+        CurrentPageNumber = context.CurrentPageNumber;
+        if (context.DocumentNameDraft is not null)
+        {
+            DocumentNameDraft = context.DocumentNameDraft;
+        }
+
+        if (context.PageJumpText is not null)
+        {
+            PageJumpText = context.PageJumpText;
+        }
+
+        if (context.CurrentPageLabelDraft is not null)
+        {
+            CurrentPageLabelDraft = context.CurrentPageLabelDraft;
+        }
+
+        RefreshDocumentCollections();
+        NotifyActiveContext();
+        NotifyGuidedWorkflowState();
+        if (!context.ShouldLoadCurrentPage)
+        {
             return;
         }
 
-        DocumentNameDraft = value.Name;
-        CurrentPageNumber = Math.Clamp(value.CurrentPage, value.PageCount > 0 ? 1 : 0, Math.Max(1, value.PageCount));
-        PageJumpText = CurrentPageNumber.ToString();
-        CurrentPageLabelDraft = value.CurrentPageLabel;
-        RefreshDocumentCollections();
-        NotifyActiveContext();
         await LoadCurrentPageAsync();
-        _ = LoadThumbnailsAsync();
+        if (context.ShouldLoadThumbnails)
+        {
+            _ = LoadThumbnailsAsync();
+        }
     }
 
     async partial void OnSelectedThumbnailChanged(PageImageItem? value)
@@ -725,6 +866,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     async partial void OnSelectedOutlineItemChanged(OutlineItem? value)
     {
+        NotifyGuidedWorkflowState();
         if (value is null || value.Page <= 0)
         {
             return;
@@ -735,12 +877,13 @@ public sealed partial class ShellViewModel : ObservableObject
 
     async partial void OnSelectedSearchResultChanged(PdfTextHit? value)
     {
-        if (value is null)
+        var route = documentSearchService.ResolveRoute(value);
+        if (!route.ShouldNavigate)
         {
             return;
         }
 
-        await GoToPageAsync(value.PageNumber);
+        await GoToPageAsync(route.PageNumber);
     }
 
     partial void OnSearchQueryChanged(string value)
@@ -749,6 +892,11 @@ public sealed partial class ShellViewModel : ObservableObject
         RefreshLibrary();
         RefreshMspSessions();
         RefreshArtifacts();
+    }
+
+    partial void OnComposerDraftChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasComposerArtifactRefinementTarget));
     }
 
     async partial void OnReaderImageWidthChanged(double value)
@@ -844,14 +992,31 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         if (value is not null)
         {
-            SelectedInspectorTab = InspectorTab.Run;
+            var selection = mspSessionViewService.SelectSessionTranscript(value, MspTranscript);
+            SelectedMspTranscriptEntry = selection.Transcript;
+            SelectedInspectorTab = selection.InspectorTab;
             IsInspectorVisible = true;
         }
     }
 
+    partial void OnSelectedMspTranscriptEntryChanged(MspTranscriptEntry? value)
+    {
+        UpdateMspTranscriptSelectionMarkers();
+        OnPropertyChanged(nameof(HasSelectedFailureReviewTarget));
+    }
+
     partial void OnSelectedArtifactChanged(WorkspaceArtifact? value)
     {
+        RefreshSelectedArtifactLineage();
         OnPropertyChanged(nameof(SelectedArtifactPreview));
+        NotifyGuidedWorkflowState();
+        OnPropertyChanged(nameof(HasComposerArtifactRefinementTarget));
+        if (value is null && isArtifactPreviewActive)
+        {
+            isArtifactPreviewActive = false;
+            NotifyActiveContext();
+        }
+
         if (value is not null)
         {
             SelectedInspectorTab = InspectorTab.Artifacts;
@@ -879,6 +1044,21 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPresenterVisible));
     }
 
+    private void OnMspTranscriptCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        NotifyMspActivityState();
+    }
+
+    private void OnPreparedMspCommandsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        NotifyPreparedMspCommandState();
+    }
+
+    private void OnQueuedComposerPromptsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        NotifyComposerQueueState();
+    }
+
     [RelayCommand]
     private void NavigateHome()
     {
@@ -888,10 +1068,11 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void NavigateReader()
     {
-        CurrentRoute = ShellRoute.Home;
-        IsInspectorVisible = true;
-        SelectedInspectorTab = InspectorTab.Preview;
-        SidebarMode = WorkspaceSidebarMode.Materials;
+        var layout = readerLayoutService.NavigateReader();
+        CurrentRoute = layout.Route;
+        IsInspectorVisible = layout.IsInspectorVisible;
+        SelectedInspectorTab = layout.InspectorTab;
+        SidebarMode = layout.SidebarMode;
     }
 
     [RelayCommand]
@@ -916,14 +1097,25 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetWorkspaceLayout(string mode)
+    private void SelectApprovalMode(string modeCode)
     {
-        if (!Enum.TryParse<WorkspaceLayoutMode>(mode, ignoreCase: true, out var layout))
+        var normalizedMode = MspApprovalModeCodes.Normalize(modeCode);
+        var option = ApprovalModeOptions.FirstOrDefault(item =>
+            string.Equals(item.Code, normalizedMode, StringComparison.OrdinalIgnoreCase));
+        if (option is null)
         {
+            StatusMessage = "未知审批模式。";
             return;
         }
 
-        ApplyWorkspaceLayoutPreset(layout);
+        SelectedApprovalModeOption = option;
+        StatusMessage = $"审批模式已切换：{option.DisplayName}";
+    }
+
+    [RelayCommand]
+    private void SetWorkspaceLayout(string mode)
+    {
+        ApplyWorkspaceLayoutPreset(readerLayoutService.ResolveWorkspaceLayout(mode));
     }
 
     [RelayCommand]
@@ -935,20 +1127,22 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void SelectSidebarMode(string mode)
     {
-        if (Enum.TryParse<WorkspaceSidebarMode>(mode, ignoreCase: true, out var sidebarMode))
+        var selection = readerLayoutService.SelectSidebarMode(mode);
+        if (selection.ShouldApply)
         {
-            SidebarMode = sidebarMode;
-            IsLibraryVisible = true;
+            SidebarMode = selection.SidebarMode;
+            IsLibraryVisible = selection.IsLibraryVisible;
         }
     }
 
     [RelayCommand]
     private void SelectInspectorTab(string tab)
     {
-        if (Enum.TryParse<InspectorTab>(tab, ignoreCase: true, out var inspectorTab))
+        var selection = readerLayoutService.SelectInspectorTab(tab);
+        if (selection.ShouldApply)
         {
-            SelectedInspectorTab = inspectorTab;
-            IsChatVisible = true;
+            SelectedInspectorTab = selection.InspectorTab;
+            IsChatVisible = selection.IsChatVisible;
         }
     }
 
@@ -1083,48 +1277,41 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task SavePageLabelAsync()
     {
-        if (workspace is null || SelectedDocument is null || CurrentPageNumber <= 0)
+        var result = pageLabelEditingService.SaveLabel(
+            workspace is not null,
+            SelectedDocument,
+            CurrentPageNumber,
+            CurrentPageLabelDraft);
+        if (!result.ShouldSave)
         {
             return;
         }
 
-        var label = SelectedDocument.PageLabels.FirstOrDefault(item => item.PdfPage == CurrentPageNumber);
-        if (label is null)
+        if (result.CurrentPageLabelDraft is not null)
         {
-            label = new PageLabelRule { PdfPage = CurrentPageNumber };
-            SelectedDocument.PageLabels.Add(label);
+            CurrentPageLabelDraft = result.CurrentPageLabelDraft;
         }
 
-        label.Label = string.IsNullOrWhiteSpace(CurrentPageLabelDraft) ? CurrentPageNumber.ToString() : CurrentPageLabelDraft.Trim();
         await SaveWorkspaceAsync();
-        StatusMessage = $"已保存第 {CurrentPageNumber} 页标签：{label.Label}";
+        StatusMessage = result.StatusMessage ?? StatusMessage;
     }
 
     [RelayCommand]
     private async Task AutoMapPagesAsync()
     {
-        if (workspace is null || SelectedDocument is null || SelectedDocument.PageCount == 0)
+        var result = pageLabelEditingService.AutoMap(workspace is not null, SelectedDocument);
+        if (!result.ShouldSave)
         {
             return;
         }
 
-        SelectedDocument.PageLabels.Clear();
-        for (var page = 1; page <= SelectedDocument.PageCount; page++)
+        if (result.CurrentPageLabelDraft is not null)
         {
-            var label = page switch
-            {
-                1 => "cover",
-                2 => "i",
-                3 => "ii",
-                4 => "iii",
-                _ => (page - 4).ToString()
-            };
-            SelectedDocument.PageLabels.Add(new PageLabelRule { PdfPage = page, Label = label });
+            CurrentPageLabelDraft = result.CurrentPageLabelDraft;
         }
 
-        CurrentPageLabelDraft = SelectedDocument.CurrentPageLabel;
         await SaveWorkspaceAsync();
-        StatusMessage = "已生成可编辑页码映射。";
+        StatusMessage = result.StatusMessage ?? StatusMessage;
     }
 
     [RelayCommand]
@@ -1141,24 +1328,12 @@ public sealed partial class ShellViewModel : ObservableObject
             var path = workspaceStore.GetAbsolutePath(SelectedDocument);
             var maxPage = Math.Min(SelectedDocument.PageCount, 12);
             var text = await pdfService.ExtractPageTextAsync(path, 1, maxPage);
-            var generated = ExtractOutlineFromText(text);
-            if (generated.Count == 0)
-            {
-                for (var page = 1; page <= SelectedDocument.PageCount; page += 10)
-                {
-                    generated.Add(new OutlineItem { Title = $"第 {page} 页起", Page = page, Level = 1 });
-                }
-            }
-
-            SelectedDocument.Outline.Clear();
-            foreach (var item in generated.Take(80))
-            {
-                SelectedDocument.Outline.Add(item);
-            }
-
-            RefreshOutline();
-            await SaveWorkspaceAsync();
-            StatusMessage = $"已生成 {SelectedDocument.Outline.Count} 条目录项，可继续手动编辑。";
+            var result = outlineEditingService.GenerateOutline(
+                workspace is not null,
+                SelectedDocument,
+                HasPdfDocument,
+                text);
+            await ApplyOutlineEditResultAsync(result);
         }
         catch (Exception ex)
         {
@@ -1173,44 +1348,61 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task AddOutlineItemAsync()
     {
-        if (workspace is null || SelectedDocument is null)
-        {
-            return;
-        }
-
-        var title = string.IsNullOrWhiteSpace(OutlineTitleDraft)
-            ? $"第 {CurrentPageNumber} 页"
-            : OutlineTitleDraft.Trim();
-        var item = new OutlineItem
-        {
-            Title = title,
-            Page = Math.Max(1, CurrentPageNumber),
-            Level = 1
-        };
-        SelectedDocument.Outline.Add(item);
-        RefreshOutline();
-        OutlineTitleDraft = string.Empty;
-        await SaveWorkspaceAsync();
+        var result = outlineEditingService.AddOutlineItem(
+            workspace is not null,
+            SelectedDocument,
+            CurrentPageNumber,
+            OutlineTitleDraft);
+        await ApplyOutlineEditResultAsync(result);
     }
 
     [RelayCommand]
     private async Task DeleteOutlineItemAsync()
     {
-        if (workspace is null || SelectedDocument is null || SelectedOutlineItem is null)
+        var result = outlineEditingService.DeleteOutlineItem(
+            workspace is not null,
+            SelectedDocument,
+            SelectedOutlineItem);
+        await ApplyOutlineEditResultAsync(result);
+    }
+
+    private async Task ApplyOutlineEditResultAsync(ReadOsOutlineEditResult result)
+    {
+        if (!result.ShouldSave)
         {
             return;
         }
 
-        SelectedDocument.Outline.Remove(SelectedOutlineItem);
-        RefreshOutline();
+        if (result.ShouldRefreshOutline)
+        {
+            RefreshOutline();
+        }
+
+        if (result.ShouldClearTitleDraft)
+        {
+            OutlineTitleDraft = string.Empty;
+        }
+
         await SaveWorkspaceAsync();
+        if (result.StatusMessage is not null)
+        {
+            StatusMessage = result.StatusMessage;
+        }
     }
 
     [RelayCommand]
     private async Task SearchInDocumentAsync()
     {
-        DocumentSearchResults.Clear();
-        if (SelectedDocument is null || !HasPdfDocument || string.IsNullOrWhiteSpace(DocumentSearchQuery))
+        var search = documentSearchService.Prepare(
+            SelectedDocument,
+            HasPdfDocument,
+            DocumentSearchQuery);
+        if (search.ShouldClearResults)
+        {
+            DocumentSearchResults.Clear();
+        }
+
+        if (!search.ShouldSearch || search.Document is null)
         {
             return;
         }
@@ -1218,13 +1410,14 @@ public sealed partial class ShellViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(SelectedDocument), DocumentSearchQuery);
-            foreach (var hit in hits)
+            var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(search.Document), search.Query);
+            var result = documentSearchService.ProjectResults(hits);
+            foreach (var hit in result.Hits)
             {
                 DocumentSearchResults.Add(hit);
             }
 
-            StatusMessage = hits.Count == 0 ? "未找到匹配内容。" : $"找到 {hits.Count} 个匹配项。";
+            StatusMessage = result.StatusMessage;
         }
         catch (Exception ex)
         {
@@ -1239,76 +1432,19 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void AttachCurrentPage()
     {
-        if (SelectedDocument is null)
-        {
-            return;
-        }
-
-        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
-        {
-            PendingAttachments.Add(new ChatAttachment
-            {
-                Kind = AttachmentKind.File,
-                DocumentId = SelectedDocument.Id,
-                Title = $"{SelectedDocument.Name} · 全文",
-                FilePath = workspaceStore.GetAbsolutePath(SelectedDocument)
-            });
-            NotifyAttachmentState();
-            return;
-        }
-
-        if (CurrentPageNumber <= 0)
-        {
-            return;
-        }
-
-        PendingAttachments.Add(new ChatAttachment
-        {
-            Kind = AttachmentKind.Page,
-            DocumentId = SelectedDocument.Id,
-            Title = $"{SelectedDocument.Name} · 第 {CurrentPageNumber} 页",
-            StartPage = CurrentPageNumber,
-            EndPage = CurrentPageNumber
-        });
-        NotifyAttachmentState();
+        ApplyReaderAttachmentResult(readerAttachmentService.AttachCurrentPage(
+            SelectedDocument,
+            CurrentPageNumber,
+            SelectedDocument is null ? string.Empty : workspaceStore.GetAbsolutePath(SelectedDocument)));
     }
 
     [RelayCommand]
     private void AttachRange()
     {
-        if (SelectedDocument is null)
-        {
-            return;
-        }
-
-        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
-        {
-            AttachCurrentPage();
-            StatusMessage = "文本资料已作为全文附件加入当前对话。";
-            return;
-        }
-
-        var ranges = ParseRanges(PageRangeDraft);
-        if (ranges.Count == 0)
-        {
-            StatusMessage = "请输入页码范围，例如 3-5, 8。";
-            return;
-        }
-
-        foreach (var range in ranges)
-        {
-            PendingAttachments.Add(new ChatAttachment
-            {
-                Kind = range.Start == range.End ? AttachmentKind.Page : AttachmentKind.PageRange,
-                DocumentId = SelectedDocument.Id,
-                Title = $"{SelectedDocument.Name} · 第 {range.Start}-{range.End} 页",
-                StartPage = range.Start,
-                EndPage = range.End
-            });
-        }
-
-        PageRangeDraft = string.Empty;
-        NotifyAttachmentState();
+        ApplyReaderAttachmentResult(readerAttachmentService.AttachRange(
+            SelectedDocument,
+            SelectedDocument is null ? string.Empty : workspaceStore.GetAbsolutePath(SelectedDocument),
+            PageRangeDraft));
     }
 
     [RelayCommand]
@@ -1326,35 +1462,119 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public void AttachRegionSelection(double x, double y, double width, double height)
     {
-        if (SelectedDocument is null || CurrentPageNumber <= 0)
+        ApplyReaderAttachmentResult(readerAttachmentService.AttachRegion(
+            SelectedDocument,
+            CurrentPageNumber,
+            x,
+            y,
+            width,
+            height,
+            RegionExplainPrompt));
+    }
+
+    private void ApplyReaderAttachmentResult(ReadOsReaderAttachmentResult result)
+    {
+        if (!result.ShouldApply)
         {
+            if (result.StatusMessage is not null)
+            {
+                StatusMessage = result.StatusMessage;
+            }
+
             return;
         }
 
-        PendingAttachments.Add(new ChatAttachment
+        foreach (var attachment in result.Attachments)
         {
-            Kind = AttachmentKind.Region,
-            DocumentId = SelectedDocument.Id,
-            Title = $"{SelectedDocument.Name} · 第 {CurrentPageNumber} 页红框区域",
-            StartPage = Math.Max(1, CurrentPageNumber - 1),
-            EndPage = Math.Min(SelectedDocument.PageCount, CurrentPageNumber + 1),
-            RegionX = x,
-            RegionY = y,
-            RegionWidth = width,
-            RegionHeight = height
-        });
+            PendingAttachments.Add(attachment);
+        }
 
-        IsRegionModeActive = false;
-        ComposerDraft = RegionExplainPrompt;
+        if (result.PageRangeDraft is not null)
+        {
+            PageRangeDraft = result.PageRangeDraft;
+        }
+
+        if (result.ComposerDraft is not null)
+        {
+            ComposerDraft = result.ComposerDraft;
+        }
+
+        if (result.ShouldExitRegionMode)
+        {
+            IsRegionModeActive = false;
+        }
+
         NotifyAttachmentState();
-        StatusMessage = "已添加红框区域和上下文页面。";
+        if (result.StatusMessage is not null)
+        {
+            StatusMessage = result.StatusMessage;
+        }
     }
 
     [RelayCommand]
     private void ClearAttachments()
     {
-        PendingAttachments.Clear();
+        attachmentQueueService.Clear(PendingAttachments);
         NotifyAttachmentState();
+    }
+
+    [RelayCommand]
+    private void RemovePendingAttachment(ChatAttachment? attachment)
+    {
+        var existing = attachmentQueueService.RemoveById(PendingAttachments, attachment);
+        if (existing is null)
+        {
+            return;
+        }
+
+        NotifyAttachmentState();
+        StatusMessage = $"已移除附件：{existing.Title}";
+    }
+
+    [RelayCommand]
+    private void QueueComposerDraft()
+    {
+        if (string.IsNullOrWhiteSpace(ComposerDraft) && PendingAttachments.Count == 0)
+        {
+            StatusMessage = "没有可加入队列的提示或附件。";
+            return;
+        }
+
+        var queued = attachmentQueueService.QueueDraft(
+            QueuedComposerPrompts,
+            PendingAttachments,
+            ComposerDraft,
+            DateTimeOffset.Now);
+        if (queued is null)
+        {
+            return;
+        }
+
+        ComposerDraft = string.Empty;
+        NotifyAttachmentState();
+        StatusMessage = $"已加入队列：{queued.Title}";
+    }
+
+    [RelayCommand]
+    private void RestoreQueuedComposerPrompt(QueuedComposerPrompt? queued)
+    {
+        if (queued is null)
+        {
+            return;
+        }
+
+        if (!attachmentQueueService.CanRestore(ComposerDraft, PendingAttachments))
+        {
+            StatusMessage = "请先处理当前 composer 内容，再恢复队列项。";
+            return;
+        }
+
+        ComposerDraft = attachmentQueueService.RestoreQueuedPrompt(
+            QueuedComposerPrompts,
+            PendingAttachments,
+            queued) ?? string.Empty;
+        NotifyAttachmentState();
+        StatusMessage = $"已恢复队列项：{queued.Title}";
     }
 
     [RelayCommand]
@@ -1371,25 +1591,12 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        var attachments = PendingAttachments.Select(CloneAttachment).ToList();
-        var prompt = string.IsNullOrWhiteSpace(ComposerDraft)
-            ? attachments.Count > 0 ? AttachmentDefaultPrompt : "请总结当前文档。"
-            : ComposerDraft.Trim();
-
-        var userMessage = new ChatMessage
-        {
-            Role = ChatRole.User,
-            Author = "你",
-            Content = prompt,
-            CreatedAt = DateTimeOffset.Now
-        };
-        foreach (var attachment in attachments)
-        {
-            userMessage.Attachments.Add(attachment);
-        }
+        var attachments = attachmentQueueService.Snapshot(PendingAttachments).ToList();
+        var prompt = chatTurnService.ResolvePrompt(ComposerDraft, attachments, AttachmentDefaultPrompt);
+        var userMessage = chatTurnService.CreateUserMessage(prompt, attachments, DateTimeOffset.Now);
 
         SelectedConversation.Messages.Add(userMessage);
-        PendingAttachments.Clear();
+        attachmentQueueService.Clear(PendingAttachments);
         ComposerDraft = string.Empty;
         RefreshChatMessages();
         NotifyAttachmentState();
@@ -1405,47 +1612,29 @@ public sealed partial class ShellViewModel : ObservableObject
                 prompt,
                 attachments,
                 GetAttachmentTextAsync,
-                BuildMspAgentInstruction(),
+                mspAgentBridgeService.BuildInstruction(),
                 allowMspCommandRequests: true);
 
-            SelectedConversation.Messages.Add(new ChatMessage
-            {
-                Role = ChatRole.Assistant,
-                Author = "ReadOS",
-                Content = answer,
-                CreatedAt = DateTimeOffset.Now
-            });
+            SelectedConversation.Messages.Add(chatTurnService.CreateReadOsMessage(answer, DateTimeOffset.Now));
 
-            var requestedCommands = ExtractMspCommands(answer);
+            var requestedCommands = mspAgentBridgeService.ExtractRequestedCommands(answer);
             if (requestedCommands.Count > 0)
             {
                 var mspReport = await ExecuteAgentMspCommandsAsync(requestedCommands);
-                SelectedConversation.Messages.Add(new ChatMessage
-                {
-                    Role = ChatRole.Assistant,
-                    Author = "MSP",
-                    Content = mspReport,
-                    CreatedAt = DateTimeOffset.Now
-                });
+                SelectedConversation.Messages.Add(chatTurnService.CreateMspMessage(mspReport, DateTimeOffset.Now));
 
                 var finalAnswer = await aiChatService.SendAsync(
                     settings,
                     SelectedDocument,
                     SelectedConversation.Messages,
-                    $"请基于 MSP 执行结果回答用户原始问题：{prompt}",
+                    chatTurnService.BuildMspFinalAnswerPrompt(prompt),
                     Array.Empty<ChatAttachment>(),
                     GetAttachmentTextAsync,
-                    BuildMspAgentInstruction(),
+                    mspAgentBridgeService.BuildInstruction(),
                     mspReport,
                     allowMspCommandRequests: false);
 
-                SelectedConversation.Messages.Add(new ChatMessage
-                {
-                    Role = ChatRole.Assistant,
-                    Author = "ReadOS",
-                    Content = finalAnswer,
-                    CreatedAt = DateTimeOffset.Now
-                });
+                SelectedConversation.Messages.Add(chatTurnService.CreateReadOsMessage(finalAnswer, DateTimeOffset.Now));
             }
 
             SelectedConversation.UpdatedAt = DateTimeOffset.Now;
@@ -1460,13 +1649,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SelectedConversation.Messages.Add(new ChatMessage
-            {
-                Role = ChatRole.Assistant,
-                Author = "ReadOS",
-                Content = $"请求失败：{ex.Message}",
-                CreatedAt = DateTimeOffset.Now
-            });
+            SelectedConversation.Messages.Add(chatTurnService.CreateFailureMessage(ex, DateTimeOffset.Now));
             RefreshChatMessages();
             StatusMessage = $"请求失败：{ex.Message}";
         }
@@ -1551,11 +1734,9 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void PinRunDrawer()
     {
-        IsRunDrawerPinned = !IsRunDrawerPinned;
-        if (IsRunDrawerPinned)
-        {
-            IsRunDrawerOpen = true;
-        }
+        var pin = readerLayoutService.ToggleRunDrawerPin(IsRunDrawerPinned, IsRunDrawerOpen);
+        IsRunDrawerPinned = pin.IsRunDrawerPinned;
+        IsRunDrawerOpen = pin.IsRunDrawerOpen;
     }
 
     [RelayCommand]
@@ -1566,6 +1747,23 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             CancelMspCommand(runningEntry);
         }
+    }
+
+    [RelayCommand]
+    private void OpenPendingApproval()
+    {
+        var navigation = pendingApprovalNavigationService.Resolve(MspTranscript);
+        if (!navigation.ShouldOpen || navigation.Transcript is null)
+        {
+            StatusMessage = navigation.StatusMessage;
+            return;
+        }
+
+        SelectedMspTranscriptEntry = navigation.Transcript;
+        SelectedInspectorTab = navigation.InspectorTab;
+        IsInspectorVisible = true;
+        IsRunDrawerOpen = true;
+        StatusMessage = navigation.StatusMessage;
     }
 
     [RelayCommand]
@@ -1582,27 +1780,204 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void AttachSelectedArtifact()
+    private void OpenArtifactLineageItem(ArtifactLineageItem? item)
     {
-        if (SelectedArtifact is null)
+        var action = artifactLineageActionService.Resolve(item, workspace?.Artifacts);
+        if (!action.ShouldApply)
         {
-            StatusMessage = "请选择一个产物。";
             return;
         }
 
-        PendingAttachments.Add(new ChatAttachment
+        if (action.Artifact is null)
         {
-            Kind = AttachmentKind.File,
-            DocumentId = SelectedDocument?.Id ?? string.Empty,
-            Title = $"产物 · {SelectedArtifact.Path}",
-            FilePath = SelectedArtifact.Path
-        });
+            StatusMessage = action.StatusMessage ?? string.Empty;
+            return;
+        }
+
+        SelectArtifact(action.Artifact);
+        StatusMessage = action.StatusMessage ?? string.Empty;
+    }
+
+    [RelayCommand]
+    private void OpenSelectedArtifactPreview()
+    {
+        var preview = artifactReuseService.PreparePreview(SelectedArtifact);
+        if (!preview.Succeeded)
+        {
+            StatusMessage = preview.StatusMessage;
+            return;
+        }
+
+        isArtifactPreviewActive = true;
+        PresenterTextContent = preview.Content ?? string.Empty;
+        CurrentPageImage = null;
+        SelectedInspectorTab = InspectorTab.Preview;
+        IsInspectorVisible = true;
+        NotifyActiveContext();
+        StatusMessage = preview.StatusMessage;
+    }
+
+    [RelayCommand]
+    private async Task CopySelectedArtifactContentAsync()
+    {
+        var copy = artifactReuseService.PrepareCopy(SelectedArtifact);
+        if (!copy.Succeeded)
+        {
+            StatusMessage = copy.StatusMessage;
+            return;
+        }
+
+        await clipboardService.SetTextAsync(copy.Content ?? string.Empty);
+        StatusMessage = copy.StatusMessage;
+    }
+
+    [RelayCommand]
+    private async Task ExportSelectedArtifactAsync()
+    {
+        var export = artifactReuseService.PrepareExport(SelectedArtifact);
+        if (!export.Succeeded || export.ExportMetadata is null)
+        {
+            StatusMessage = export.StatusMessage;
+            return;
+        }
+
+        var path = await fileDialogService.PickArtifactExportAsync(
+            hostWindow,
+            export.ExportMetadata.SuggestedName,
+            export.ExportMetadata.Extension);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await File.WriteAllTextAsync(path, export.Content ?? string.Empty);
+        StatusMessage = artifactReuseService.BuildExportedStatus(path);
+    }
+
+    [RelayCommand]
+    private void PrepareExplainSectionWorkflow()
+    {
+        PrepareDocumentWorkflowCommand(
+            "explain-section",
+            "explanation",
+            ".md",
+            "已准备章节讲解工作流。");
+    }
+
+    [RelayCommand]
+    private void PrepareExtractEvidenceWorkflow()
+    {
+        PrepareDocumentWorkflowCommand(
+            "extract-evidence",
+            "evidence",
+            ".json",
+            "已准备证据抽取工作流。");
+    }
+
+    [RelayCommand]
+    private void PrepareReviewEvidenceWorkflow()
+    {
+        ApplyWorkflowPreparation(workflowPreparationService.PrepareReviewEvidenceWorkflow(SelectedArtifact));
+    }
+
+    [RelayCommand]
+    private void PrepareSynthesizeEvidenceWorkflow()
+    {
+        ApplyWorkflowPreparation(workflowPreparationService.PrepareSynthesizeEvidenceWorkflow(SelectedArtifact));
+    }
+
+    [RelayCommand]
+    private void PrepareRefineArtifactWorkflow()
+    {
+        ApplyWorkflowPreparation(
+            workflowPreparationService.PrepareRefineArtifactWorkflow(
+                SelectedArtifact,
+                DefaultArtifactRefinementInstruction));
+    }
+
+    [RelayCommand]
+    private void PrepareComposerArtifactRefinementWorkflow()
+    {
+        ApplyWorkflowPreparation(
+            workflowPreparationService.PrepareComposerRefineArtifactWorkflow(SelectedArtifact, ComposerDraft));
+    }
+
+    [RelayCommand]
+    private void PrepareReviewFailuresWorkflow()
+    {
+        ApplyWorkflowPreparation(
+            workflowPreparationService.PrepareReviewFailuresWorkflow(SelectedMspTranscriptEntry));
+    }
+
+    [RelayCommand]
+    private void RestorePreparedMspCommand(PreparedMspCommand? command)
+    {
+        if (command is null)
+        {
+            StatusMessage = "请选择一个已准备命令。";
+            return;
+        }
+
+        MspCommandDraft = command.CommandText;
+        PromotePreparedMspCommand(command);
+        SelectedInspectorTab = InspectorTab.Run;
+        IsInspectorVisible = true;
+        StatusMessage = $"已恢复命令草稿：{command.Title}";
+    }
+
+    [RelayCommand]
+    private void OpenTimelineItem(ThreadTimelineItem? item)
+    {
+        var action = timelineActionService.Resolve(item);
+        if (!action.ShouldOpenInspector)
+        {
+            return;
+        }
+
+        IsInspectorVisible = true;
+        if (action.Artifact is not null)
+        {
+            SelectArtifact(action.Artifact);
+        }
+        else
+        {
+            if (action.Transcript is not null)
+            {
+                SelectedMspTranscriptEntry = action.Transcript;
+            }
+
+            SelectedInspectorTab = action.InspectorTab;
+        }
+
+        if (!string.IsNullOrWhiteSpace(action.StatusMessage))
+        {
+            StatusMessage = action.StatusMessage;
+        }
+    }
+
+    [RelayCommand]
+    private void AttachSelectedArtifact()
+    {
+        var attachment = artifactReuseService.PrepareAttachment(SelectedArtifact, SelectedDocument?.Id);
+        if (!attachment.Succeeded || attachment.Attachment is null)
+        {
+            StatusMessage = attachment.StatusMessage;
+            return;
+        }
+
+        PendingAttachments.Add(attachment.Attachment);
         ComposerDraft = string.IsNullOrWhiteSpace(ComposerDraft)
-            ? "请基于我附加的产物继续分析。"
+            ? attachment.DefaultComposerPrompt
             : ComposerDraft;
         NotifyAttachmentState();
         SelectedInspectorTab = InspectorTab.Evidence;
-        StatusMessage = $"已附加产物：{SelectedArtifact.Path}";
+        StatusMessage = attachment.StatusMessage;
     }
 
     [RelayCommand]
@@ -1614,9 +1989,10 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ToggleOutline()
     {
-        IsOutlineVisible = !IsOutlineVisible;
-        SelectedInspectorTab = InspectorTab.Evidence;
-        IsChatVisible = IsOutlineVisible;
+        var toggle = readerLayoutService.ToggleOutline(IsOutlineVisible);
+        IsOutlineVisible = toggle.IsOutlineVisible;
+        SelectedInspectorTab = toggle.InspectorTab;
+        IsChatVisible = toggle.IsChatVisible;
     }
 
     [RelayCommand]
@@ -1682,21 +2058,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public void ApplyWorkspaceLayoutPreset(WorkspaceLayoutMode layout)
     {
-        WorkspaceLayout = layout;
+        ApplyWorkspaceLayoutPreset(readerLayoutService.ApplyWorkspaceLayout(layout));
+    }
 
-        switch (layout)
+    private void ApplyWorkspaceLayoutPreset(ReadOsWorkspaceLayoutPreset preset)
+    {
+        if (!preset.ShouldApply)
         {
-            case WorkspaceLayoutMode.FocusChat:
-                IsInspectorVisible = false;
-                break;
-            case WorkspaceLayoutMode.FocusPresenter:
-            case WorkspaceLayoutMode.PresenterPrimary:
-                IsInspectorVisible = true;
-                SelectedInspectorTab = InspectorTab.Preview;
-                break;
-            default:
-                IsInspectorVisible = true;
-                break;
+            return;
+        }
+
+        WorkspaceLayout = preset.Layout;
+        IsInspectorVisible = preset.IsInspectorVisible;
+        if (preset.InspectorTab is not null)
+        {
+            SelectedInspectorTab = preset.InspectorTab.Value;
         }
     }
 
@@ -1713,63 +2089,88 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private async Task GoToPageAsync(int page)
     {
-        if (workspace is null || SelectedDocument is null || SelectedDocument.PageCount == 0)
+        var navigation = pageNavigationService.Prepare(workspace is not null, SelectedDocument, page);
+        if (!navigation.ShouldNavigate || SelectedDocument is null)
         {
             return;
         }
 
-        var target = Math.Clamp(page, 1, SelectedDocument.PageCount);
-        CurrentPageNumber = target;
-        SelectedDocument.CurrentPage = target;
-        PageJumpText = target.ToString();
-        CurrentPageLabelDraft = SelectedDocument.CurrentPageLabel;
-        await LoadCurrentPageAsync();
-        await SaveWorkspaceAsync();
+        CurrentPageNumber = navigation.TargetPage;
+        SelectedDocument.CurrentPage = navigation.TargetPage;
+        PageJumpText = navigation.PageJumpText ?? navigation.TargetPage.ToString();
+        CurrentPageLabelDraft = navigation.CurrentPageLabelDraft ?? SelectedDocument.CurrentPageLabel;
+        if (navigation.ShouldLoadCurrentPage)
+        {
+            await LoadCurrentPageAsync();
+        }
+
+        if (navigation.ShouldSaveWorkspace)
+        {
+            await SaveWorkspaceAsync();
+        }
     }
 
     private async Task LoadCurrentPageAsync()
     {
-        if (SelectedDocument is null)
+        var preparation = presenterLoadPreparationService.Prepare(SelectedDocument, CurrentPageNumber);
+        if (preparation.ShouldDeactivateArtifactPreview)
+        {
+            isArtifactPreviewActive = false;
+        }
+
+        if (preparation.ShouldClearCurrentPageImage)
         {
             CurrentPageImage = null;
+        }
+
+        if (preparation.ShouldClearPresenterText)
+        {
             PresenterTextContent = string.Empty;
-            NotifyActiveContext();
+        }
+
+        if (preparation.Mode == ReadOsPresenterLoadMode.Clear)
+        {
+            if (preparation.ShouldNotifyActiveContext)
+            {
+                NotifyActiveContext();
+            }
+
             return;
         }
 
-        if (SelectedDocument.Kind is LibraryItemKind.Markdown or LibraryItemKind.Note)
+        if (preparation.ShouldLoadText && preparation.Document is not null)
         {
-            CurrentPageImage = null;
-            await LoadPresenterTextAsync(SelectedDocument);
-            NotifyActiveContext();
+            await LoadPresenterTextAsync(preparation.Document);
+            if (preparation.ShouldNotifyActiveContext)
+            {
+                NotifyActiveContext();
+            }
+
             return;
         }
 
-        if (SelectedDocument.Kind != LibraryItemKind.Pdf || SelectedDocument.PageCount == 0)
+        if (preparation.ShouldRenderPdfPage && preparation.Document is not null)
         {
-            CurrentPageImage = null;
-            PresenterTextContent = string.Empty;
-            NotifyActiveContext();
-            return;
+            try
+            {
+                CurrentPageImage = await pdfService.RenderPageAsync(
+                    workspaceStore.GetAbsolutePath(preparation.Document),
+                    preparation.PageNumber,
+                    ReaderImageWidth);
+                CurrentPageLabelDraft = preparation.Document.CurrentPageLabel;
+            }
+            catch (Exception ex)
+            {
+                CurrentPageImage = null;
+                StatusMessage = $"页面渲染失败：{ex.Message}";
+            }
         }
 
-        PresenterTextContent = string.Empty;
-        try
+        if (preparation.ShouldRefreshPageSignals)
         {
-            CurrentPageImage = await pdfService.RenderPageAsync(
-                workspaceStore.GetAbsolutePath(SelectedDocument),
-                Math.Max(1, CurrentPageNumber),
-                ReaderImageWidth);
-            CurrentPageLabelDraft = SelectedDocument.CurrentPageLabel;
+            OnPropertyChanged(nameof(HasPageImage));
+            OnPropertyChanged(nameof(CurrentPageIndicator));
         }
-        catch (Exception ex)
-        {
-            CurrentPageImage = null;
-            StatusMessage = $"页面渲染失败：{ex.Message}";
-        }
-
-        OnPropertyChanged(nameof(HasPageImage));
-        OnPropertyChanged(nameof(CurrentPageIndicator));
     }
 
     private async Task LoadPresenterTextAsync(LibraryItem document)
@@ -1790,28 +2191,36 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private async Task LoadThumbnailsAsync()
     {
-        if (SelectedDocument is null || SelectedDocument.Kind != LibraryItemKind.Pdf)
+        var preparation = thumbnailLoadPreparationService.Prepare(SelectedDocument, CurrentPageNumber);
+        if (!preparation.ShouldLoad || preparation.Document is null)
         {
-            Thumbnails.Clear();
+            if (preparation.ShouldClearThumbnails)
+            {
+                Thumbnails.Clear();
+            }
+
             return;
         }
 
         try
         {
             var thumbnails = await pdfService.RenderThumbnailsAsync(
-                workspaceStore.GetAbsolutePath(SelectedDocument),
-                SelectedDocument.PageCount,
-                24);
+                workspaceStore.GetAbsolutePath(preparation.Document),
+                preparation.PageCount,
+                preparation.MaxPages);
+            var projection = thumbnailLoadPreparationService.Project(
+                preparation.Document,
+                thumbnails,
+                preparation.SelectedPageNumber);
+
             Thumbnails.Clear();
-            foreach (var thumbnail in thumbnails)
+            foreach (var thumbnail in projection.Thumbnails)
             {
-                var label = SelectedDocument.PageLabels.FirstOrDefault(item => item.PdfPage == thumbnail.PageNumber)?.Label;
-                thumbnail.Label = string.IsNullOrWhiteSpace(label) ? thumbnail.PageNumber.ToString() : label;
                 Thumbnails.Add(thumbnail);
             }
 
             suppressThumbnailSelection = true;
-            SelectedThumbnail = Thumbnails.FirstOrDefault(item => item.PageNumber == CurrentPageNumber);
+            SelectedThumbnail = projection.SelectedThumbnail;
             suppressThumbnailSelection = false;
         }
         catch (Exception ex)
@@ -1913,8 +2322,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void RefreshDocumentCollections()
     {
-        RefreshOutline();
-        RefreshConversations();
+        var refresh = documentCollectionRefreshService.Build(SelectedDocument, SelectedProject);
+        RefreshOutline(refresh.OutlineItems);
+        RefreshConversations(refresh.Conversations);
         OnPropertyChanged(nameof(HasDocument));
         OnPropertyChanged(nameof(HasPdfDocument));
         OnPropertyChanged(nameof(CurrentPageIndicator));
@@ -1922,13 +2332,13 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void RefreshOutline()
     {
-        Outline.Clear();
-        if (SelectedDocument is null)
-        {
-            return;
-        }
+        RefreshOutline(documentCollectionRefreshService.GetOutlineItems(SelectedDocument));
+    }
 
-        foreach (var item in SelectedDocument.Outline.OrderBy(item => item.Page).ThenBy(item => item.Level))
+    private void RefreshOutline(IEnumerable<OutlineItem> outlineItems)
+    {
+        Outline.Clear();
+        foreach (var item in outlineItems)
         {
             Outline.Add(item);
         }
@@ -1936,20 +2346,15 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void RefreshConversations()
     {
+        RefreshConversations(conversationService.GetVisibleConversations(SelectedDocument, SelectedProject));
+    }
+
+    private void RefreshConversations(IEnumerable<ChatConversation> conversations)
+    {
         Conversations.Clear();
-        if (SelectedDocument is not null)
+        foreach (var conversation in conversations)
         {
-            foreach (var conversation in SelectedDocument.Conversations.OrderByDescending(item => item.UpdatedAt))
-            {
-                Conversations.Add(conversation);
-            }
-        }
-        else if (SelectedProject is not null)
-        {
-            foreach (var conversation in SelectedProject.StandaloneConversations.OrderByDescending(item => item.UpdatedAt))
-            {
-                Conversations.Add(conversation);
-            }
+            Conversations.Add(conversation);
         }
 
         SelectedConversation = Conversations.FirstOrDefault();
@@ -1965,7 +2370,7 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        foreach (var message in SelectedConversation.Messages)
+        foreach (var message in conversationService.GetMessages(SelectedConversation))
         {
             ChatMessages.Add(message);
         }
@@ -1983,16 +2388,7 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        var query = SearchQuery.Trim();
-        foreach (var artifact in workspace.Artifacts
-            .Where(item => string.IsNullOrWhiteSpace(query) ||
-                item.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.MediaType.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.SourceCommand.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.Preview.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.UpdatedAt)
-            .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase))
+        foreach (var artifact in artifactService.GetVisibleArtifacts(workspace, SearchQuery))
         {
             Artifacts.Add(artifact);
         }
@@ -2003,8 +2399,72 @@ public sealed partial class ShellViewModel : ObservableObject
             SelectedArtifact = null;
         }
 
+        RefreshSelectedArtifactLineage();
         NotifyArtifactState();
         RefreshTimelineItems();
+    }
+
+    private void RefreshSelectedArtifactLineage()
+    {
+        SelectedArtifactLineage.Clear();
+
+        var workspaceArtifacts = workspace?.Artifacts ?? Enumerable.Empty<WorkspaceArtifact>();
+        foreach (var item in artifactService.BuildLineage(SelectedArtifact, workspaceArtifacts))
+        {
+            SelectedArtifactLineage.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasSelectedArtifactLineage));
+    }
+
+    private void PrepareDocumentWorkflowCommand(
+        string workflowName,
+        string artifactSuffix,
+        string extension,
+        string statusMessage)
+    {
+        ApplyWorkflowPreparation(
+            workflowPreparationService.PrepareDocumentWorkflow(
+                SelectedDocument,
+                SelectedOutlineItem,
+                workflowName,
+                artifactSuffix,
+                extension,
+                statusMessage));
+    }
+
+    private void ApplyWorkflowPreparation(ReadOsWorkflowPreparationResult result)
+    {
+        if (!result.Succeeded || string.IsNullOrWhiteSpace(result.CommandText))
+        {
+            StatusMessage = result.StatusMessage;
+            return;
+        }
+
+        PrepareMspCommandDraft(result.CommandText, result.StatusMessage);
+    }
+
+    private void PrepareMspCommandDraft(string commandText, string statusMessage)
+    {
+        MspCommandDraft = commandText;
+        RememberPreparedMspCommand(commandText, statusMessage);
+        SelectedInspectorTab = InspectorTab.Run;
+        IsInspectorVisible = true;
+        StatusMessage = statusMessage;
+    }
+
+    private void RememberPreparedMspCommand(string commandText, string statusMessage)
+    {
+        preparedCommandHistoryService.Record(
+            PreparedMspCommands,
+            commandText,
+            statusMessage,
+            DateTimeOffset.Now);
+    }
+
+    private void PromotePreparedMspCommand(PreparedMspCommand command)
+    {
+        preparedCommandHistoryService.Promote(PreparedMspCommands, command);
     }
 
     private void RefreshMspSessions()
@@ -2015,21 +2475,12 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
-        var query = SearchQuery.Trim();
-        foreach (var session in workspace.MspSessions
-            .Where(item => string.IsNullOrWhiteSpace(query) ||
-                item.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.LastCommandText.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                item.LastDiagnosticsSummary.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.UpdatedAt)
-            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase))
+        foreach (var session in mspSessionViewService.GetVisibleSessions(workspace.MspSessions, SearchQuery))
         {
             MspSessions.Add(session);
         }
 
-        if (SelectedMspSession is not null &&
-            MspSessions.All(item => item.Id != SelectedMspSession.Id))
+        if (mspSessionViewService.ShouldClearSelection(SelectedMspSession, MspSessions))
         {
             SelectedMspSession = null;
         }
@@ -2038,15 +2489,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private void RefreshTimelineItems()
     {
         TimelineItems.Clear();
-
-        var items = ChatMessages.Select(ThreadTimelineItem.FromMessage)
-            .Concat(MspTranscript.Select(ThreadTimelineItem.FromMsp))
-            .Concat(Artifacts.Select(ThreadTimelineItem.FromArtifact))
-            .OrderBy(item => item.CreatedAt)
-            .ThenBy(item => item.Kind)
-            .ToArray();
-
-        foreach (var item in items)
+        foreach (var item in timelineService.BuildTimeline(ChatMessages, MspTranscript, Artifacts))
         {
             TimelineItems.Add(item);
         }
@@ -2064,42 +2507,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void EnsureConversation(bool forceNew = false)
     {
-        ChatConversation? created = null;
-        if (!forceNew && SelectedConversation is not null)
+        var result = conversationService.EnsureConversation(
+            SelectedDocument,
+            SelectedProject,
+            SelectedConversation,
+            forceNew,
+            DateTimeOffset.Now);
+        if (!result.ShouldRefresh)
         {
             return;
         }
 
-        if (SelectedDocument is not null)
-        {
-            if (forceNew || SelectedDocument.Conversations.Count == 0)
-            {
-                created = new ChatConversation
-                {
-                    DocumentId = SelectedDocument.Id,
-                    Title = $"阅读问答 {SelectedDocument.Conversations.Count + 1}",
-                    UpdatedAt = DateTimeOffset.Now
-                };
-                SelectedDocument.Conversations.Insert(0, created);
-            }
-        }
-        else if (SelectedProject is not null)
-        {
-            if (forceNew || SelectedProject.StandaloneConversations.Count == 0)
-            {
-                created = new ChatConversation
-                {
-                    Title = $"项目问答 {SelectedProject.StandaloneConversations.Count + 1}",
-                    UpdatedAt = DateTimeOffset.Now
-                };
-                SelectedProject.StandaloneConversations.Insert(0, created);
-            }
-        }
-
         RefreshConversations();
-        if (created is not null)
+        if (result.CreatedConversation is not null)
         {
-            SelectedConversation = created;
+            SelectedConversation = result.CreatedConversation;
             RefreshChatMessages();
         }
     }
@@ -2153,83 +2575,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private int ResolvePage(string text)
     {
-        if (SelectedDocument is null || string.IsNullOrWhiteSpace(text))
-        {
-            return 0;
-        }
-
-        if (int.TryParse(text.Trim(), out var page))
-        {
-            return Math.Clamp(page, 1, SelectedDocument.PageCount);
-        }
-
-        var label = SelectedDocument.PageLabels.FirstOrDefault(item =>
-            string.Equals(item.Label, text.Trim(), StringComparison.OrdinalIgnoreCase));
-        return label?.PdfPage ?? 0;
-    }
-
-    private List<(int Start, int End)> ParseRanges(string text)
-    {
-        var ranges = new List<(int Start, int End)>();
-        if (SelectedDocument is null || string.IsNullOrWhiteSpace(text))
-        {
-            return ranges;
-        }
-
-        foreach (var part in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var edges = part.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var start = ResolvePage(edges[0]);
-            var end = edges.Length > 1 ? ResolvePage(edges[1]) : start;
-            if (start <= 0 || end <= 0)
-            {
-                continue;
-            }
-
-            ranges.Add((Math.Min(start, end), Math.Max(start, end)));
-        }
-
-        return ranges;
-    }
-
-    private static List<OutlineItem> ExtractOutlineFromText(string text)
-    {
-        var items = new List<OutlineItem>();
-        var currentPage = 1;
-        foreach (var rawLine in text.Split('\n'))
-        {
-            var line = rawLine.Trim();
-            var pageMatch = Regex.Match(line, @"^\[PDF 第 (?<page>\d+) 页\]");
-            if (pageMatch.Success && int.TryParse(pageMatch.Groups["page"].Value, out var parsedPage))
-            {
-                currentPage = parsedPage;
-                continue;
-            }
-
-            if (line.Length is < 4 or > 90)
-            {
-                continue;
-            }
-
-            var isHeading =
-                Regex.IsMatch(line, @"^(chapter|section)\s+\d+", RegexOptions.IgnoreCase) ||
-                Regex.IsMatch(line, @"^第.{1,12}[章节篇]") ||
-                Regex.IsMatch(line, @"^\d+(\.\d+){0,3}\s+\S+");
-            if (!isHeading)
-            {
-                continue;
-            }
-
-            var level = line.Count(character => character == '.') + 1;
-            items.Add(new OutlineItem
-            {
-                Title = line,
-                Page = currentPage,
-                Level = Math.Clamp(level, 1, 4)
-            });
-        }
-
-        return items;
+        return pageNavigationService.ResolvePage(SelectedDocument, text);
     }
 
     private WorkspaceSettings BuildSettingsFromInputs()
@@ -2243,6 +2589,7 @@ public sealed partial class ShellViewModel : ObservableObject
             ModelName = ModelName,
             UseOfflineResponses = UseOfflineResponses,
             UseDarkTheme = IsDarkTheme,
+            MspApprovalMode = ApprovalModeCode,
             AttachmentDefaultPrompt = AttachmentDefaultPrompt,
             RegionExplainPrompt = RegionExplainPrompt,
             ChapterExplainPrompt = ChapterExplainPrompt,
@@ -2258,6 +2605,8 @@ public sealed partial class ShellViewModel : ObservableObject
         ModelName = settings.ModelName;
         UseOfflineResponses = settings.UseOfflineResponses;
         IsDarkTheme = settings.UseDarkTheme;
+        var approvalMode = MspApprovalModeCodes.Normalize(settings.MspApprovalMode);
+        SelectedApprovalModeOption = ApprovalModeOptions.FirstOrDefault(item => item.Code == approvalMode) ?? ApprovalModeOptions.First();
         AttachmentDefaultPrompt = settings.AttachmentDefaultPrompt;
         RegionExplainPrompt = settings.RegionExplainPrompt;
         ChapterExplainPrompt = settings.ChapterExplainPrompt;
@@ -2296,10 +2645,41 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(SendButtonLabel));
     }
 
+    private void NotifyComposerQueueState()
+    {
+        OnPropertyChanged(nameof(ComposerQueueSummary));
+        OnPropertyChanged(nameof(HasQueuedComposerPrompts));
+    }
+
+    private void NotifyApprovalModeState()
+    {
+        OnPropertyChanged(nameof(ApprovalModeCode));
+        OnPropertyChanged(nameof(ApprovalModeLabel));
+        OnPropertyChanged(nameof(ApprovalModeDetail));
+        OnPropertyChanged(nameof(IsPolicyApprovalModeSelected));
+        OnPropertyChanged(nameof(IsConfirmAllApprovalModeSelected));
+        OnPropertyChanged(nameof(IsAllowWorkspaceApprovalModeSelected));
+    }
+
+    private void NotifyPreparedMspCommandState()
+    {
+        OnPropertyChanged(nameof(HasPreparedMspCommands));
+    }
+
     private void NotifyArtifactState()
     {
         OnPropertyChanged(nameof(ArtifactSummary));
         OnPropertyChanged(nameof(SelectedArtifactPreview));
+        OnPropertyChanged(nameof(HasSelectedArtifactLineage));
+        NotifyGuidedWorkflowState();
+    }
+
+    private void NotifyGuidedWorkflowState()
+    {
+        OnPropertyChanged(nameof(HasSelectedOutlineWorkflowTarget));
+        OnPropertyChanged(nameof(HasSelectedArtifactWorkflowTarget));
+        OnPropertyChanged(nameof(HasComposerArtifactRefinementTarget));
+        OnPropertyChanged(nameof(HasSelectedEvidenceArtifact));
     }
 
     private void NotifyMspActivityState()
@@ -2311,6 +2691,9 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(MspActivitySummary));
         OnPropertyChanged(nameof(RuntimeStatusLabel));
         OnPropertyChanged(nameof(SendButtonLabel));
+        OnPropertyChanged(nameof(ComposerPrimaryGlyph));
+        OnPropertyChanged(nameof(ComposerPrimaryToolTip));
+        OnPropertyChanged(nameof(ComposerPrimaryCommand));
         OnPropertyChanged(nameof(IsAnyMspRunning));
     }
 
@@ -2324,7 +2707,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void ClearMspAttachments()
     {
-        PendingAttachments.Clear();
+        attachmentQueueService.Clear(PendingAttachments);
         NotifyAttachmentState();
     }
 
@@ -2347,34 +2730,21 @@ public sealed partial class ShellViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         var startedAt = DateTimeOffset.Now;
-        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var entry = new MspTranscriptEntry
-        {
-            Actor = actor,
-            SessionId = ReadOsMspHost.DefaultSessionId,
-            CommandText = commandText,
-            StartedAt = startedAt,
-            CompletedAt = startedAt,
-            Decision = "Running",
-            IsRunning = true,
-            ProgressMessage = "MSP 命令已开始。",
-            ProgressPercent = 0
-        };
+        var entry = mspTranscriptService.CreateRunningEntry(commandText, actor, startedAt);
 
         MspTranscript.Insert(0, entry);
         RefreshTimelineItems();
         NotifyMspActivityState();
         SelectedInspectorTab = InspectorTab.Run;
         IsRunDrawerOpen = true;
-        activeMspCommandCancellation = commandCancellation;
-        activeMspCommandEntryId = entry.Id;
+        var activeCommand = activeMspCommandService.Begin(entry.Id, cancellationToken);
 
         MspCommandResult? result = null;
         try
         {
             var stream = approved
-                ? ExecuteApprovedMspCommandStreamingAsync(commandText, actor, commandCancellation.Token)
-                : ExecuteMspCommandStreamingAsync(commandText, actor, commandCancellation.Token);
+                ? ExecuteApprovedMspCommandStreamingAsync(commandText, actor, activeCommand.Token)
+                : ExecuteMspCommandStreamingAsync(commandText, actor, activeCommand.Token);
             await foreach (var commandEvent in stream)
             {
                 ApplyMspCommandEvent(entry, commandEvent);
@@ -2388,8 +2758,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 exitCode: 130,
                 code: "msp.canceled",
                 recoveryHint: "Rerun the command if the canceled operation is still needed.");
-            entry.WasCanceled = true;
-            entry.ProgressMessage = "MSP 命令已取消。";
+            mspTranscriptService.MarkOperatorCanceled(entry);
         }
         catch (Exception ex)
         {
@@ -2400,15 +2769,11 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         finally
         {
-            if (activeMspCommandCancellation == commandCancellation)
-            {
-                activeMspCommandCancellation = null;
-                activeMspCommandEntryId = null;
-            }
+            activeCommand.Dispose();
         }
 
         result ??= MspCommandResult.Failure("MSP command did not return a result.");
-        CompleteMspTranscriptEntry(entry, result);
+        mspTranscriptService.CompleteEntry(entry, result, DateTimeOffset.Now);
         PersistTranscriptEntry(entry, 0);
         RefreshArtifacts();
         RebuildAllMspSessions();
@@ -2421,151 +2786,61 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void ApplyMspCommandEvent(MspTranscriptEntry entry, MspCommandEvent commandEvent)
     {
-        if (!string.IsNullOrWhiteSpace(commandEvent.SessionId))
+        var projection = mspTranscriptService.ApplyEvent(entry, commandEvent);
+        if (!string.IsNullOrWhiteSpace(projection.StatusMessage))
         {
-            entry.SessionId = commandEvent.SessionId;
+            StatusMessage = projection.StatusMessage;
         }
 
-        if (!string.IsNullOrWhiteSpace(commandEvent.Message))
+        if (projection.ShouldOpenPolicy)
         {
-            entry.ProgressMessage = commandEvent.Message;
-            StatusMessage = commandEvent.Message;
+            IsRunDrawerOpen = true;
+            SelectedInspectorTab = InspectorTab.Policy;
         }
 
-        if (commandEvent.Percent is not null)
+        if (projection.ShouldRefreshTimeline)
         {
-            entry.ProgressPercent = commandEvent.Percent;
-        }
-
-        switch (commandEvent.Kind)
-        {
-            case MspCommandEventKind.Started:
-                entry.IsRunning = true;
-                entry.ProgressPercent ??= 0;
-                break;
-            case MspCommandEventKind.PolicyDecision:
-                entry.Decision = commandEvent.Decision?.ToString() ?? entry.Decision;
-                entry.Effects = commandEvent.Effects.ToString();
-                entry.PolicyPreview = commandEvent.Preview.ToDisplayText();
-                entry.ProgressPercent ??= 10;
-                if (entry.IsApprovalRequired)
-                {
-                    IsRunDrawerOpen = true;
-                    SelectedInspectorTab = InspectorTab.Policy;
-                }
-
-                RefreshTimelineItems();
-                break;
-            case MspCommandEventKind.Progress:
-                break;
-            case MspCommandEventKind.Canceled:
-                entry.WasCanceled = true;
-                entry.IsRunning = false;
-                entry.ExitCode = commandEvent.ExitCode ?? 130;
-                RefreshTimelineItems();
-                break;
-            case MspCommandEventKind.Completed:
-                entry.IsRunning = false;
-                entry.ExitCode = commandEvent.ExitCode ?? entry.ExitCode;
-                if (commandEvent.ExitCode == 0)
-                {
-                    entry.ProgressPercent = 100;
-                }
-
-                RefreshTimelineItems();
-                break;
+            RefreshTimelineItems();
         }
 
         NotifyMspActivityState();
     }
-
-    private static void CompleteMspTranscriptEntry(MspTranscriptEntry entry, MspCommandResult result)
-    {
-        var auditRecord = result.AuditRecords.LastOrDefault();
-        entry.IsRunning = false;
-        entry.CompletedAt = DateTimeOffset.Now;
-        entry.ExitCode = result.ExitCode;
-        entry.Stdout = result.Stdout;
-        entry.Stderr = result.Stderr;
-        entry.WasCanceled = entry.WasCanceled || result.ExitCode == 130;
-        entry.Decision = entry.WasCanceled
-            ? "Canceled"
-            : auditRecord?.Decision.ToString() ?? (entry.Decision == "Running" ? "Allow" : entry.Decision);
-        entry.Effects = auditRecord?.Effects.ToString() ?? entry.Effects;
-        entry.ArtifactsSummary = string.Join(", ", result.Artifacts.Select(artifact => artifact.Path));
-        entry.PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? entry.PolicyPreview;
-        entry.DiagnosticsSummary = FormatMspDiagnostics(result.Diagnostics);
-        entry.RecoveryHint = GetMspRecoveryHint(result.Diagnostics);
-        if (entry.WasCanceled && string.IsNullOrWhiteSpace(entry.ProgressMessage))
-        {
-            entry.ProgressMessage = "MSP 命令已取消。";
-        }
-    }
-
     private void RefreshMspTranscript()
     {
         MspTranscript.Clear();
-        if (workspace is null)
+        var entries = mspTranscriptWorkspaceService.RefreshTranscript(workspace);
+        foreach (var entry in entries)
         {
-            return;
-        }
-
-        foreach (var entry in workspace.MspTranscript
-            .OrderByDescending(entry => entry.CompletedAt)
-            .Take(MaxMspTranscriptEntries))
-        {
-            entry.IsRunning = false;
             MspTranscript.Add(entry);
         }
 
-        workspace.MspTranscript.Clear();
-        foreach (var entry in MspTranscript)
-        {
-            if (string.IsNullOrWhiteSpace(entry.SessionId))
-            {
-                entry.SessionId = ReadOsMspHost.DefaultSessionId;
-            }
-
-            workspace.MspTranscript.Add(entry);
-        }
-
-        RebuildAllMspSessions();
-
+        UpdateMspTranscriptSelectionMarkers();
         RefreshMspSessions();
         RefreshTimelineItems();
         NotifyMspActivityState();
     }
 
+    private void UpdateMspTranscriptSelectionMarkers()
+    {
+        var selectedId = SelectedMspTranscriptEntry?.Id;
+        foreach (var entry in MspTranscript)
+        {
+            entry.IsInspectorSelected = !string.IsNullOrWhiteSpace(selectedId) &&
+                string.Equals(entry.Id, selectedId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (SelectedMspTranscriptEntry is not null &&
+            MspTranscript.All(entry => !string.Equals(entry.Id, SelectedMspTranscriptEntry.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedMspTranscriptEntry.IsInspectorSelected = true;
+        }
+    }
+
     private void PersistTranscriptEntry(MspTranscriptEntry entry, int index)
     {
-        if (workspace is null)
+        if (!mspTranscriptWorkspaceService.PersistTranscriptEntry(workspace, entry, index))
         {
             return;
-        }
-
-        entry.SessionId = NormalizeMspSessionId(entry.SessionId);
-        var affectedSessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            entry.SessionId
-        };
-        var existing = workspace.MspTranscript.FirstOrDefault(item => item.Id == entry.Id);
-        if (existing is not null)
-        {
-            affectedSessionIds.Add(NormalizeMspSessionId(existing.SessionId));
-            workspace.MspTranscript.Remove(existing);
-        }
-
-        workspace.MspTranscript.Insert(Math.Clamp(index, 0, workspace.MspTranscript.Count), entry);
-        while (workspace.MspTranscript.Count > MaxMspTranscriptEntries)
-        {
-            var removed = workspace.MspTranscript[^1];
-            affectedSessionIds.Add(NormalizeMspSessionId(removed.SessionId));
-            workspace.MspTranscript.RemoveAt(workspace.MspTranscript.Count - 1);
-        }
-
-        foreach (var sessionId in affectedSessionIds)
-        {
-            RebuildMspSession(sessionId);
         }
 
         RefreshMspSessions();
@@ -2575,16 +2850,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void RemoveWorkspaceTranscriptEntry(MspTranscriptEntry entry)
     {
-        if (workspace is null)
+        if (mspTranscriptWorkspaceService.RemoveTranscriptEntry(workspace, entry))
         {
-            return;
-        }
-
-        var existing = workspace.MspTranscript.FirstOrDefault(item => item.Id == entry.Id);
-        if (existing is not null)
-        {
-            workspace.MspTranscript.Remove(existing);
-            RebuildMspSession(NormalizeMspSessionId(existing.SessionId));
             RefreshMspSessions();
             RefreshTimelineItems();
             NotifyMspActivityState();
@@ -2593,296 +2860,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void RebuildAllMspSessions()
     {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        EnsureTranscriptSessionIds();
-        var sessionIds = workspace.MspTranscript
-            .Select(entry => NormalizeMspSessionId(entry.SessionId))
-            .Concat(workspace.Artifacts.Select(artifact => artifact.SessionId))
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var staleSessions = workspace.MspSessions
-            .Where(session => !sessionIds.Contains(session.Id))
-            .ToArray();
-        foreach (var staleSession in staleSessions)
-        {
-            workspace.MspSessions.Remove(staleSession);
-        }
-
-        foreach (var sessionId in sessionIds)
-        {
-            RebuildMspSession(sessionId);
-        }
-    }
-
-    private void RebuildMspSession(string? sessionId)
-    {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        EnsureTranscriptSessionIds();
-        var resolvedSessionId = NormalizeMspSessionId(sessionId);
-
-        var sessionTranscripts = workspace.MspTranscript
-            .Where(entry => string.Equals(entry.SessionId, resolvedSessionId, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(entry => entry.StartedAt)
-            .ToArray();
-        var sessionArtifacts = workspace.Artifacts
-            .Where(artifact => string.Equals(artifact.SessionId, resolvedSessionId, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(artifact => artifact.Path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var session = workspace.MspSessions.FirstOrDefault(item =>
-            string.Equals(item.Id, resolvedSessionId, StringComparison.OrdinalIgnoreCase));
-        if (sessionTranscripts.Length == 0 && sessionArtifacts.Length == 0)
-        {
-            if (session is not null)
-            {
-                workspace.MspSessions.Remove(session);
-            }
-
-            return;
-        }
-
-        var firstTranscript = sessionTranscripts.FirstOrDefault();
-        var lastTranscript = sessionTranscripts.LastOrDefault();
-        if (session is null)
-        {
-            session = new MspSessionEntry
-            {
-                Id = resolvedSessionId,
-                Title = resolvedSessionId == ReadOsMspHost.DefaultSessionId
-                    ? "ReadOS Workbench MSP Session"
-                    : $"MSP Session {resolvedSessionId}",
-                StartedAt = firstTranscript?.StartedAt ?? DateTimeOffset.Now
-            };
-            workspace.MspSessions.Add(session);
-        }
-
-        session.Actor = lastTranscript?.Actor ?? firstTranscript?.Actor ?? session.Actor;
-        session.StartedAt = firstTranscript?.StartedAt ?? session.StartedAt;
-        session.UpdatedAt = lastTranscript?.CompletedAt ?? DateTimeOffset.Now;
-        session.LastCommandText = lastTranscript?.CommandText ?? string.Empty;
-        session.LastDecision = lastTranscript?.Decision ?? "Allow";
-        session.LastExitCode = lastTranscript?.ExitCode ?? 0;
-        session.LastProgressMessage = lastTranscript?.ProgressMessage ?? string.Empty;
-        session.LastDiagnosticsSummary = lastTranscript?.DiagnosticsSummary ?? string.Empty;
-        session.LastRecoveryHint = lastTranscript?.RecoveryHint ?? string.Empty;
-        session.CommandCount = sessionTranscripts.Length;
-        session.ApprovalCount = sessionTranscripts.Count(entry =>
-            string.Equals(entry.Decision, "RequireConfirmation", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(entry.Decision, "Deny", StringComparison.OrdinalIgnoreCase));
-        session.FailureCount = sessionTranscripts.Count(entry => !entry.Succeeded);
-        ReplaceValues(session.TranscriptIds, sessionTranscripts.Select(entry => entry.Id));
-        ReplaceValues(session.ArtifactPaths, sessionArtifacts.Select(artifact => artifact.Path));
-    }
-
-    private void EnsureTranscriptSessionIds()
-    {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        foreach (var entry in workspace.MspTranscript.Where(entry => string.IsNullOrWhiteSpace(entry.SessionId)))
-        {
-            entry.SessionId = ReadOsMspHost.DefaultSessionId;
-        }
-    }
-
-    private static string NormalizeMspSessionId(string? sessionId)
-    {
-        return string.IsNullOrWhiteSpace(sessionId)
-            ? ReadOsMspHost.DefaultSessionId
-            : sessionId;
-    }
-
-    private static void ReplaceValues(ICollection<string> target, IEnumerable<string> values)
-    {
-        target.Clear();
-        foreach (var value in values.Where(value => !string.IsNullOrWhiteSpace(value)))
-        {
-            target.Add(value);
-        }
-    }
-
-    private static string FormatMspDiagnostics(IReadOnlyList<MspCommandDiagnostic> diagnostics)
-    {
-        return string.Join(
-            Environment.NewLine,
-            diagnostics
-                .Where(diagnostic => !string.IsNullOrWhiteSpace(diagnostic.Message) || !string.IsNullOrWhiteSpace(diagnostic.Code))
-                .Select(diagnostic => diagnostic.ToDisplayText()));
-    }
-
-    private static string GetMspRecoveryHint(IReadOnlyList<MspCommandDiagnostic> diagnostics)
-    {
-        return diagnostics
-            .Select(diagnostic => diagnostic.RecoveryHint)
-            .LastOrDefault(hint => !string.IsNullOrWhiteSpace(hint)) ?? string.Empty;
+        mspTranscriptWorkspaceService.RebuildAllSessions(workspace);
     }
 
     private async Task<string> ExecuteAgentMspCommandsAsync(IReadOnlyList<string> commandTexts)
     {
-        var builder = new StringBuilder();
-        builder.AppendLine("MSP command results:");
+        var entries = new List<MspTranscriptEntry>();
         foreach (var commandText in commandTexts)
         {
             var entry = await ExecuteAndRecordMspCommandAsync(commandText, "reados-agent");
-            builder.AppendLine();
-            builder.AppendLine($"$ {entry.CommandText}");
-            builder.AppendLine($"exitCode: {entry.ExitCode}");
-            builder.AppendLine($"decision: {entry.Decision}");
-            builder.AppendLine($"effects: {entry.Effects}");
-            if (!string.IsNullOrWhiteSpace(entry.ArtifactsSummary))
-            {
-                builder.AppendLine($"artifacts: {entry.ArtifactsSummary}");
-            }
-            if (!string.IsNullOrWhiteSpace(entry.Stdout))
-            {
-                builder.AppendLine("stdout:");
-                builder.AppendLine(TrimForMspReport(entry.Stdout, 5000));
-            }
-
-            if (!string.IsNullOrWhiteSpace(entry.Stderr))
-            {
-                builder.AppendLine("stderr:");
-                builder.AppendLine(TrimForMspReport(entry.Stderr, 2000));
-            }
-
-            if (!string.IsNullOrWhiteSpace(entry.DiagnosticsSummary))
-            {
-                builder.AppendLine("diagnostics:");
-                builder.AppendLine(TrimForMspReport(entry.DiagnosticsSummary, 2000));
-            }
-
-            if (!string.IsNullOrWhiteSpace(entry.RecoveryHint))
-            {
-                builder.AppendLine($"recovery: {entry.RecoveryHint}");
-            }
+            entries.Add(entry);
         }
 
         StatusMessage = $"已执行 {commandTexts.Count} 条 MSP 命令。";
         SelectedInspectorTab = InspectorTab.Run;
-        return builder.ToString().Trim();
+        return mspAgentBridgeService.BuildExecutionReport(entries);
     }
 
-    private string BuildMspAgentInstruction()
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("你可以请求 ReadOS 执行 MSP 命令。MSP 命令面向你这个 Agent，不是让用户手动执行。");
-        builder.AppendLine("当你需要读取工作区、资料、PDF 文本、搜索结果或安全 Windows 宿主信息时，返回一个 msp 代码块，每行一个命令：");
-        builder.AppendLine("```msp");
-        builder.AppendLine("workspace info");
-        builder.AppendLine("library list");
-        builder.AppendLine("pdf inspect current");
-        builder.AppendLine("pdf search current \"关键词\"");
-        builder.AppendLine("pdf search current \"关键词\" --artifact /artifacts/search.tsv");
-        builder.AppendLine("pdf text current 1 3");
-        builder.AppendLine("pdf text current 1 3 --artifact /artifacts/excerpt.txt");
-        builder.AppendLine("artifact write /artifacts/summary.md \"摘要内容\"");
-        builder.AppendLine("artifact list /artifacts");
-        builder.AppendLine("artifact show /artifacts/summary.md");
-        builder.AppendLine("workflow summary current");
-        builder.AppendLine("workflow summary current --artifact /artifacts/workflows/current.md");
-        builder.AppendLine("page-label set current 12 \"iii\"");
-        builder.AppendLine("outline add current 42 \"Chapter 3\" --level 1");
-        builder.AppendLine("attach page current 12");
-        builder.AppendLine("attach range current 12 18");
-        builder.AppendLine("chat ask current \"解释已附加页面\"");
-        builder.AppendLine("chat ask current \"解释已附加页面\" --artifact /artifacts/chat/answer.md");
-        builder.AppendLine("windows info");
-        builder.AppendLine("windows path current");
-        builder.AppendLine("```");
-        builder.AppendLine("ReadOS 会解析这些命令，通过 MSP runtime 翻译到受控的 ReadOS 服务和 Windows/.NET API，然后把 stdout、stderr、exitCode、policy audit、diagnostics 和 recovery 返回给你。");
-        builder.AppendLine("不要调用 PowerShell、cmd、bash 或主机文件系统路径；只使用 MSP 虚拟路径和已列出的命令。");
-        builder.AppendLine("如果已有足够上下文，直接回答；如果需要执行命令，先只输出 msp 代码块和极短说明。");
-        return builder.ToString().Trim();
-    }
-
-    private static IReadOnlyList<string> ExtractMspCommands(string content)
-    {
-        var commands = new List<string>();
-        foreach (Match match in Regex.Matches(
-            content,
-            @"```(?:reados[-_])?msp(?:-sh)?\s*(.*?)```",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline))
-        {
-            AddCommandsFromBlock(commands, match.Groups[1].Value);
-        }
-
-        foreach (Match match in Regex.Matches(
-            content,
-            @"<msp>\s*(.*?)</msp>",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline))
-        {
-            AddCommandsFromBlock(commands, match.Groups[1].Value);
-        }
-
-        foreach (Match match in Regex.Matches(
-            content,
-            @"<reados-msp>\s*(.*?)</reados-msp>",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline))
-        {
-            AddCommandsFromBlock(commands, match.Groups[1].Value);
-        }
-
-        return commands;
-    }
-
-    private static void AddCommandsFromBlock(List<string> commands, string block)
-    {
-        foreach (var rawLine in block.Replace("\r\n", "\n").Split('\n'))
-        {
-            var command = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(command) ||
-                command.StartsWith('#') ||
-                command.StartsWith("//", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (command.StartsWith("$ ", StringComparison.Ordinal))
-            {
-                command = command[2..].Trim();
-            }
-
-            if (command.StartsWith("msp>", StringComparison.OrdinalIgnoreCase))
-            {
-                command = command[4..].Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(command))
-            {
-                commands.Add(command);
-            }
-        }
-    }
-
-    private static string TrimForMspReport(string value, int maxLength)
-    {
-        var trimmed = value.Trim();
-        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength] + "...";
-    }
-
-    private static ChatAttachment CloneAttachment(ChatAttachment source)
-    {
-        return new ChatAttachment
-        {
-            Kind = source.Kind,
-            DocumentId = source.DocumentId,
-            Title = source.Title,
-            StartPage = source.StartPage,
-            EndPage = source.EndPage,
-            FilePath = source.FilePath,
-            RegionX = source.RegionX,
-            RegionY = source.RegionY,
-            RegionWidth = source.RegionWidth,
-            RegionHeight = source.RegionHeight
-        };
-    }
 }

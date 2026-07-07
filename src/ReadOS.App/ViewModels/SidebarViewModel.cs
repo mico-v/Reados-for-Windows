@@ -80,6 +80,8 @@ public sealed partial class SidebarViewModel : ObservableObject
     public string MspActivitySummary => shell.MspActivitySummary;
     public string ArtifactSummary => shell.ArtifactSummary;
     public string RuntimeStatusLabel => shell.RuntimeStatusLabel;
+    public string PendingApprovalLabel => shell.PendingApprovalLabel;
+    public bool HasPendingApprovals => shell.HasPendingApprovals;
 
     // ── Commands (delegate to shell's public command properties) ────────
 
@@ -142,6 +144,12 @@ public sealed partial class SidebarViewModel : ObservableObject
                 break;
             case nameof(ShellViewModel.RuntimeStatusLabel):
                 OnPropertyChanged(nameof(RuntimeStatusLabel));
+                break;
+            case nameof(ShellViewModel.PendingApprovalLabel):
+                OnPropertyChanged(nameof(PendingApprovalLabel));
+                break;
+            case nameof(ShellViewModel.HasPendingApprovals):
+                OnPropertyChanged(nameof(HasPendingApprovals));
                 break;
         }
     }

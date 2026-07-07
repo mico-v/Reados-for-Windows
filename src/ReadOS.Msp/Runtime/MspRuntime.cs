@@ -15,7 +15,7 @@ public sealed class MspRuntime
 
     public MspRuntime(MspCommandContext context)
     {
-        this.context = context;
+        this.context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
     public static MspRuntime CreateDefault(IMspWorkspace? workspace = null)
@@ -44,14 +44,25 @@ public sealed class MspRuntime
         return registry;
     }
 
-    public async ValueTask<MspCommandResult> ExecuteAsync(
+    public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandRequest request,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteCoreAsync(request, eventSink: null, cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        return ExecuteCoreAsync(request, eventSink: null, cancellationToken);
     }
 
-    public async IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
+    public IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
+        MspCommandRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return ExecuteStreamingCoreAsync(request, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<MspCommandEvent> ExecuteStreamingCoreAsync(
         MspCommandRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

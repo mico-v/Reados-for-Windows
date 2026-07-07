@@ -34,6 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ReadOS.Msp.Hosting\ReadOS.Msp.Hosting.csproj" />
     <ProjectReference Include="..\ReadOS.Msp\ReadOS.Msp.csproj" />
   </ItemGroup>
 </Project>

@@ -22,4 +22,9 @@ public interface IMspWorkspace
     {
         return WriteTextAsync(path, content, cancellationToken);
     }
+
+    ValueTask<bool> TryDeleteAsync(string path, CancellationToken cancellationToken = default)
+    {
+        return ValueTask.FromResult(false);
+    }
 }

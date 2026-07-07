@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Policy;
 
@@ -9,6 +10,117 @@ namespace ReadOS.App.Tests.Services.Msp;
 
 public sealed class ReadOsMspHostTests
 {
+    [Fact]
+    public void Command_pack_factory_returns_reados_app_command_names()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var factory = CreateCommandPackFactory(workspace, document);
+
+        var commandPack = factory.CreateCommandPack();
+
+        Assert.Equal("ReadOS app commands", commandPack.Name);
+        Assert.Equal(new[]
+        {
+            "workspace",
+            "library",
+            "pdf",
+            "windows",
+            "page-label",
+            "outline",
+            "attach",
+            "chat",
+            "workflow"
+        }, commandPack.CommandNames);
+        Assert.Equal(commandPack.CommandNames.Count, commandPack.Commands.Count);
+    }
+
+    [Fact]
+    public void Command_pack_workflow_command_overrides_core_workflow_in_host_composition()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var commandPack = CreateCommandPackFactory(workspace, document).CreateCommandPack();
+        var appWorkflow = commandPack.Commands.Single(command => command.Name == "workflow");
+
+        var composition = new MspCommandHostCompositionBuilder().Build(commandPack);
+
+        Assert.Contains("workflow", composition.CoreCommandNames);
+        Assert.Equal("ReadOS app commands", composition.HostCommandPackName);
+        Assert.Contains("workflow", composition.HostCommandNames);
+        Assert.Equal(new[] { "workflow" }, composition.OverriddenCoreCommandNames);
+        Assert.True(composition.Registry.TryGet("workflow", out var command));
+        Assert.Same(appWorkflow, command);
+        Assert.Equal(1, composition.CommandNames.Count(name =>
+            string.Equals(name, "workflow", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public async Task Host_runtime_factory_composes_request_defaults_commands_and_runtime()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var dependencies = CreateHostDependencies(workspace, document);
+        var factory = new ReadOsMspHostRuntimeFactory();
+
+        var hostRuntime = factory.Create(
+            dependencies,
+            ReadOsMspHost.DefaultSessionId,
+            "reados-agent");
+
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, hostRuntime.RequestFactory.DefaultSessionId);
+        Assert.Equal("reados-agent", hostRuntime.RequestFactory.DefaultActor);
+        Assert.Equal("ReadOS app commands", hostRuntime.Composition.HostCommandPackName);
+        Assert.Contains("workspace", hostRuntime.Composition.HostCommandNames);
+        Assert.Equal(new[] { "workflow" }, hostRuntime.Composition.OverriddenCoreCommandNames);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, hostRuntime.Diagnostics.DefaultSessionId);
+        Assert.Equal("reados-agent", hostRuntime.Diagnostics.DefaultActor);
+        Assert.Equal("ReadOS app commands", hostRuntime.Diagnostics.HostCommandPackName);
+        Assert.Contains("workspace", hostRuntime.Diagnostics.HostCommandNames);
+        Assert.Equal(new[] { "workflow" }, hostRuntime.Diagnostics.OverriddenCoreCommandNames);
+        Assert.True(hostRuntime.Diagnostics.HasCoreOverrides);
+
+        var result = await hostRuntime.CommandHost.ExecuteAsync(
+            hostRuntime.RequestFactory.Create("workspace info"));
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("workspaceRoot\tV:\\ReadOS-Test", result.Stdout);
+        var audit = Assert.Single(result.AuditRecords);
+        Assert.Equal("reados-agent", audit.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, audit.SessionId);
+        Assert.Equal("workspace", audit.CommandName);
+    }
+
+    [Fact]
+    public async Task Host_created_from_dependencies_executes_app_command_pack()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var dependencies = CreateHostDependencies(workspace, document);
+        var host = new ReadOsMspHost(dependencies);
+
+        var result = await host.ExecuteAsync("workspace info", "test-agent");
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Contains("workspaceRoot\tV:\\ReadOS-Test", result.Stdout);
+        Assert.Contains("documents\t1", result.Stdout);
+    }
+
+    [Fact]
+    public void Host_dependencies_reject_missing_app_services()
+    {
+        var workspace = CreateWorkspace(out var document);
+
+        Assert.Throws<ArgumentNullException>(() => new ReadOsMspHostDependencies(
+            null!,
+            new TestPdfDocumentService(),
+            new TestAiChatService("unused"),
+            () => workspace,
+            () => workspace.Settings,
+            () => document,
+            () => Array.Empty<ChatAttachment>(),
+            _ => Task.FromResult("attachment text"),
+            _ => { },
+            () => { },
+            (_, _) => { }));
+    }
+
     [Fact]
     public async Task Attach_page_requires_approval_before_queueing_attachment()
     {
@@ -35,6 +147,104 @@ public sealed class ReadOsMspHostTests
         Assert.Equal(document.Id, attachment.DocumentId);
         Assert.Equal(3, attachment.StartPage);
         Assert.Equal(3, attachment.EndPage);
+    }
+
+    [Fact]
+    public async Task Allow_workspace_approval_mode_allows_workspace_writes_without_pending_approval()
+    {
+        var workspace = CreateWorkspace(out var document);
+        workspace.Settings.MspApprovalMode = MspApprovalModeCodes.AllowWorkspace;
+        var attachments = new List<ChatAttachment>();
+        var host = CreateHost(workspace, document, attachmentSink: attachments.Add);
+
+        var result = await host.ExecuteAsync("attach page current 3", "test-agent");
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(result.AuditRecords).Decision);
+        Assert.Equal(AttachmentKind.Page, Assert.Single(attachments).Kind);
+    }
+
+    [Fact]
+    public async Task Artifact_delete_requires_approval_and_removes_workspace_artifact_after_approval()
+    {
+        var workspace = CreateWorkspace(out var document);
+        workspace.Artifacts.Add(new WorkspaceArtifact
+        {
+            Path = "/artifacts/report.md",
+            Content = "# Report",
+            MediaType = "text/markdown"
+        });
+        var host = CreateHost(workspace, document);
+
+        var pending = await host.ExecuteAsync("artifact delete /artifacts/report.md", "test-agent");
+
+        Assert.False(pending.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+        Assert.Equal(MspCommandEffects.DeleteWorkspace, pending.AuditRecords[0].Effects);
+        Assert.Single(workspace.Artifacts);
+
+        var approved = await host.ExecuteApprovedAsync("artifact delete /artifacts/report.md", "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(approved.AuditRecords).Decision);
+        Assert.Empty(workspace.Artifacts);
+    }
+
+    [Fact]
+    public async Task Artifact_rename_requires_approval_and_preserves_content_and_manifest_fields()
+    {
+        var workspace = CreateWorkspace(out var document);
+        workspace.Artifacts.Add(new WorkspaceArtifact
+        {
+            Path = "/artifacts/report.md",
+            Content = "# Report",
+            MediaType = "text/markdown",
+            Description = "Report",
+            SourceCommand = "artifact write /artifacts/report.md report",
+            Actor = "source-agent",
+            SessionId = "source-session",
+            Preview = "contentLength: 8"
+        });
+        var host = CreateHost(workspace, document);
+
+        var pending = await host.ExecuteAsync("artifact rename /artifacts/report.md /artifacts/archive/report.md", "test-agent");
+
+        Assert.False(pending.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.DeleteWorkspace,
+            pending.AuditRecords[0].Effects);
+        Assert.Equal("/artifacts/report.md", Assert.Single(workspace.Artifacts).Path);
+
+        var approved = await host.ExecuteApprovedAsync("artifact rename /artifacts/report.md /artifacts/archive/report.md", "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        var artifact = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/archive/report.md", artifact.Path);
+        Assert.Equal("# Report", artifact.Content);
+        Assert.Equal("text/markdown", artifact.MediaType);
+        Assert.Equal("test-agent", artifact.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, artifact.SessionId);
+        Assert.Equal("artifact rename /artifacts/report.md /artifacts/archive/report.md", artifact.SourceCommand);
+        Assert.Contains("renamedFrom: /artifacts/report.md", artifact.Preview);
+    }
+
+    [Fact]
+    public async Task Confirm_all_approval_mode_requires_confirmation_for_read_commands()
+    {
+        var workspace = CreateWorkspace(out var document);
+        workspace.Settings.MspApprovalMode = MspApprovalModeCodes.ConfirmAll;
+        var host = CreateHost(workspace, document);
+
+        var pending = await host.ExecuteAsync("workspace info", "test-agent");
+
+        Assert.False(pending.Succeeded);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, Assert.Single(pending.AuditRecords).Decision);
+
+        var approved = await host.ExecuteApprovedAsync("workspace info", "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Equal(MspPolicyDecision.Allow, Assert.Single(approved.AuditRecords).Decision);
     }
 
     [Fact]
@@ -202,6 +412,53 @@ public sealed class ReadOsMspHostTests
     }
 
     [Fact]
+    public async Task Chat_ask_returns_recovery_diagnostic_for_model_provider_failure()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var pendingAttachments = new List<ChatAttachment>
+        {
+            new()
+            {
+                Kind = AttachmentKind.Page,
+                DocumentId = document.Id,
+                Title = "guide.pdf · page 2",
+                StartPage = 2,
+                EndPage = 2
+            }
+        };
+        var chatUpdates = new List<ChatConversation>();
+        var chatService = new TestAiChatService(new AiChatServiceException("upstream provider returned 500"));
+        var host = CreateHost(
+            workspace,
+            document,
+            chatService,
+            pendingAttachmentsProvider: () => pendingAttachments.ToArray(),
+            clearAttachments: pendingAttachments.Clear,
+            chatResultSink: (_, conversation) => chatUpdates.Add(conversation));
+
+        var result = await host.ExecuteApprovedAsync(
+            "chat ask current \"write notes\" --artifact /artifacts/chat/notes.md",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Chat model provider failed: upstream provider returned 500", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
+        Assert.Equal("OpenAI Compatible/gpt-4.1-mini", diagnostic.Target);
+        Assert.Contains("provider base URL", diagnostic.RecoveryHint);
+
+        Assert.Single(pendingAttachments);
+        Assert.Empty(document.Conversations);
+        Assert.Empty(chatUpdates);
+        Assert.Empty(workspace.Artifacts);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", auditDiagnostic.Code);
+        Assert.Equal("OpenAI Compatible/gpt-4.1-mini", auditDiagnostic.Target);
+    }
+
+    [Fact]
     public async Task Chat_ask_streams_progress_events_after_approval()
     {
         var workspace = CreateWorkspace(out var document);
@@ -287,7 +544,7 @@ public sealed class ReadOsMspHostTests
         Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
         Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, pendingAudit.Effects);
         Assert.Contains("/artifacts/excerpts/guide-pages.txt", pendingAudit.Preview.Targets);
-        Assert.Contains(document.Id, pendingAudit.Preview.Targets);
+        Assert.Contains(pendingAudit.Preview.Targets, target => target.Contains(document.Id, StringComparison.Ordinal));
         Assert.Contains("pages: 2-3", pendingAudit.Preview.Details);
 
         var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
@@ -317,6 +574,70 @@ public sealed class ReadOsMspHostTests
     }
 
     [Fact]
+    public async Task Pdf_commands_return_recovery_diagnostic_for_missing_document()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var host = CreateHost(workspace, document);
+
+        var result = await host.ExecuteAsync("pdf inspect missing-doc", "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("PDF document not found: missing-doc", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.pdf.document_not_found", diagnostic.Code);
+        Assert.Equal("missing-doc", diagnostic.Target);
+        Assert.Contains("library list", diagnostic.RecoveryHint);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.pdf.document_not_found", auditDiagnostic.Code);
+        Assert.Equal("missing-doc", auditDiagnostic.Target);
+    }
+
+    [Fact]
+    public async Task Pdf_metadata_commands_return_recovery_diagnostic_for_invalid_page()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var host = CreateHost(workspace, document);
+
+        var result = await host.ExecuteApprovedAsync("page-label set current 99 appendix", "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Equal($"PDF page is outside document range: 99 (1-{document.PageCount})", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.pdf.invalid_page", diagnostic.Code);
+        Assert.Equal($"{document.Id}:99", diagnostic.Target);
+        Assert.Contains("pdf inspect current", diagnostic.RecoveryHint);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.pdf.invalid_page", auditDiagnostic.Code);
+        Assert.Equal($"{document.Id}:99", auditDiagnostic.Target);
+    }
+
+    [Fact]
+    public async Task Outline_delete_returns_recovery_diagnostic_for_missing_outline_item()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var host = CreateHost(workspace, document);
+
+        var result = await host.ExecuteApprovedAsync("outline delete current missing-heading", "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Outline item not found: missing-heading", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.pdf.outline_item_not_found", diagnostic.Code);
+        Assert.Equal($"{document.Id}:missing-heading", diagnostic.Target);
+        Assert.Contains("pdf inspect current", diagnostic.RecoveryHint);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.pdf.outline_item_not_found", auditDiagnostic.Code);
+        Assert.Equal($"{document.Id}:missing-heading", auditDiagnostic.Target);
+    }
+
+    [Fact]
     public async Task Pdf_search_artifact_requires_approval_and_persists_hit_page_provenance()
     {
         var workspace = CreateWorkspace(out var document);
@@ -339,7 +660,7 @@ public sealed class ReadOsMspHostTests
         Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
         Assert.Equal(MspCommandEffects.ReadWorkspace | MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, pendingAudit.Effects);
         Assert.Contains("/artifacts/search/alpha.tsv", pendingAudit.Preview.Targets);
-        Assert.Contains(document.Id, pendingAudit.Preview.Targets);
+        Assert.Contains(pendingAudit.Preview.Targets, target => target.Contains(document.Id, StringComparison.Ordinal));
         Assert.Contains("query: alpha", pendingAudit.Preview.Details);
 
         var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
@@ -369,6 +690,521 @@ public sealed class ReadOsMspHostTests
         Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
         Assert.Equal(new[] { $"{document.Id}:2", $"{document.Id}:5" }, persisted.SourcePages);
         Assert.Contains("hits: 3", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_explain_section_requires_approval_and_persists_section_artifact()
+    {
+        var workspace = CreateWorkspace(out var document);
+        document.Outline.Add(new OutlineItem { Id = "chapter-3", Title = "3 Architecture", Page = 2, Level = 1 });
+        document.Outline.Add(new OutlineItem { Id = "section-3-2", Title = "3.2 Service Layer", Page = 4, Level = 2 });
+        document.Outline.Add(new OutlineItem { Id = "section-3-3", Title = "3.3 Agent Bridge", Page = 7, Level = 2 });
+        document.Outline.Add(new OutlineItem { Id = "chapter-4", Title = "4 Native Core", Page = 10, Level = 1 });
+        var pdfService = new TestPdfDocumentService
+        {
+            ExtractedText = "section source text"
+        };
+        var chatService = new TestAiChatService("section explanation");
+        var host = CreateHost(workspace, document, chatService, pdfService);
+        const string commandText = "workflow run explain-section --document current --outline \"3.2 Service Layer\" --artifact /artifacts/workflows/explain-section.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        Assert.Null(chatService.LastPrompt);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact |
+            MspCommandEffects.ExternalModel,
+            pendingAudit.Effects);
+        Assert.Contains(pendingAudit.Preview.Targets, target => target.Contains(document.Id, StringComparison.Ordinal));
+        Assert.Contains("/artifacts/workflows/explain-section.md", pendingAudit.Preview.Targets);
+        Assert.Contains("section: 3.2 Service Layer", pendingAudit.Preview.Details);
+        Assert.Contains("pages: 4-6", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("# MSP Section Explanation", approved.Stdout);
+        Assert.Contains("section explanation", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/explain-section.md", approved.Stdout);
+        Assert.Equal(4, pdfService.LastStartPage);
+        Assert.Equal(6, pdfService.LastEndPage);
+        Assert.NotNull(chatService.LastPrompt);
+        Assert.Contains("3.2 Service Layer", chatService.LastPrompt);
+        var attachment = Assert.Single(chatService.LastAttachments);
+        Assert.Equal(AttachmentKind.PageRange, attachment.Kind);
+        Assert.Equal(document.Id, attachment.DocumentId);
+        Assert.Equal(4, attachment.StartPage);
+        Assert.Equal(6, attachment.EndPage);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/explain-section.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(resultArtifact.SourcePages));
+        Assert.Equal(new[]
+        {
+            $"/documents/{document.Id}/pages/4.txt",
+            $"/documents/{document.Id}/pages/5.txt",
+            $"/documents/{document.Id}/pages/6.txt"
+        }, resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/workflows/explain-section.md", persisted.Path);
+        Assert.Contains("# MSP Section Explanation", persisted.Content);
+        Assert.Contains("3.2 Service Layer", persisted.Content);
+        Assert.Contains("section explanation", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(persisted.SourcePages));
+        Assert.Contains("pages: 4-6", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_explain_section_returns_recovery_diagnostic_for_missing_outline()
+    {
+        var workspace = CreateWorkspace(out var document);
+        document.Outline.Add(new OutlineItem { Id = "chapter-3", Title = "3 Architecture", Page = 2, Level = 1 });
+        var chatService = new TestAiChatService("unused");
+        var host = CreateHost(workspace, document, chatService);
+
+        var result = await host.ExecuteApprovedAsync(
+            "workflow run explain-section --outline missing-heading --artifact /artifacts/workflows/missing.md",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Outline item not found: missing-heading", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.pdf.outline_item_not_found", diagnostic.Code);
+        Assert.Equal($"{document.Id}:missing-heading", diagnostic.Target);
+        Assert.Contains("pdf inspect current", diagnostic.RecoveryHint);
+        Assert.Null(chatService.LastPrompt);
+        Assert.Empty(workspace.Artifacts);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.pdf.outline_item_not_found", auditDiagnostic.Code);
+    }
+
+    [Fact]
+    public async Task Workflow_run_extract_evidence_requires_approval_and_persists_structured_artifact()
+    {
+        var workspace = CreateWorkspace(out var document);
+        document.Outline.Add(new OutlineItem { Id = "chapter-3", Title = "3 Architecture", Page = 2, Level = 1 });
+        document.Outline.Add(new OutlineItem { Id = "section-3-2", Title = "3.2 Service Layer", Page = 4, Level = 2 });
+        document.Outline.Add(new OutlineItem { Id = "section-3-3", Title = "3.3 Agent Bridge", Page = 7, Level = 2 });
+        var pdfService = new TestPdfDocumentService();
+        pdfService.ExtractedPageText[4] = "page four evidence";
+        pdfService.ExtractedPageText[5] = "page five evidence";
+        pdfService.ExtractedPageText[6] = "page six evidence";
+        var chatService = new TestAiChatService("unused");
+        var host = CreateHost(workspace, document, chatService, pdfService);
+        const string commandText = "workflow run extract-evidence --document current --outline \"3.2 Service Layer\" --artifact /artifacts/workflows/evidence.json";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Empty(workspace.Artifacts);
+        Assert.Null(chatService.LastPrompt);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact,
+            pendingAudit.Effects);
+        Assert.Contains(pendingAudit.Preview.Targets, target => target.Contains(document.Id, StringComparison.Ordinal));
+        Assert.Contains("/artifacts/workflows/evidence.json", pendingAudit.Preview.Targets);
+        Assert.Contains("workflow: extract-evidence", pendingAudit.Preview.Details);
+        Assert.Contains("section: 3.2 Service Layer", pendingAudit.Preview.Details);
+        Assert.Contains("pages: 4-6", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("\"workflow\": \"extract-evidence\"", approved.Stdout);
+        Assert.Contains("\"sourcePath\": \"/documents/", approved.Stdout);
+        Assert.Contains("page four evidence", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/evidence.json\t3", approved.Stdout);
+        Assert.Equal(new[]
+        {
+            (4, 4),
+            (5, 5),
+            (6, 6)
+        }, pdfService.ExtractCalls);
+        Assert.Null(chatService.LastPrompt);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/evidence.json", resultArtifact.Path);
+        Assert.Equal("application/json", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(resultArtifact.SourcePages));
+        Assert.Equal(new[]
+        {
+            $"/documents/{document.Id}/pages/4.txt",
+            $"/documents/{document.Id}/pages/5.txt",
+            $"/documents/{document.Id}/pages/6.txt"
+        }, resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts);
+        Assert.Equal("/artifacts/workflows/evidence.json", persisted.Path);
+        Assert.Equal("application/json", persisted.MediaType);
+        Assert.Contains("\"title\": \"3.2 Service Layer\"", persisted.Content);
+        Assert.Contains("page six evidence", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(persisted.SourcePages));
+        Assert.Contains("entries: 3", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_extract_evidence_validates_artifact_path_before_extracting_pages()
+    {
+        var workspace = CreateWorkspace(out var document);
+        document.Outline.Add(new OutlineItem { Id = "section-3-2", Title = "3.2 Service Layer", Page = 4, Level = 2 });
+        var pdfService = new TestPdfDocumentService();
+        var host = CreateHost(workspace, document, pdfService: pdfService);
+
+        var result = await host.ExecuteApprovedAsync(
+            "workflow run extract-evidence --outline \"3.2 Service Layer\" --artifact /artifacts",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Equal("workflow run extract-evidence --artifact must target a file under /artifacts.", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.workflow.invalid_artifact_path", diagnostic.Code);
+        Assert.Equal("/artifacts", diagnostic.Target);
+        Assert.Contains("/artifacts/workflows/evidence.json", diagnostic.RecoveryHint);
+        Assert.Empty(pdfService.ExtractCalls);
+        Assert.Empty(workspace.Artifacts);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.workflow.invalid_artifact_path", auditDiagnostic.Code);
+    }
+
+    [Fact]
+    public async Task Workflow_run_review_evidence_requires_approval_and_persists_review_with_inherited_provenance()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var evidenceArtifact = new WorkspaceArtifact
+        {
+            Path = "/artifacts/workflows/evidence.json",
+            Content = $$"""
+            {
+              "workflow": "extract-evidence",
+              "generatedAt": "2026-07-07T00:00:00+00:00",
+              "document": {
+                "id": "{{document.Id}}",
+                "name": "guide.pdf"
+              },
+              "section": {
+                "id": "section-3-2",
+                "title": "3.2 Service Layer",
+                "level": 2,
+                "startPage": 4,
+                "endPage": 6
+              },
+              "pages": [
+                {
+                  "page": 4,
+                  "sourcePath": "/documents/{{document.Id}}/pages/4.txt",
+                  "textLength": 18,
+                  "text": "page four evidence"
+                },
+                {
+                  "page": 5,
+                  "sourcePath": "/documents/{{document.Id}}/pages/5.txt",
+                  "textLength": 18,
+                  "text": "page five evidence"
+                },
+                {
+                  "page": 6,
+                  "sourcePath": "/documents/{{document.Id}}/pages/6.txt",
+                  "textLength": 17,
+                  "text": "page six evidence"
+                }
+              ]
+            }
+            """,
+            MediaType = "application/json",
+            SourceCommand = "workflow run extract-evidence --document current --outline \"3.2 Service Layer\" --artifact /artifacts/workflows/evidence.json",
+            Actor = "test-agent",
+            SessionId = ReadOsMspHost.DefaultSessionId,
+            Preview = "document: guide.pdf; section: 3.2 Service Layer; pages: 4-6; entries: 3"
+        };
+        evidenceArtifact.SourceDocuments.Add(document.Id);
+        evidenceArtifact.SourcePages.Add($"{document.Id}:4-6");
+        evidenceArtifact.SourcePaths.Add($"/documents/{document.Id}/pages/4.txt");
+        evidenceArtifact.SourcePaths.Add($"/documents/{document.Id}/pages/5.txt");
+        evidenceArtifact.SourcePaths.Add($"/documents/{document.Id}/pages/6.txt");
+        workspace.Artifacts.Add(evidenceArtifact);
+        var pdfService = new TestPdfDocumentService();
+        var chatService = new TestAiChatService("unused");
+        var host = CreateHost(workspace, document, chatService, pdfService);
+        const string commandText = "workflow run review-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-review.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Single(workspace.Artifacts);
+        Assert.Null(chatService.LastPrompt);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact,
+            pendingAudit.Effects);
+        Assert.Contains("/artifacts/workflows/evidence.json", pendingAudit.Preview.Targets);
+        Assert.Contains("/artifacts/workflows/evidence-review.md", pendingAudit.Preview.Targets);
+        Assert.Contains("workflow: review-evidence", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("# MSP Evidence Review", approved.Stdout);
+        Assert.Contains("## Citation Table", approved.Stdout);
+        Assert.Contains("page four evidence", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/evidence-review.md", approved.Stdout);
+        Assert.Empty(pdfService.ExtractCalls);
+        Assert.Null(chatService.LastPrompt);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/evidence-review.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(resultArtifact.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence.json", resultArtifact.SourcePaths);
+        Assert.Contains("/artifacts/workflows/evidence.json.manifest.json", resultArtifact.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/4.txt", resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts, item => item.Path == "/artifacts/workflows/evidence-review.md");
+        Assert.Equal("text/markdown", persisted.MediaType);
+        Assert.Contains("# MSP Evidence Review", persisted.Content);
+        Assert.Contains("3.2 Service Layer", persisted.Content);
+        Assert.Contains("page six evidence", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(persisted.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence.json", persisted.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/6.txt", persisted.SourcePaths);
+        Assert.Contains("citations: 3", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_review_evidence_returns_recovery_diagnostic_for_missing_evidence_artifact()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var host = CreateHost(workspace, document);
+
+        var result = await host.ExecuteApprovedAsync(
+            "workflow run review-evidence --evidence /artifacts/workflows/missing.json --artifact /artifacts/workflows/review.md",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Evidence artifact not found: /artifacts/workflows/missing.json", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.workflow.evidence_artifact_not_found", diagnostic.Code);
+        Assert.Equal("/artifacts/workflows/missing.json", diagnostic.Target);
+        Assert.Contains("extract-evidence", diagnostic.RecoveryHint);
+        Assert.Empty(workspace.Artifacts);
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.workflow.evidence_artifact_not_found", auditDiagnostic.Code);
+    }
+
+    [Fact]
+    public async Task Workflow_run_synthesize_evidence_requires_approval_and_persists_model_synthesis()
+    {
+        var workspace = CreateWorkspace(out var document);
+        AddEvidenceArtifact(workspace, document);
+        var pdfService = new TestPdfDocumentService();
+        var chatService = new TestAiChatService("model synthesis from evidence");
+        var host = CreateHost(workspace, document, chatService, pdfService);
+        const string commandText = "workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Single(workspace.Artifacts);
+        Assert.Null(chatService.LastPrompt);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact |
+            MspCommandEffects.ExternalModel,
+            pendingAudit.Effects);
+        Assert.Contains("/artifacts/workflows/evidence.json", pendingAudit.Preview.Targets);
+        Assert.Contains("/artifacts/workflows/evidence-synthesis.md", pendingAudit.Preview.Targets);
+        Assert.Contains("workflow: synthesize-evidence", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("# MSP Evidence Synthesis", approved.Stdout);
+        Assert.Contains("model synthesis from evidence", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/evidence-synthesis.md", approved.Stdout);
+        Assert.Empty(pdfService.ExtractCalls);
+        Assert.NotNull(chatService.LastPrompt);
+        Assert.Contains("Synthesize the structured ReadOS evidence", chatService.LastPrompt);
+        Assert.Contains("3.2 Service Layer", chatService.LastPrompt);
+        var attachment = Assert.Single(chatService.LastAttachments);
+        Assert.Equal(AttachmentKind.File, attachment.Kind);
+        Assert.Equal(document.Id, attachment.DocumentId);
+        Assert.Equal("/artifacts/workflows/evidence.json", attachment.FilePath);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/evidence-synthesis.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(resultArtifact.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence.json", resultArtifact.SourcePaths);
+        Assert.Contains("/artifacts/workflows/evidence.json.manifest.json", resultArtifact.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/5.txt", resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts, item => item.Path == "/artifacts/workflows/evidence-synthesis.md");
+        Assert.Equal("text/markdown", persisted.MediaType);
+        Assert.Contains("# MSP Evidence Synthesis", persisted.Content);
+        Assert.Contains("model synthesis from evidence", persisted.Content);
+        Assert.Contains("## Source Pages", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(persisted.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence.json", persisted.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/6.txt", persisted.SourcePaths);
+        Assert.Contains("citations: 3", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_synthesize_evidence_returns_recovery_diagnostic_for_model_provider_failure()
+    {
+        var workspace = CreateWorkspace(out var document);
+        AddEvidenceArtifact(workspace, document);
+        var pdfService = new TestPdfDocumentService();
+        var chatService = new TestAiChatService(new AiChatServiceException("provider unavailable"));
+        var host = CreateHost(workspace, document, chatService, pdfService);
+
+        var result = await host.ExecuteApprovedAsync(
+            "workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Chat model provider failed: provider unavailable", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
+        Assert.Contains("provider base URL", diagnostic.RecoveryHint);
+        Assert.Empty(pdfService.ExtractCalls);
+        Assert.NotNull(chatService.LastPrompt);
+        Assert.Single(workspace.Artifacts);
+        Assert.DoesNotContain(workspace.Artifacts, item => item.Path == "/artifacts/workflows/evidence-synthesis.md");
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", auditDiagnostic.Code);
+    }
+
+    [Fact]
+    public async Task Workflow_run_refine_artifact_requires_approval_and_persists_refined_derivative()
+    {
+        var workspace = CreateWorkspace(out var document);
+        AddSynthesisArtifact(workspace, document);
+        var pdfService = new TestPdfDocumentService();
+        var chatService = new TestAiChatService("refined synthesis with tighter caveats");
+        var host = CreateHost(workspace, document, chatService, pdfService);
+        const string commandText = "workflow run refine-artifact --source /artifacts/workflows/evidence-synthesis.md --instruction \"tighten caveats and keep citations\" --artifact /artifacts/workflows/evidence-synthesis-refined.md";
+
+        var pending = await host.ExecuteAsync(commandText, "test-agent");
+
+        Assert.Single(workspace.Artifacts);
+        Assert.Null(chatService.LastPrompt);
+        var pendingAudit = Assert.Single(pending.AuditRecords);
+        Assert.Equal(MspPolicyDecision.RequireConfirmation, pendingAudit.Decision);
+        Assert.Equal(
+            MspCommandEffects.ReadWorkspace |
+            MspCommandEffects.WriteWorkspace |
+            MspCommandEffects.CreateArtifact |
+            MspCommandEffects.ExternalModel,
+            pendingAudit.Effects);
+        Assert.Contains("/artifacts/workflows/evidence-synthesis.md", pendingAudit.Preview.Targets);
+        Assert.Contains("/artifacts/workflows/evidence-synthesis-refined.md", pendingAudit.Preview.Targets);
+        Assert.Contains("workflow: refine-artifact", pendingAudit.Preview.Details);
+        Assert.Contains("instruction: tighten caveats and keep citations", pendingAudit.Preview.Details);
+
+        var approved = await host.ExecuteApprovedAsync(commandText, "test-agent");
+
+        Assert.True(approved.Succeeded, approved.Stderr);
+        Assert.Contains("# MSP Artifact Refinement", approved.Stdout);
+        Assert.Contains("refined synthesis with tighter caveats", approved.Stdout);
+        Assert.Contains("artifact\t/artifacts/workflows/evidence-synthesis-refined.md", approved.Stdout);
+        Assert.Empty(pdfService.ExtractCalls);
+        Assert.NotNull(chatService.LastPrompt);
+        Assert.Contains("tighten caveats and keep citations", chatService.LastPrompt);
+        var attachment = Assert.Single(chatService.LastAttachments);
+        Assert.Equal(AttachmentKind.File, attachment.Kind);
+        Assert.Equal(document.Id, attachment.DocumentId);
+        Assert.Equal("/artifacts/workflows/evidence-synthesis.md", attachment.FilePath);
+
+        var resultArtifact = Assert.Single(approved.Artifacts);
+        Assert.Equal("/artifacts/workflows/evidence-synthesis-refined.md", resultArtifact.Path);
+        Assert.Equal("text/markdown", resultArtifact.MediaType);
+        Assert.Equal(document.Id, Assert.Single(resultArtifact.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(resultArtifact.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence-synthesis.md", resultArtifact.SourcePaths);
+        Assert.Contains("/artifacts/workflows/evidence-synthesis.md.manifest.json", resultArtifact.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/4.txt", resultArtifact.SourcePaths);
+
+        var persisted = Assert.Single(workspace.Artifacts, item => item.Path == "/artifacts/workflows/evidence-synthesis-refined.md");
+        Assert.Equal("text/markdown", persisted.MediaType);
+        Assert.Contains("# MSP Artifact Refinement", persisted.Content);
+        Assert.Contains("refined synthesis with tighter caveats", persisted.Content);
+        Assert.Equal(commandText, persisted.SourceCommand);
+        Assert.Equal("test-agent", persisted.Actor);
+        Assert.Equal(ReadOsMspHost.DefaultSessionId, persisted.SessionId);
+        Assert.Equal(document.Id, Assert.Single(persisted.SourceDocuments));
+        Assert.Equal($"{document.Id}:4-6", Assert.Single(persisted.SourcePages));
+        Assert.Contains("/artifacts/workflows/evidence-synthesis.md", persisted.SourcePaths);
+        Assert.Contains($"/documents/{document.Id}/pages/6.txt", persisted.SourcePaths);
+        Assert.Contains("tighten caveats", persisted.Preview);
+    }
+
+    [Fact]
+    public async Task Workflow_run_refine_artifact_returns_recovery_diagnostic_for_model_provider_failure()
+    {
+        var workspace = CreateWorkspace(out var document);
+        AddSynthesisArtifact(workspace, document);
+        var chatService = new TestAiChatService(new AiChatServiceException("provider unavailable"));
+        var host = CreateHost(workspace, document, chatService);
+
+        var result = await host.ExecuteApprovedAsync(
+            "workflow run refine-artifact --source /artifacts/workflows/evidence-synthesis.md --instruction \"tighten caveats\" --artifact /artifacts/workflows/evidence-synthesis-refined.md",
+            "test-agent");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Chat model provider failed: provider unavailable", result.Stderr);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
+        Assert.Contains("provider base URL", diagnostic.RecoveryHint);
+        Assert.NotNull(chatService.LastPrompt);
+        Assert.Single(workspace.Artifacts);
+        Assert.DoesNotContain(workspace.Artifacts, item => item.Path == "/artifacts/workflows/evidence-synthesis-refined.md");
+
+        var audit = Assert.Single(result.AuditRecords);
+        var auditDiagnostic = Assert.Single(audit.Diagnostics);
+        Assert.Equal("reados.chat.model_provider_failed", auditDiagnostic.Code);
     }
 
     [Fact]
@@ -467,7 +1303,52 @@ public sealed class ReadOsMspHostTests
         Action? clearAttachments = null,
         Action<LibraryItem, ChatConversation>? chatResultSink = null)
     {
-        return new ReadOsMspHost(
+        return new ReadOsMspHost(CreateHostDependencies(
+            workspace,
+            document,
+            chatService,
+            pdfService,
+            pendingAttachmentsProvider,
+            attachmentSink,
+            clearAttachments,
+            chatResultSink));
+    }
+
+    private static ReadOsMspHostDependencies CreateHostDependencies(
+        WorkspaceState workspace,
+        LibraryItem document,
+        IAiChatService? chatService = null,
+        IPdfDocumentService? pdfService = null,
+        Func<IReadOnlyList<ChatAttachment>>? pendingAttachmentsProvider = null,
+        Action<ChatAttachment>? attachmentSink = null,
+        Action? clearAttachments = null,
+        Action<LibraryItem, ChatConversation>? chatResultSink = null)
+    {
+        return new ReadOsMspHostDependencies(
+            new TestWorkspaceStore(workspace),
+            pdfService ?? new TestPdfDocumentService(),
+            chatService ?? new TestAiChatService("unused"),
+            () => workspace,
+            () => workspace.Settings,
+            () => document,
+            pendingAttachmentsProvider ?? (() => Array.Empty<ChatAttachment>()),
+            _ => Task.FromResult("attachment text"),
+            attachmentSink ?? (_ => { }),
+            clearAttachments ?? (() => { }),
+            chatResultSink ?? ((_, _) => { }));
+    }
+
+    private static ReadOsMspCommandPackFactory CreateCommandPackFactory(
+        WorkspaceState workspace,
+        LibraryItem document,
+        IAiChatService? chatService = null,
+        IPdfDocumentService? pdfService = null,
+        Func<IReadOnlyList<ChatAttachment>>? pendingAttachmentsProvider = null,
+        Action<ChatAttachment>? attachmentSink = null,
+        Action? clearAttachments = null,
+        Action<LibraryItem, ChatConversation>? chatResultSink = null)
+    {
+        return new ReadOsMspCommandPackFactory(
             new TestWorkspaceStore(workspace),
             pdfService ?? new TestPdfDocumentService(),
             chatService ?? new TestAiChatService("unused"),
@@ -499,6 +1380,92 @@ public sealed class ReadOsMspHostTests
         project.LibraryItems.Add(document);
         workspace.Projects.Add(project);
         return workspace;
+    }
+
+    private static WorkspaceArtifact AddEvidenceArtifact(WorkspaceState workspace, LibraryItem document)
+    {
+        var artifact = new WorkspaceArtifact
+        {
+            Path = "/artifacts/workflows/evidence.json",
+            Content = $$"""
+            {
+              "workflow": "extract-evidence",
+              "generatedAt": "2026-07-07T00:00:00+00:00",
+              "document": {
+                "id": "{{document.Id}}",
+                "name": "guide.pdf"
+              },
+              "section": {
+                "id": "section-3-2",
+                "title": "3.2 Service Layer",
+                "level": 2,
+                "startPage": 4,
+                "endPage": 6
+              },
+              "pages": [
+                {
+                  "page": 4,
+                  "sourcePath": "/documents/{{document.Id}}/pages/4.txt",
+                  "textLength": 18,
+                  "text": "page four evidence"
+                },
+                {
+                  "page": 5,
+                  "sourcePath": "/documents/{{document.Id}}/pages/5.txt",
+                  "textLength": 18,
+                  "text": "page five evidence"
+                },
+                {
+                  "page": 6,
+                  "sourcePath": "/documents/{{document.Id}}/pages/6.txt",
+                  "textLength": 17,
+                  "text": "page six evidence"
+                }
+              ]
+            }
+            """,
+            MediaType = "application/json",
+            SourceCommand = "workflow run extract-evidence --document current --outline \"3.2 Service Layer\" --artifact /artifacts/workflows/evidence.json",
+            Actor = "test-agent",
+            SessionId = ReadOsMspHost.DefaultSessionId,
+            Preview = "document: guide.pdf; section: 3.2 Service Layer; pages: 4-6; entries: 3"
+        };
+        artifact.SourceDocuments.Add(document.Id);
+        artifact.SourcePages.Add($"{document.Id}:4-6");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/4.txt");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/5.txt");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/6.txt");
+        workspace.Artifacts.Add(artifact);
+        return artifact;
+    }
+
+    private static WorkspaceArtifact AddSynthesisArtifact(WorkspaceState workspace, LibraryItem document)
+    {
+        var artifact = new WorkspaceArtifact
+        {
+            Path = "/artifacts/workflows/evidence-synthesis.md",
+            Content = """
+            # MSP Evidence Synthesis
+
+            ## Synthesis
+
+            The service layer evidence supports a cautious conclusion.
+            """,
+            MediaType = "text/markdown",
+            SourceCommand = "workflow run synthesize-evidence --evidence /artifacts/workflows/evidence.json --artifact /artifacts/workflows/evidence-synthesis.md",
+            Actor = "test-agent",
+            SessionId = ReadOsMspHost.DefaultSessionId,
+            Preview = "evidence: /artifacts/workflows/evidence.json; document: guide.pdf; section: 3.2 Service Layer; citations: 3"
+        };
+        artifact.SourceDocuments.Add(document.Id);
+        artifact.SourcePages.Add($"{document.Id}:4-6");
+        artifact.SourcePaths.Add("/artifacts/workflows/evidence.json");
+        artifact.SourcePaths.Add("/artifacts/workflows/evidence.json.manifest.json");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/4.txt");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/5.txt");
+        artifact.SourcePaths.Add($"/documents/{document.Id}/pages/6.txt");
+        workspace.Artifacts.Add(artifact);
+        return artifact;
     }
 
     private sealed class TestWorkspaceStore : IWorkspaceStore
@@ -566,6 +1533,14 @@ public sealed class ReadOsMspHostTests
 
         public IReadOnlyList<PdfTextHit> SearchHits { get; init; } = Array.Empty<PdfTextHit>();
 
+        public Dictionary<int, string> ExtractedPageText { get; } = new();
+
+        public List<(int StartPage, int EndPage)> ExtractCalls { get; } = new();
+
+        public int LastStartPage { get; private set; }
+
+        public int LastEndPage { get; private set; }
+
         public Task<PdfDocumentInfo> InspectAsync(string path, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
@@ -588,17 +1563,29 @@ public sealed class ReadOsMspHostTests
 
         public Task<string> ExtractPageTextAsync(string path, int startPage, int endPage, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(ExtractedText);
+            LastStartPage = startPage;
+            LastEndPage = endPage;
+            ExtractCalls.Add((startPage, endPage));
+            return startPage == endPage && ExtractedPageText.TryGetValue(startPage, out var text)
+                ? Task.FromResult(text)
+                : Task.FromResult(ExtractedText);
         }
     }
 
     private sealed class TestAiChatService : IAiChatService
     {
         private readonly string response;
+        private readonly Exception? exception;
 
         public TestAiChatService(string response)
         {
             this.response = response;
+        }
+
+        public TestAiChatService(Exception exception)
+        {
+            response = string.Empty;
+            this.exception = exception;
         }
 
         public string? LastPrompt { get; private set; }
@@ -619,6 +1606,11 @@ public sealed class ReadOsMspHostTests
         {
             LastPrompt = userPrompt;
             LastAttachments = attachments.ToArray();
+            if (exception is not null)
+            {
+                throw exception;
+            }
+
             return Task.FromResult(response);
         }
     }

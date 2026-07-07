@@ -9,4 +9,6 @@ public interface IFileDialogService
     Task<string?> PickWorkspaceImportAsync(Window window);
 
     Task<string?> PickWorkspaceExportAsync(Window window, string suggestedName);
+
+    Task<string?> PickArtifactExportAsync(Window? window, string suggestedName, string extension);
 }

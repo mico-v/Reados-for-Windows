@@ -31,6 +31,32 @@ public enum AttachmentKind
     File
 }
 
+public static class MspApprovalModeCodes
+{
+    public const string Policy = "policy";
+    public const string ConfirmAll = "confirm-all";
+    public const string AllowWorkspace = "allow-workspace";
+
+    public static string Normalize(string? code)
+    {
+        return code?.Trim().ToLowerInvariant() switch
+        {
+            ConfirmAll => ConfirmAll,
+            AllowWorkspace => AllowWorkspace,
+            _ => Policy
+        };
+    }
+}
+
+public sealed class ApprovalModeOption
+{
+    public required string Code { get; init; }
+
+    public required string DisplayName { get; init; }
+
+    public required string Detail { get; init; }
+}
+
 public sealed partial class WorkspaceState : ObservableObject
 {
     [ObservableProperty]
@@ -67,6 +93,9 @@ public sealed partial class WorkspaceSettings : ObservableObject
 
     [ObservableProperty]
     public partial bool UseDarkTheme { get; set; }
+
+    [ObservableProperty]
+    public partial string MspApprovalMode { get; set; } = MspApprovalModeCodes.Policy;
 
     [ObservableProperty]
     public partial string AttachmentDefaultPrompt { get; set; } = "请按书本顺序解释我附加的页面。";
@@ -306,6 +335,40 @@ public sealed partial class ChatAttachment : ObservableObject
     };
 }
 
+public sealed partial class QueuedComposerPrompt : ObservableObject
+{
+    [ObservableProperty]
+    public partial string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ObservableProperty]
+    public partial string Prompt { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
+
+    public ObservableCollection<ChatAttachment> Attachments { get; } = new();
+
+    [JsonIgnore]
+    public string Title
+    {
+        get
+        {
+            var title = string.IsNullOrWhiteSpace(Prompt) ? "证据队列项" : Prompt.Trim();
+            return title.Length <= 44 ? title : title[..44] + "...";
+        }
+    }
+
+    [JsonIgnore]
+    public string Detail => Attachments.Count == 0
+        ? CreatedAt.ToLocalTime().ToString("HH:mm")
+        : $"{Attachments.Count} 个附件 · {CreatedAt.ToLocalTime():HH:mm}";
+
+    partial void OnPromptChanged(string value)
+    {
+        OnPropertyChanged(nameof(Title));
+    }
+}
+
 public sealed partial class WorkspaceArtifact : ObservableObject
 {
     [ObservableProperty]
@@ -410,6 +473,10 @@ public sealed partial class MspTranscriptEntry : ObservableObject
     [ObservableProperty]
     public partial bool WasCanceled { get; set; }
 
+    [ObservableProperty]
+    [JsonIgnore]
+    public partial bool IsInspectorSelected { get; set; }
+
     public static MspTranscriptEntry FromRecord(MspCommandTranscriptRecord record)
     {
         return new MspTranscriptEntry
@@ -431,6 +498,7 @@ public sealed partial class MspTranscriptEntry : ObservableObject
             RecoveryHint = record.RecoveryHint,
             ProgressMessage = record.ProgressMessage,
             ProgressPercent = record.ProgressPercent,
+            IsRunning = record.IsRunning,
             WasCanceled = record.WasCanceled
         };
     }
@@ -456,6 +524,7 @@ public sealed partial class MspTranscriptEntry : ObservableObject
             RecoveryHint = RecoveryHint,
             ProgressMessage = ProgressMessage,
             ProgressPercent = ProgressPercent,
+            IsRunning = IsRunning,
             WasCanceled = WasCanceled
         };
     }
@@ -620,6 +689,14 @@ public sealed partial class MspSessionEntry : ObservableObject
     [ObservableProperty]
     public partial int FailureCount { get; set; }
 
+    [ObservableProperty]
+    [JsonIgnore]
+    public partial int RunningCount { get; set; }
+
+    [ObservableProperty]
+    [JsonIgnore]
+    public partial int PendingApprovalCount { get; set; }
+
     public ObservableCollection<string> TranscriptIds { get; } = new();
 
     public ObservableCollection<string> ArtifactPaths { get; } = new();
@@ -641,7 +718,9 @@ public sealed partial class MspSessionEntry : ObservableObject
             LastRecoveryHint = record.LastRecoveryHint,
             CommandCount = record.CommandCount,
             ApprovalCount = record.ApprovalCount,
-            FailureCount = record.FailureCount
+            FailureCount = record.FailureCount,
+            RunningCount = record.RunningCount,
+            PendingApprovalCount = record.PendingApprovalCount
         };
 
         foreach (var transcriptId in record.TranscriptIds)
@@ -675,13 +754,87 @@ public sealed partial class MspSessionEntry : ObservableObject
             CommandCount = CommandCount,
             ApprovalCount = ApprovalCount,
             FailureCount = FailureCount,
+            RunningCount = RunningCount,
+            PendingApprovalCount = PendingApprovalCount,
             TranscriptIds = TranscriptIds.ToArray(),
             ArtifactPaths = ArtifactPaths.ToArray()
         };
     }
 
     [JsonIgnore]
-    public string Summary => $"{CommandCount} commands · {FailureCount} failures · {ArtifactPaths.Count} artifacts";
+    public bool HasRunningCommands => RunningCount > 0;
+
+    [JsonIgnore]
+    public bool HasPendingApprovals => PendingApprovalCount > 0;
+
+    [JsonIgnore]
+    public bool HasFailures => FailureCount > 0 || LastExitCode != 0;
+
+    [JsonIgnore]
+    public bool HasArtifacts => ArtifactPaths.Count > 0;
+
+    [JsonIgnore]
+    public string StatusLabel => HasRunningCommands
+        ? "运行中"
+        : HasPendingApprovals
+            ? "待审批"
+            : HasFailures
+                ? "需复查"
+                : "完成";
+
+    [JsonIgnore]
+    public string StatusGlyph => HasRunningCommands
+        ? "\uE768"
+        : HasPendingApprovals
+            ? "\uE7BA"
+            : HasFailures
+                ? "\uEA39"
+                : "\uE756";
+
+    [JsonIgnore]
+    public string ArtifactCountLabel => HasArtifacts
+        ? $"{ArtifactPaths.Count} artifacts"
+        : "no artifacts";
+
+    [JsonIgnore]
+    public string Summary => $"{CommandCount} commands · {PendingApprovalCount} approvals · {FailureCount} failures · {ArtifactPaths.Count} artifacts";
+
+    public void NotifyDerivedStateChanged()
+    {
+        OnPropertyChanged(nameof(HasRunningCommands));
+        OnPropertyChanged(nameof(HasPendingApprovals));
+        OnPropertyChanged(nameof(HasFailures));
+        OnPropertyChanged(nameof(HasArtifacts));
+        OnPropertyChanged(nameof(StatusLabel));
+        OnPropertyChanged(nameof(StatusGlyph));
+        OnPropertyChanged(nameof(ArtifactCountLabel));
+        OnPropertyChanged(nameof(Summary));
+    }
+
+    partial void OnRunningCountChanged(int value)
+    {
+        NotifyDerivedStateChanged();
+    }
+
+    partial void OnPendingApprovalCountChanged(int value)
+    {
+        NotifyDerivedStateChanged();
+    }
+
+    partial void OnFailureCountChanged(int value)
+    {
+        NotifyDerivedStateChanged();
+    }
+
+    partial void OnLastExitCodeChanged(int value)
+    {
+        NotifyDerivedStateChanged();
+    }
+
+    partial void OnCommandCountChanged(int value)
+    {
+        NotifyDerivedStateChanged();
+    }
 }
 
 public sealed partial class PageImageItem : ObservableObject

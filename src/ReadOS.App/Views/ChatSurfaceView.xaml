@@ -109,13 +109,18 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Spacing="1">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <TextBlock Text="{Binding Title}"
-                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                                   FontWeight="SemiBold"
-                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="1">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <Border Style="{StaticResource ReadOSChipStyle}">
+                                                                <TextBlock Text="{Binding KindLabel}"
+                                                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                                           FontSize="{StaticResource FontSizeXs}" />
+                                                            </Border>
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                       FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
                                                         <TextBlock Text="{Binding StatusLabel}"
                                                                    Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
                                                                    FontSize="{StaticResource FontSizeXs}"
@@ -168,14 +173,99 @@
                                             </ItemsControl>
 
                                             <TextBlock Text="{Binding Body}"
-                                                       Visibility="{Binding HasBody, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                       Visibility="{Binding HasMessageBody, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                        Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
                                                        TextWrapping="WrapWholeWords"
                                                        LineHeight="21" />
 
-                                            <Border Visibility="{Binding HasMspEntry, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                            <Border Visibility="{Binding HasEvidenceBody, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                     Padding="9"
-                                                    Style="{StaticResource ReadOSSubtleCardStyle}">
+                                                    Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusMd}">
+                                                <StackPanel Spacing="5">
+                                                    <TextBlock Text="Evidence"
+                                                               Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Body}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               TextWrapping="WrapWholeWords"
+                                                               LineHeight="21" />
+                                                    <Button Height="28" Padding="8,0"
+                                                            HorizontalAlignment="Left"
+                                                            Command="{Binding DataContext.OpenTimelineItemCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="打开证据" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Visibility="{Binding IsMspApproval, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusMd}">
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock Text="{Binding MspEntry.CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding MspEntry.PolicyPreview}"
+                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasPolicyPreview, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                                        <Button Height="28" Padding="8,0"
+                                                                Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding MspEntry}"
+                                                                Content="批准并重放" />
+                                                        <Button Height="28" Padding="8,0"
+                                                                Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding MspEntry}"
+                                                                Content="拒绝" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Visibility="{Binding IsMspRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Background="{ThemeResource ReadOSSubtleBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusMd}">
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock Text="{Binding MspEntry.CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <ProgressBar Height="4"
+                                                                 Value="{Binding MspEntry.ProgressPercentValue}"
+                                                                 IsIndeterminate="{Binding MspEntry.IsProgressIndeterminate}" />
+                                                    <TextBlock Text="{Binding MspEntry.OutputPreview}"
+                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               MaxLines="5" />
+                                                    <Button Height="28" Padding="8,0"
+                                                            HorizontalAlignment="Left"
+                                                            Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding MspEntry}"
+                                                            Content="取消" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Visibility="{Binding IsMspResult, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Background="{ThemeResource ReadOSSubtleBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusMd}">
                                                 <StackPanel Spacing="7">
                                                     <TextBlock Text="{Binding MspEntry.CommandText}"
                                                                Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
@@ -188,42 +278,46 @@
                                                                FontSize="{StaticResource FontSizeXs}"
                                                                TextWrapping="Wrap"
                                                                MaxLines="8" />
-                                                    <ProgressBar Height="4"
-                                                                 Value="{Binding MspEntry.ProgressPercentValue}"
-                                                                 IsIndeterminate="{Binding MspEntry.IsProgressIndeterminate}"
-                                                                 Visibility="{Binding MspEntry.IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                    <TextBlock Text="{Binding MspEntry.PolicyPreview}"
-                                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                               FontSize="{StaticResource FontSizeXs}"
-                                                               TextWrapping="Wrap"
-                                                               Visibility="{Binding HasPolicyPreview, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                     <TextBlock Text="{Binding MspEntry.ArtifactsSummary}"
                                                                Foreground="{ThemeResource ReadOSAccentBrush}"
                                                                FontSize="{StaticResource FontSizeXs}"
                                                                TextWrapping="Wrap"
                                                                Visibility="{Binding HasArtifactsSummary, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <Button Height="28" Padding="8,0"
+                                                            HorizontalAlignment="Left"
+                                                            Command="{Binding DataContext.OpenTimelineItemCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="查看运行" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Visibility="{Binding IsMspError, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Padding="9"
+                                                    Background="{ThemeResource ReadOSSubtleBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSDangerBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusMd}">
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock Text="{Binding MspEntry.CommandText}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="{StaticResource FontSizeSm}"
+                                                               TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{Binding MspEntry.DiagnosticsSummary}"
                                                                Foreground="{ThemeResource ReadOSDangerBrush}"
                                                                FontSize="{StaticResource FontSizeXs}"
                                                                TextWrapping="Wrap"
                                                                Visibility="{Binding HasDiagnostics, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
-                                                        <Button Height="28" Padding="8,0"
-                                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=Root}"
-                                                                CommandParameter="{Binding MspEntry}"
-                                                                Content="批准并重放" />
-                                                        <Button Height="28" Padding="8,0"
-                                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                Command="{Binding DataContext.DenyMspCommandCommand, ElementName=Root}"
-                                                                CommandParameter="{Binding MspEntry}"
-                                                                Content="拒绝" />
-                                                        <Button Height="28" Padding="8,0"
-                                                                Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                Command="{Binding DataContext.CancelMspCommandCommand, ElementName=Root}"
-                                                                CommandParameter="{Binding MspEntry}"
-                                                                Content="取消" />
-                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding MspEntry.RecoveryHint}"
+                                                               Foreground="{ThemeResource ReadOSWarningBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               TextWrapping="Wrap"
+                                                               Visibility="{Binding HasRecoveryHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <Button Height="28" Padding="8,0"
+                                                            HorizontalAlignment="Left"
+                                                            Command="{Binding DataContext.OpenTimelineItemCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="查看诊断" />
                                                 </StackPanel>
                                             </Border>
 
@@ -249,8 +343,8 @@
                                                     <Button Grid.Column="1"
                                                             Height="28"
                                                             Padding="8,0"
-                                                            Command="{Binding DataContext.SelectArtifactCommand, ElementName=Root}"
-                                                            CommandParameter="{Binding Artifact}"
+                                                            Command="{Binding DataContext.OpenTimelineItemCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}"
                                                             Content="打开" />
                                                 </Grid>
                                             </Border>
@@ -287,27 +381,144 @@
                                                    Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
                                                    FontSize="{StaticResource FontSizeXs}" />
                                     </Border>
-                                    <Border Style="{StaticResource ReadOSChipStyle}">
-                                        <TextBlock Text="{Binding ApprovalModeLabel}"
-                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                   FontSize="{StaticResource FontSizeXs}" />
-                                    </Border>
+                                    <ItemsControl ItemsSource="{Binding PendingAttachments}"
+                                                  Visibility="{Binding HasPendingAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="{StaticResource SpacingXs}" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="7,4"
+                                                        CornerRadius="{StaticResource RadiusMd}"
+                                                        Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                                        BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                        BorderThickness="1">
+                                                    <Grid ColumnSpacing="{StaticResource SpacingXs}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   FontWeight="SemiBold"
+                                                                   MaxWidth="180"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding Detail}"
+                                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   MaxWidth="120"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center" />
+                                                        <Button Grid.Column="2"
+                                                                Width="20"
+                                                                Height="20"
+                                                                MinHeight="20"
+                                                                Padding="0"
+                                                                Style="{StaticResource ReadOSIconButtonStyle}"
+                                                                ToolTipService.ToolTip="移除此附件"
+                                                                Command="{Binding DataContext.RemovePendingAttachmentCommand, ElementName=Root}"
+                                                                CommandParameter="{Binding}">
+                                                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                                                      Glyph="&#xE711;"
+                                                                      FontSize="9" />
+                                                        </Button>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{Binding QueuedComposerPrompts}"
+                                                  Visibility="{Binding HasQueuedComposerPrompts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="{StaticResource SpacingXs}" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Height="28"
+                                                        Padding="8,0"
+                                                        Background="{ThemeResource ReadOSSubtleBrush}"
+                                                        BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                        ToolTipService.ToolTip="恢复此队列项"
+                                                        Command="{Binding DataContext.RestoreQueuedComposerPromptCommand, ElementName=Root}"
+                                                        CommandParameter="{Binding}">
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="{StaticResource SpacingXs}">
+                                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                                  Glyph="&#xE8FD;"
+                                                                  FontSize="{StaticResource IconSizeSm}"
+                                                                  Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   FontWeight="SemiBold"
+                                                                   MaxWidth="160"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Detail}"
+                                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                                   FontSize="{StaticResource FontSizeXs}"
+                                                                   MaxWidth="90"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="{StaticResource SpacingXs}"
+                                                ToolTipService.ToolTip="{Binding ApprovalModeDetail}">
+                                        <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                      MinWidth="50"
+                                                      IsChecked="{Binding IsPolicyApprovalModeSelected, Mode=OneWay}"
+                                                      Command="{Binding SelectApprovalModeCommand}"
+                                                      CommandParameter="policy"
+                                                      Content="策略" />
+                                        <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                      MinWidth="64"
+                                                      IsChecked="{Binding IsConfirmAllApprovalModeSelected, Mode=OneWay}"
+                                                      Command="{Binding SelectApprovalModeCommand}"
+                                                      CommandParameter="confirm-all"
+                                                      Content="每次确认" />
+                                        <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                      MinWidth="64"
+                                                      IsChecked="{Binding IsAllowWorkspaceApprovalModeSelected, Mode=OneWay}"
+                                                      Command="{Binding SelectApprovalModeCommand}"
+                                                      CommandParameter="allow-workspace"
+                                                      Content="允许写入" />
+                                    </StackPanel>
                                     <Border Style="{StaticResource ReadOSChipStyle}">
                                         <TextBlock Text="{Binding RuntimeStatusLabel}"
                                                    Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
                                                    FontSize="{StaticResource FontSizeXs}" />
                                     </Border>
-                                    <Border Padding="7,4"
-                                            CornerRadius="{StaticResource RadiusMd}"
+                                    <Button Height="28"
+                                            Padding="8,0"
                                             Background="{ThemeResource ReadOSAccentMutedBrush}"
                                             BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                            BorderThickness="1"
+                                            ToolTipService.ToolTip="打开待审批 MSP 命令"
+                                            Command="{Binding OpenPendingApprovalCommand}"
                                             Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock Text="{Binding PendingApprovalLabel}"
-                                                   Foreground="{ThemeResource ReadOSAccentBrush}"
-                                                   FontSize="{StaticResource FontSizeXs}"
-                                                   FontWeight="SemiBold" />
-                                    </Border>
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="{StaticResource SpacingXs}">
+                                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                                      Glyph="&#xE7BA;"
+                                                      FontSize="{StaticResource IconSizeSm}"
+                                                      Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                            <TextBlock Text="{Binding PendingApprovalLabel}"
+                                                       Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                       FontSize="{StaticResource FontSizeXs}"
+                                                       FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                             </ScrollViewer>
                             <Button Grid.Column="1"
@@ -373,15 +584,42 @@
                                               Glyph="&#xE756;"
                                               FontSize="{StaticResource IconSizeSm}" />
                                 </Button>
+                                <Button Height="32" Padding="10,0"
+                                        Style="{StaticResource ReadOSGhostButtonStyle}"
+                                        ToolTipService.ToolTip="用当前输入精炼选中的产物"
+                                        Command="{Binding PrepareComposerArtifactRefinementWorkflowCommand}"
+                                        Visibility="{Binding HasComposerArtifactRefinementTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="{StaticResource SpacingXs}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="&#xE70F;"
+                                                  FontSize="{StaticResource IconSizeSm}" />
+                                        <TextBlock Text="精炼" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Height="32" Padding="10,0"
+                                        Style="{StaticResource ReadOSGhostButtonStyle}"
+                                        ToolTipService.ToolTip="将当前草稿和证据加入队列"
+                                        Command="{Binding QueueComposerDraftCommand}"
+                                        Visibility="{Binding IsAnyMspRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="{StaticResource SpacingXs}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="&#xE8FD;"
+                                                  FontSize="{StaticResource IconSizeSm}" />
+                                        <TextBlock Text="队列" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Height="32" MinWidth="84" Padding="12,0"
                                     Style="{StaticResource ReadOSPrimaryButtonStyle}"
-                                    Command="{Binding SendPromptCommand}">
+                                    ToolTipService.ToolTip="{Binding ComposerPrimaryToolTip}"
+                                    Command="{Binding ComposerPrimaryCommand}">
                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                                     <TextBlock Text="{Binding SendButtonLabel}" FontWeight="SemiBold" />
                                     <FontIcon FontFamily="Segoe Fluent Icons"
-                                              Glyph="&#xE724;"
+                                              Glyph="{Binding ComposerPrimaryGlyph}"
                                               FontSize="{StaticResource IconSizeSm}" />
                                 </StackPanel>
                             </Button>

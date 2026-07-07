@@ -45,9 +45,22 @@
                                       ToolTipService.ToolTip="MSP 会话"
                                       Command="{Binding SelectSidebarModeCommand}"
                                       CommandParameter="Sessions">
-                            <FontIcon FontFamily="Segoe Fluent Icons"
-                                      Glyph="&#xE756;"
-                                      FontSize="{StaticResource IconSizeMd}" />
+                            <Grid Width="24"
+                                  Height="24">
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="&#xE756;"
+                                          FontSize="{StaticResource IconSizeMd}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                                <Ellipse Width="8"
+                                         Height="8"
+                                         Fill="{ThemeResource ReadOSWarningBrush}"
+                                         Stroke="{ThemeResource ReadOSChromeBrush}"
+                                         StrokeThickness="1"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Top"
+                                         Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </Grid>
                         </ToggleButton>
                         <ToggleButton Style="{StaticResource ReadOSRailButtonStyle}"
                                       IsChecked="{Binding IsArtifactsSidebarSelected, Mode=OneWay}"
@@ -244,7 +257,7 @@
                                             Style="{StaticResource ReadOSSubtleCardStyle}"
                                             Padding="0">
                                         <FontIcon FontFamily="Segoe Fluent Icons"
-                                                  Glyph="&#xE756;"
+                                                  Glyph="{Binding StatusGlyph}"
                                                   FontSize="{StaticResource IconSizeSm}"
                                                   Foreground="{ThemeResource ReadOSAccentBrush}"
                                                   HorizontalAlignment="Center"
@@ -252,10 +265,27 @@
                                     </Border>
                                     <StackPanel Grid.Column="1"
                                                 Spacing="2">
-                                        <TextBlock Text="{Binding Title}"
-                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                   FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <Grid ColumnSpacing="{StaticResource SpacingXs}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="1"
+                                                    Padding="6,2"
+                                                    CornerRadius="{StaticResource RadiusMd}"
+                                                    Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                    BorderThickness="1">
+                                                <TextBlock Text="{Binding StatusLabel}"
+                                                           Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                           FontSize="{StaticResource FontSizeXs}"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </Grid>
                                         <TextBlock Text="{Binding Summary}"
                                                    Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
                                                    FontSize="{StaticResource FontSizeXs}"
@@ -324,6 +354,12 @@
                                    FontWeight="SemiBold"
                                    FontSize="{StaticResource FontSizeXs}"
                                    TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding PendingApprovalLabel}"
+                                   Foreground="{ThemeResource ReadOSWarningBrush}"
+                                   FontSize="{StaticResource FontSizeXs}"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock Text="{Binding ArtifactSummary}"
                                    Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
                                    FontSize="{StaticResource FontSizeXs}"

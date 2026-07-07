@@ -1,63 +1,29 @@
 using System.Runtime.CompilerServices;
-using ReadOS.App.Models;
-using ReadOS.Msp.Audit;
-using ReadOS.Msp.Commands;
+using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
-using ReadOS.Msp.Policy;
-using ReadOS.Msp.Runtime;
 
 namespace ReadOS.App.Services.Msp;
 
-public sealed class ReadOsMspHost
+public sealed class ReadOsMspHost : IMspCommandHost
 {
-    private const string ApprovalTokenKey = "reados.msp.approvalToken";
-
     public const string DefaultSessionId = "reados-workbench";
 
-    private readonly MspRuntime runtime;
-    private readonly OperatorApprovalMspPolicy policy;
+    private readonly IMspCommandHost commandHost;
+    private readonly MspCommandHostFacade commandFacade;
 
-    public ReadOsMspHost(
-        IWorkspaceStore workspaceStore,
-        IPdfDocumentService pdfService,
-        IAiChatService aiChatService,
-        Func<WorkspaceState?> workspaceProvider,
-        Func<WorkspaceSettings> settingsProvider,
-        Func<LibraryItem?> selectedDocumentProvider,
-        Func<IReadOnlyList<ChatAttachment>> pendingAttachmentsProvider,
-        Func<ChatAttachment, Task<string>> attachmentTextProvider,
-        Action<ChatAttachment> attachmentSink,
-        Action clearAttachments,
-        Action<LibraryItem, ChatConversation> chatResultSink)
+    public ReadOsMspHost(ReadOsMspHostDependencies dependencies)
     {
-        var registry = MspRuntime.CreateDefaultRegistry();
-        var workspace = new ReadOsVirtualWorkspace(workspaceStore, pdfService, workspaceProvider);
-        registry
-            .Register(new ReadOsWorkspaceCommand(workspaceStore, workspaceProvider))
-            .Register(new ReadOsLibraryCommand(workspaceProvider))
-            .Register(new ReadOsPdfCommand(workspaceStore, pdfService, workspaceProvider, selectedDocumentProvider))
-            .Register(new ReadOsWindowsCommand(workspaceStore, selectedDocumentProvider))
-            .Register(new ReadOsPageLabelCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
-            .Register(new ReadOsOutlineCommand(workspaceStore, workspaceProvider, selectedDocumentProvider))
-            .Register(new ReadOsAttachCommand(workspaceProvider, selectedDocumentProvider, attachmentSink))
-            .Register(new ReadOsChatCommand(
-                workspaceStore,
-                aiChatService,
-                workspaceProvider,
-                settingsProvider,
-                selectedDocumentProvider,
-                pendingAttachmentsProvider,
-                attachmentTextProvider,
-                clearAttachments,
-                chatResultSink));
+        ArgumentNullException.ThrowIfNull(dependencies);
 
-        policy = new OperatorApprovalMspPolicy();
-        var context = new MspCommandContext(
-            workspace,
-            registry,
-            policy,
-            new InMemoryMspAuditSink());
-        runtime = new MspRuntime(context);
+        var runtimeHost = new ReadOsMspHostRuntimeFactory().Create(
+            dependencies,
+            DefaultSessionId,
+            "reados-agent");
+        commandHost = runtimeHost.CommandHost;
+        commandFacade = new MspCommandHostFacade(
+            commandHost,
+            runtimeHost.RequestFactory,
+            runtimeHost.ApprovalGrants);
     }
 
     public ValueTask<MspCommandResult> ExecuteAsync(
@@ -65,12 +31,14 @@ public sealed class ReadOsMspHost
         string actor = "reados-agent",
         CancellationToken cancellationToken = default)
     {
-        return runtime.ExecuteAsync(new MspCommandRequest
-        {
-            Actor = actor,
-            SessionId = DefaultSessionId,
-            CommandText = commandText
-        }, cancellationToken);
+        return commandFacade.ExecuteAsync(commandText, actor, cancellationToken);
+    }
+
+    public ValueTask<MspCommandResult> ExecuteAsync(
+        MspCommandRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return commandHost.ExecuteAsync(request, cancellationToken);
     }
 
     public IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
@@ -78,12 +46,14 @@ public sealed class ReadOsMspHost
         string actor = "reados-agent",
         CancellationToken cancellationToken = default)
     {
-        return runtime.ExecuteStreamingAsync(new MspCommandRequest
-        {
-            Actor = actor,
-            SessionId = DefaultSessionId,
-            CommandText = commandText
-        }, cancellationToken);
+        return commandFacade.ExecuteStreamingAsync(commandText, actor, cancellationToken);
+    }
+
+    public IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
+        MspCommandRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return commandHost.ExecuteStreamingAsync(request, cancellationToken);
     }
 
     public async ValueTask<MspCommandResult> ExecuteApprovedAsync(
@@ -91,24 +61,10 @@ public sealed class ReadOsMspHost
         string actor = "reados-agent",
         CancellationToken cancellationToken = default)
     {
-        var approvalToken = policy.ApproveNextCommand(commandText, actor);
-        try
-        {
-            return await runtime.ExecuteAsync(new MspCommandRequest
-            {
-                Actor = actor,
-                SessionId = DefaultSessionId,
-                CommandText = commandText,
-                Environment = new Dictionary<string, string>
-                {
-                    [ApprovalTokenKey] = approvalToken
-                }
-            }, cancellationToken);
-        }
-        finally
-        {
-            policy.RevokeApprovalToken(approvalToken);
-        }
+        return await commandFacade.ExecuteApprovedAsync(
+            commandText,
+            actor,
+            cancellationToken);
     }
 
     public async IAsyncEnumerable<MspCommandEvent> ExecuteApprovedStreamingAsync(
@@ -116,83 +72,12 @@ public sealed class ReadOsMspHost
         string actor = "reados-agent",
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var approvalToken = policy.ApproveNextCommand(commandText, actor);
-        try
+        await foreach (var commandEvent in commandFacade.ExecuteApprovedStreamingAsync(
+            commandText,
+            actor,
+            cancellationToken))
         {
-            await foreach (var commandEvent in runtime.ExecuteStreamingAsync(new MspCommandRequest
-            {
-                Actor = actor,
-                SessionId = DefaultSessionId,
-                CommandText = commandText,
-                Environment = new Dictionary<string, string>
-                {
-                    [ApprovalTokenKey] = approvalToken
-                }
-            }, cancellationToken))
-            {
-                yield return commandEvent;
-            }
+            yield return commandEvent;
         }
-        finally
-        {
-            policy.RevokeApprovalToken(approvalToken);
-        }
-    }
-
-    private sealed class OperatorApprovalMspPolicy : IMspPolicy
-    {
-        private readonly EffectBasedMspPolicy effectPolicy = new();
-        private readonly Dictionary<string, ApprovedMspCommand> approvalTokens = new(StringComparer.Ordinal);
-        private readonly object gate = new();
-
-        public string ApproveNextCommand(string commandText, string actor)
-        {
-            var token = Guid.NewGuid().ToString("N");
-            lock (gate)
-            {
-                approvalTokens[token] = new ApprovedMspCommand(commandText, actor);
-            }
-
-            return token;
-        }
-
-        public void RevokeApprovalToken(string token)
-        {
-            lock (gate)
-            {
-                approvalTokens.Remove(token);
-            }
-        }
-
-        public ValueTask<MspPolicyDecision> AuthorizeAsync(
-            MspPolicyRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            if (request.Environment.TryGetValue(ApprovalTokenKey, out var token) &&
-                ConsumeApprovalToken(token, request))
-            {
-                return ValueTask.FromResult(MspPolicyDecision.Allow);
-            }
-
-            return effectPolicy.AuthorizeAsync(request, cancellationToken);
-        }
-
-        private bool ConsumeApprovalToken(string token, MspPolicyRequest request)
-        {
-            lock (gate)
-            {
-                if (!approvalTokens.TryGetValue(token, out var approval) ||
-                    !string.Equals(approval.CommandText, request.CommandText, StringComparison.Ordinal) ||
-                    !string.Equals(approval.Actor, request.Actor, StringComparison.Ordinal))
-                {
-                    return false;
-                }
-
-                approvalTokens.Remove(token);
-                return true;
-            }
-        }
-
-        private sealed record ApprovedMspCommand(string CommandText, string Actor);
     }
 }

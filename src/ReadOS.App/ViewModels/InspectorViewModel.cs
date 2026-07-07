@@ -53,6 +53,8 @@ public sealed partial class InspectorViewModel : ObservableObject
     public ObservableCollection<OutlineItem> Outline => shell.Outline;
     public ObservableCollection<PageImageItem> Thumbnails => shell.Thumbnails;
     public ObservableCollection<WorkspaceArtifact> Artifacts => shell.Artifacts;
+    public ObservableCollection<ArtifactLineageItem> SelectedArtifactLineage => shell.SelectedArtifactLineage;
+    public ObservableCollection<PreparedMspCommand> PreparedMspCommands => shell.PreparedMspCommands;
     public ObservableCollection<MspSessionEntry> MspSessions => shell.MspSessions;
     public ObservableCollection<ChatAttachment> PendingAttachments => shell.PendingAttachments;
 
@@ -168,6 +170,12 @@ public sealed partial class InspectorViewModel : ObservableObject
         set => shell.SelectedMspSession = value;
     }
 
+    public MspTranscriptEntry? SelectedMspTranscriptEntry
+    {
+        get => shell.SelectedMspTranscriptEntry;
+        set => shell.SelectedMspTranscriptEntry = value;
+    }
+
     // ── Computed ────────────────────────────────────────────────────────
 
     public bool IsRunInspectorSelected => SelectedInspectorTab == InspectorTab.Run || SelectedInspectorTab == InspectorTab.Actions;
@@ -194,11 +202,22 @@ public sealed partial class InspectorViewModel : ObservableObject
     public string PendingApprovalLabel => shell.PendingApprovalLabel;
     public string RuntimeStatusLabel => shell.RuntimeStatusLabel;
     public string ApprovalModeLabel => shell.ApprovalModeLabel;
+    public string ApprovalModeDetail => shell.ApprovalModeDetail;
     public string SelectedArtifactPreview => shell.SelectedArtifactPreview;
     public string StatusMessage => shell.StatusMessage;
     public bool IsBusy => shell.IsBusy;
     public bool HasPendingApprovals => shell.HasPendingApprovals;
+    public bool IsPolicyApprovalModeSelected => shell.IsPolicyApprovalModeSelected;
+    public bool IsConfirmAllApprovalModeSelected => shell.IsConfirmAllApprovalModeSelected;
+    public bool IsAllowWorkspaceApprovalModeSelected => shell.IsAllowWorkspaceApprovalModeSelected;
     public bool HasSelectedArtifact => shell.SelectedArtifact is not null;
+    public bool HasSelectedArtifactLineage => shell.HasSelectedArtifactLineage;
+    public bool HasSelectedOutlineWorkflowTarget => shell.HasSelectedOutlineWorkflowTarget;
+    public bool HasSelectedArtifactWorkflowTarget => shell.HasSelectedArtifactWorkflowTarget;
+    public bool HasSelectedEvidenceArtifact => shell.HasSelectedEvidenceArtifact;
+    public bool HasSelectedFailureReviewTarget => shell.HasSelectedFailureReviewTarget;
+    public bool HasPreparedMspCommands => shell.HasPreparedMspCommands;
+    public bool HasSelectedMspTranscriptEntry => shell.SelectedMspTranscriptEntry is not null;
     public bool HasDocument => shell.HasDocument;
     public bool HasPdfDocument => shell.HasPdfDocument;
     public bool HasPageImage => shell.HasPageImage;
@@ -241,8 +260,20 @@ public sealed partial class InspectorViewModel : ObservableObject
     public IRelayCommand AttachCurrentPageCommand => shell.AttachCurrentPageCommand;
     public IRelayCommand AttachRangeCommand => shell.AttachRangeCommand;
     public IRelayCommand AttachSelectedArtifactCommand => shell.AttachSelectedArtifactCommand;
+    public IRelayCommand OpenArtifactLineageItemCommand => shell.OpenArtifactLineageItemCommand;
+    public IRelayCommand OpenSelectedArtifactPreviewCommand => shell.OpenSelectedArtifactPreviewCommand;
+    public IAsyncRelayCommand CopySelectedArtifactContentCommand => shell.CopySelectedArtifactContentCommand;
+    public IAsyncRelayCommand ExportSelectedArtifactCommand => shell.ExportSelectedArtifactCommand;
+    public IRelayCommand PrepareExplainSectionWorkflowCommand => shell.PrepareExplainSectionWorkflowCommand;
+    public IRelayCommand PrepareExtractEvidenceWorkflowCommand => shell.PrepareExtractEvidenceWorkflowCommand;
+    public IRelayCommand PrepareReviewEvidenceWorkflowCommand => shell.PrepareReviewEvidenceWorkflowCommand;
+    public IRelayCommand PrepareSynthesizeEvidenceWorkflowCommand => shell.PrepareSynthesizeEvidenceWorkflowCommand;
+    public IRelayCommand PrepareRefineArtifactWorkflowCommand => shell.PrepareRefineArtifactWorkflowCommand;
+    public IRelayCommand PrepareReviewFailuresWorkflowCommand => shell.PrepareReviewFailuresWorkflowCommand;
+    public IRelayCommand RestorePreparedMspCommandCommand => shell.RestorePreparedMspCommandCommand;
     public IRelayCommand StartRegionSelectionCommand => shell.StartRegionSelectionCommand;
     public IRelayCommand ClearAttachmentsCommand => shell.ClearAttachmentsCommand;
+    public IRelayCommand SelectApprovalModeCommand => shell.SelectApprovalModeCommand;
     public IRelayCommand NewConversationCommand => shell.NewConversationCommand;
     public IAsyncRelayCommand ClearConversationCommand => shell.ClearConversationCommand;
     public IRelayCommand NavigateSettingsCommand => shell.NavigateSettingsCommand;
@@ -300,7 +331,9 @@ public sealed partial class InspectorViewModel : ObservableObject
             case nameof(ShellViewModel.PageRangeDraft):
                 OnPropertyChanged(nameof(PageRangeDraft)); break;
             case nameof(ShellViewModel.SelectedOutlineItem):
-                OnPropertyChanged(nameof(SelectedOutlineItem)); break;
+                OnPropertyChanged(nameof(SelectedOutlineItem));
+                OnPropertyChanged(nameof(HasSelectedOutlineWorkflowTarget));
+                break;
             case nameof(ShellViewModel.SelectedThumbnail):
                 OnPropertyChanged(nameof(SelectedThumbnail)); break;
             case nameof(ShellViewModel.SelectedSearchResult):
@@ -309,9 +342,35 @@ public sealed partial class InspectorViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedArtifact));
                 OnPropertyChanged(nameof(SelectedArtifactPreview));
                 OnPropertyChanged(nameof(HasSelectedArtifact));
+                OnPropertyChanged(nameof(HasSelectedArtifactLineage));
+                OnPropertyChanged(nameof(HasSelectedArtifactWorkflowTarget));
+                OnPropertyChanged(nameof(HasSelectedEvidenceArtifact));
+                break;
+            case nameof(ShellViewModel.HasSelectedArtifactLineage):
+                OnPropertyChanged(nameof(HasSelectedArtifactLineage));
+                break;
+            case nameof(ShellViewModel.HasSelectedOutlineWorkflowTarget):
+                OnPropertyChanged(nameof(HasSelectedOutlineWorkflowTarget));
+                break;
+            case nameof(ShellViewModel.HasSelectedArtifactWorkflowTarget):
+                OnPropertyChanged(nameof(HasSelectedArtifactWorkflowTarget));
+                break;
+            case nameof(ShellViewModel.HasSelectedEvidenceArtifact):
+                OnPropertyChanged(nameof(HasSelectedEvidenceArtifact));
                 break;
             case nameof(ShellViewModel.SelectedMspSession):
                 OnPropertyChanged(nameof(SelectedMspSession)); break;
+            case nameof(ShellViewModel.SelectedMspTranscriptEntry):
+                OnPropertyChanged(nameof(SelectedMspTranscriptEntry));
+                OnPropertyChanged(nameof(HasSelectedMspTranscriptEntry));
+                OnPropertyChanged(nameof(HasSelectedFailureReviewTarget));
+                break;
+            case nameof(ShellViewModel.HasSelectedFailureReviewTarget):
+                OnPropertyChanged(nameof(HasSelectedFailureReviewTarget));
+                break;
+            case nameof(ShellViewModel.HasPreparedMspCommands):
+                OnPropertyChanged(nameof(HasPreparedMspCommands));
+                break;
             case nameof(ShellViewModel.MspTranscriptSummary):
                 OnPropertyChanged(nameof(MspTranscriptSummary)); break;
             case nameof(ShellViewModel.MspActivitySummary):
@@ -324,6 +383,14 @@ public sealed partial class InspectorViewModel : ObservableObject
                 OnPropertyChanged(nameof(RuntimeStatusLabel)); break;
             case nameof(ShellViewModel.ApprovalModeLabel):
                 OnPropertyChanged(nameof(ApprovalModeLabel)); break;
+            case nameof(ShellViewModel.ApprovalModeDetail):
+                OnPropertyChanged(nameof(ApprovalModeDetail)); break;
+            case nameof(ShellViewModel.IsPolicyApprovalModeSelected):
+                OnPropertyChanged(nameof(IsPolicyApprovalModeSelected)); break;
+            case nameof(ShellViewModel.IsConfirmAllApprovalModeSelected):
+                OnPropertyChanged(nameof(IsConfirmAllApprovalModeSelected)); break;
+            case nameof(ShellViewModel.IsAllowWorkspaceApprovalModeSelected):
+                OnPropertyChanged(nameof(IsAllowWorkspaceApprovalModeSelected)); break;
             case nameof(ShellViewModel.HasPendingApprovals):
                 OnPropertyChanged(nameof(HasPendingApprovals)); break;
             case nameof(ShellViewModel.CurrentPageIndicator):

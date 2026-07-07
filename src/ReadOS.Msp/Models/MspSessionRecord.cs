@@ -30,6 +30,10 @@ public sealed record MspSessionRecord
 
     public int FailureCount { get; init; }
 
+    public int RunningCount { get; init; }
+
+    public int PendingApprovalCount { get; init; }
+
     public IReadOnlyList<string> TranscriptIds { get; init; } = Array.Empty<string>();
 
     public IReadOnlyList<string> ArtifactPaths { get; init; } = Array.Empty<string>();

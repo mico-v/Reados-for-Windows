@@ -16,7 +16,7 @@ public sealed class WorkflowCommand : IMspCommand
 
     public string Name => "workflow";
 
-    public string Summary => "Summarize MSP workflow sessions and failure state.";
+    public string Summary => "Summarize MSP workflow sessions and run named workflows.";
 
     public MspCommandMetadata Metadata => MspCommandMetadata.Create(
         Name,
@@ -42,11 +42,19 @@ public sealed class WorkflowCommand : IMspCommand
 
     public MspCommandPreview GetPreview(IReadOnlyList<string> arguments)
     {
-        if (!TryParseSummary(arguments, out var spec, out var error))
+        if (!TryParseWorkflow(arguments, out var spec, out var error))
         {
             return MspCommandPreview.Create(
-                "Summarize MSP workflow session state.",
+                "Summarize MSP workflow session state or run a named workflow.",
                 details: string.IsNullOrWhiteSpace(error) ? Array.Empty<string>() : new[] { error });
+        }
+
+        if (spec.IsNamedRun && !IsKnownNamedWorkflow(spec.WorkflowName))
+        {
+            return MspCommandPreview.Create(
+                "Unknown named workflow.",
+                new[] { spec.WorkflowName ?? string.Empty },
+                new[] { "Use workflow run summarize-current or workflow run review-failures." });
         }
 
         var targets = new List<string>
@@ -61,9 +69,13 @@ public sealed class WorkflowCommand : IMspCommand
         }
 
         return MspCommandPreview.Create(
-            "Summarize workflow commands, artifacts, diagnostics, and failures.",
+            spec.IsNamedRun
+                ? $"Run named workflow {spec.WorkflowName} over the current MSP session."
+                : "Summarize workflow commands, artifacts, diagnostics, and failures.",
             targets,
-            new[] { $"session: {spec.SessionSelector}" });
+            spec.IsNamedRun
+                ? new[] { $"workflow: {spec.WorkflowName}", $"session: {spec.SessionSelector}" }
+                : new[] { $"session: {spec.SessionSelector}" });
     }
 
     public async ValueTask<MspCommandResult> ExecuteAsync(
@@ -71,9 +83,19 @@ public sealed class WorkflowCommand : IMspCommand
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseSummary(arguments, out var spec, out var error))
+        if (!TryParseWorkflow(arguments, out var spec, out var error))
         {
             return MspCommandResult.Failure(error, exitCode: 2);
+        }
+
+        if (spec.IsNamedRun && !IsKnownNamedWorkflow(spec.WorkflowName))
+        {
+            return MspCommandResult.Failure(
+                $"Unknown workflow: {spec.WorkflowName}",
+                exitCode: 2,
+                code: "msp.workflow.unknown_workflow",
+                target: spec.WorkflowName,
+                recoveryHint: "Use workflow run summarize-current, workflow run review-failures, or run help to list available commands.");
         }
 
         var sessionId = ResolveSessionId(spec.SessionSelector, context);
@@ -84,7 +106,7 @@ public sealed class WorkflowCommand : IMspCommand
                 exitCode: 2,
                 code: "msp.workflow.invalid_session_id",
                 target: spec.SessionSelector,
-                recoveryHint: "Use workflow summary current, or pass a session id from /sessions.");
+                recoveryHint: "Use workflow summary current, workflow run summarize-current, workflow run review-failures, or pass a session id from /sessions.");
         }
 
         string? artifactPath = null;
@@ -99,7 +121,10 @@ public sealed class WorkflowCommand : IMspCommand
                 recoveryHint: "Use a file path such as /artifacts/workflows/current.md.");
         }
 
-        await context.ReportProgressAsync("Reading workflow session.", 10, cancellationToken);
+        await context.ReportProgressAsync(
+            spec.IsNamedRun ? $"Running workflow {spec.WorkflowName}." : "Reading workflow session.",
+            10,
+            cancellationToken);
         var sessionPath = GetSessionPath(sessionId);
         var sessionContent = await context.Workspace.TryReadTextAsync(sessionPath, cancellationToken);
         if (sessionContent is null)
@@ -127,24 +152,43 @@ public sealed class WorkflowCommand : IMspCommand
             session,
             sessionPath,
             cancellationToken);
+        IReadOnlyList<string> sourceDocuments = Array.Empty<string>();
+        IReadOnlyList<string> sourcePages = Array.Empty<string>();
+        if (spec.IsNamedRun)
+        {
+            var artifactProvenance = await ReadSessionArtifactProvenanceAsync(context, session, cancellationToken);
+            sourcePaths = sourcePaths
+                .Concat(artifactProvenance.SourcePaths)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            sourceDocuments = artifactProvenance.SourceDocuments;
+            sourcePages = artifactProvenance.SourcePages;
+            diagnostics = diagnostics
+                .Concat(artifactProvenance.Diagnostics)
+                .ToArray();
+        }
 
-        await context.ReportProgressAsync("Building workflow summary.", 65, cancellationToken);
-        var summary = BuildSummary(session, transcripts);
-        var output = summary.EndsWith(Environment.NewLine, StringComparison.Ordinal)
-            ? summary
-            : summary + Environment.NewLine;
+        await context.ReportProgressAsync("Building workflow report.", 65, cancellationToken);
+        var summary = BuildSummary(session, transcripts, spec.WorkflowName);
+        var report = BuildWorkflowReport(session, transcripts, spec.WorkflowName);
+        var output = report.EndsWith(Environment.NewLine, StringComparison.Ordinal)
+            ? report
+            : report + Environment.NewLine;
 
         MspArtifact[] artifacts = Array.Empty<MspArtifact>();
         if (!string.IsNullOrWhiteSpace(artifactPath))
         {
-            await context.ReportProgressAsync("Writing workflow summary artifact.", 85, cancellationToken);
+            await context.ReportProgressAsync("Writing workflow report artifact.", 85, cancellationToken);
             var now = DateTimeOffset.UtcNow;
             var artifact = new MspArtifact
             {
                 Path = artifactPath,
                 MediaType = "text/markdown",
-                SizeBytes = summary.Length,
-                Description = "Workflow summary created by MSP.",
+                SizeBytes = report.Length,
+                Description = spec.IsNamedRun
+                    ? $"Named workflow {spec.WorkflowName} created by MSP."
+                    : "Workflow summary created by MSP.",
                 SourceCommand = context.Invocation.CommandText,
                 Actor = context.Invocation.Actor,
                 SessionId = context.Invocation.SessionId,
@@ -152,16 +196,18 @@ public sealed class WorkflowCommand : IMspCommand
                     .Where(path => !string.IsNullOrWhiteSpace(path))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
+                SourceDocuments = sourceDocuments,
+                SourcePages = sourcePages,
                 CreatedAt = now,
                 UpdatedAt = now,
                 Preview = $"session: {session.Id}; commands: {session.CommandCount}; failures: {session.FailureCount}"
             };
-            await context.Workspace.WriteTextAsync(artifactPath, summary, artifact, cancellationToken);
+            await context.Workspace.WriteTextAsync(artifactPath, report, artifact, cancellationToken);
             artifacts = new[] { artifact };
-            output += $"artifact\t{artifactPath}\t{summary.Length}{Environment.NewLine}";
+            output += $"artifact\t{artifactPath}\t{report.Length}{Environment.NewLine}";
         }
 
-        await context.ReportProgressAsync("Workflow summary complete.", 100, cancellationToken);
+        await context.ReportProgressAsync("Workflow report complete.", 100, cancellationToken);
         return MspCommandResult.Success(output, artifacts, diagnostics);
     }
 
@@ -214,6 +260,89 @@ public sealed class WorkflowCommand : IMspCommand
             diagnostics);
     }
 
+    private static async ValueTask<WorkflowSourceProvenance> ReadSessionArtifactProvenanceAsync(
+        MspCommandContext context,
+        MspSessionRecord session,
+        CancellationToken cancellationToken)
+    {
+        var sourcePaths = new List<string>();
+        var sourceDocuments = new List<string>();
+        var sourcePages = new List<string>();
+        var diagnostics = new List<MspCommandDiagnostic>();
+
+        foreach (var path in session.ArtifactPaths.Where(path => !string.IsNullOrWhiteSpace(path)))
+        {
+            var artifactPath = context.Workspace.NormalizePath(path);
+            var manifestPath = GetArtifactManifestPath(artifactPath);
+            sourcePaths.Add(artifactPath);
+            sourcePaths.Add(manifestPath);
+
+            var content = await context.Workspace.TryReadTextAsync(manifestPath, cancellationToken);
+            if (content is null)
+            {
+                diagnostics.Add(new MspCommandDiagnostic
+                {
+                    Severity = MspDiagnosticSeverity.Warning,
+                    Code = "msp.workflow.artifact_manifest_missing",
+                    Target = manifestPath,
+                    Message = "Workflow session references an artifact manifest that is not available.",
+                    RecoveryHint = "Refresh the artifact projection before rerunning the named workflow."
+                });
+                continue;
+            }
+
+            MspArtifact? artifact;
+            try
+            {
+                artifact = JsonSerializer.Deserialize<MspArtifact>(content, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                diagnostics.Add(new MspCommandDiagnostic
+                {
+                    Severity = MspDiagnosticSeverity.Warning,
+                    Code = "msp.workflow.artifact_manifest_invalid",
+                    Target = manifestPath,
+                    Message = "Workflow artifact manifest JSON could not be parsed.",
+                    RecoveryHint = "Inspect the artifact manifest and rerun the named workflow."
+                });
+                continue;
+            }
+
+            if (artifact is null)
+            {
+                diagnostics.Add(new MspCommandDiagnostic
+                {
+                    Severity = MspDiagnosticSeverity.Warning,
+                    Code = "msp.workflow.artifact_manifest_invalid",
+                    Target = manifestPath,
+                    Message = "Workflow artifact manifest JSON did not contain an artifact record.",
+                    RecoveryHint = "Inspect the artifact manifest and rerun the named workflow."
+                });
+                continue;
+            }
+
+            sourcePaths.AddRange(artifact.SourcePaths);
+            sourceDocuments.AddRange(artifact.SourceDocuments);
+            sourcePages.AddRange(artifact.SourcePages);
+        }
+
+        return new WorkflowSourceProvenance(
+            sourcePaths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            sourceDocuments
+                .Where(document => !string.IsNullOrWhiteSpace(document))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            sourcePages
+                .Where(page => !string.IsNullOrWhiteSpace(page))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            diagnostics);
+    }
+
     private static async ValueTask<MspCommandTranscriptRecord?> ReadTranscriptAsync(
         MspCommandContext context,
         string transcriptPath,
@@ -252,14 +381,33 @@ public sealed class WorkflowCommand : IMspCommand
         }
     }
 
+    private static string BuildWorkflowReport(
+        MspSessionRecord session,
+        IReadOnlyList<MspCommandTranscriptRecord> transcripts,
+        string? workflowName)
+    {
+        if (string.Equals(workflowName, "review-failures", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildFailureReview(session, transcripts, workflowName);
+        }
+
+        return BuildSummary(session, transcripts, workflowName);
+    }
+
     private static string BuildSummary(
         MspSessionRecord session,
-        IReadOnlyList<MspCommandTranscriptRecord> transcripts)
+        IReadOnlyList<MspCommandTranscriptRecord> transcripts,
+        string? workflowName)
     {
         var failures = transcripts.Where(item => item.ExitCode != 0).ToArray();
         var builder = new StringBuilder();
         builder.AppendLine("# MSP Workflow Summary");
         builder.AppendLine();
+        if (!string.IsNullOrWhiteSpace(workflowName))
+        {
+            builder.AppendLine($"- workflow: {workflowName}");
+        }
+
         builder.AppendLine($"- session: {session.Id}");
         builder.AppendLine($"- title: {session.Title}");
         builder.AppendLine($"- actor: {session.Actor}");
@@ -341,6 +489,89 @@ public sealed class WorkflowCommand : IMspCommand
         return builder.ToString().TrimEnd();
     }
 
+    private static string BuildFailureReview(
+        MspSessionRecord session,
+        IReadOnlyList<MspCommandTranscriptRecord> transcripts,
+        string? workflowName)
+    {
+        var failures = transcripts
+            .Where(item => item.ExitCode != 0)
+            .OrderBy(item => item.CompletedAt)
+            .ThenBy(item => item.CommandText, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var builder = new StringBuilder();
+        builder.AppendLine("# MSP Failure Review");
+        builder.AppendLine();
+        if (!string.IsNullOrWhiteSpace(workflowName))
+        {
+            builder.AppendLine($"- workflow: {workflowName}");
+        }
+
+        builder.AppendLine($"- session: {session.Id}");
+        builder.AppendLine($"- title: {session.Title}");
+        builder.AppendLine($"- updated: {FormatTimestamp(session.UpdatedAt)}");
+        builder.AppendLine($"- failures: {failures.Length}");
+        builder.AppendLine($"- transcripts: {transcripts.Count}");
+        builder.AppendLine();
+        builder.AppendLine("## Recovery Queue");
+        builder.AppendLine();
+        if (failures.Length == 0)
+        {
+            builder.AppendLine("No failed transcript records are available for review.");
+        }
+        else
+        {
+            for (var i = 0; i < failures.Length; i++)
+            {
+                var failure = failures[i];
+                builder.Append(i + 1);
+                builder.Append(". `");
+                builder.Append(TrimSingleLine(failure.CommandText, 180));
+                builder.Append("`");
+                builder.Append(" exited ");
+                builder.AppendLine(failure.ExitCode.ToString());
+                builder.Append("   - decision: ");
+                builder.AppendLine(TrimSingleLine(failure.Decision, 120));
+                if (!string.IsNullOrWhiteSpace(failure.DiagnosticsSummary))
+                {
+                    builder.Append("   - diagnostics: ");
+                    builder.AppendLine(TrimSingleLine(failure.DiagnosticsSummary, 260));
+                }
+                else if (!string.IsNullOrWhiteSpace(failure.Stderr))
+                {
+                    builder.Append("   - stderr: ");
+                    builder.AppendLine(TrimSingleLine(failure.Stderr, 260));
+                }
+
+                if (!string.IsNullOrWhiteSpace(failure.RecoveryHint))
+                {
+                    builder.Append("   - recovery: ");
+                    builder.AppendLine(TrimSingleLine(failure.RecoveryHint, 260));
+                }
+
+                if (!string.IsNullOrWhiteSpace(failure.ArtifactsSummary))
+                {
+                    builder.Append("   - artifacts: ");
+                    builder.AppendLine(TrimSingleLine(failure.ArtifactsSummary, 220));
+                }
+            }
+        }
+
+        if (session.ArtifactPaths.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("## Session Artifacts");
+            builder.AppendLine();
+            foreach (var path in session.ArtifactPaths)
+            {
+                builder.Append("- ");
+                builder.AppendLine(path);
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     private static MspSessionRecord? DeserializeSession(string content, string fallbackSessionId)
     {
         try
@@ -369,23 +600,66 @@ public sealed class WorkflowCommand : IMspCommand
         }
     }
 
-    private static bool TryParseSummary(
+    private static bool TryParseWorkflow(
         IReadOnlyList<string> arguments,
-        out WorkflowSummarySpec spec,
+        out WorkflowSpec spec,
         out string error)
     {
-        spec = new WorkflowSummarySpec(string.Empty, null);
+        spec = new WorkflowSpec(string.Empty, null, null);
         error = string.Empty;
-        if (arguments.Count < 2 ||
-            !string.Equals(arguments[0], "summary", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(arguments[1]))
+        if (arguments.Count == 0)
         {
             error = Usage();
             return false;
         }
 
-        string? artifactPath = null;
-        for (var i = 2; i < arguments.Count; i++)
+        if (string.Equals(arguments[0], "summary", StringComparison.OrdinalIgnoreCase))
+        {
+            if (arguments.Count < 2 || string.IsNullOrWhiteSpace(arguments[1]))
+            {
+                error = Usage();
+                return false;
+            }
+
+            if (!TryParseArtifactOption(arguments, 2, out var artifactPath, out error))
+            {
+                return false;
+            }
+
+            spec = new WorkflowSpec(arguments[1], artifactPath, null);
+            return true;
+        }
+
+        if (string.Equals(arguments[0], "run", StringComparison.OrdinalIgnoreCase))
+        {
+            if (arguments.Count < 2 || string.IsNullOrWhiteSpace(arguments[1]))
+            {
+                error = Usage();
+                return false;
+            }
+
+            if (!TryParseArtifactOption(arguments, 2, out var artifactPath, out error))
+            {
+                return false;
+            }
+
+            spec = new WorkflowSpec("current", artifactPath, arguments[1]);
+            return true;
+        }
+
+        error = Usage();
+        return false;
+    }
+
+    private static bool TryParseArtifactOption(
+        IReadOnlyList<string> arguments,
+        int startIndex,
+        out string? artifactPath,
+        out string error)
+    {
+        artifactPath = null;
+        error = string.Empty;
+        for (var i = startIndex; i < arguments.Count; i++)
         {
             var argument = arguments[i];
             if (string.Equals(argument, ArtifactOption, StringComparison.OrdinalIgnoreCase))
@@ -428,7 +702,6 @@ public sealed class WorkflowCommand : IMspCommand
             return false;
         }
 
-        spec = new WorkflowSummarySpec(arguments[1], artifactPath);
         return true;
     }
 
@@ -465,7 +738,7 @@ public sealed class WorkflowCommand : IMspCommand
             !normalized.StartsWith("/artifacts/", StringComparison.Ordinal) ||
             normalized.EndsWith("/", StringComparison.Ordinal))
         {
-            error = "workflow summary --artifact must target a file under /artifacts.";
+            error = "workflow --artifact must target a file under /artifacts.";
             return false;
         }
 
@@ -481,6 +754,11 @@ public sealed class WorkflowCommand : IMspCommand
     private static string GetTranscriptPath(string transcriptId)
     {
         return $"/transcripts/{transcriptId}.json";
+    }
+
+    private static string GetArtifactManifestPath(string artifactPath)
+    {
+        return artifactPath + ".manifest.json";
     }
 
     private static string EscapeTableText(string value)
@@ -504,8 +782,23 @@ public sealed class WorkflowCommand : IMspCommand
 
     private static string Usage()
     {
-        return "Usage: workflow summary <session-id|current> [--artifact <path>]";
+        return "Usage: workflow summary <session-id|current> [--artifact <path>] | workflow run summarize-current|review-failures [--artifact <path>]";
     }
 
-    private sealed record WorkflowSummarySpec(string SessionSelector, string? ArtifactPath);
+    private static bool IsKnownNamedWorkflow(string? workflowName)
+    {
+        return string.Equals(workflowName, "summarize-current", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(workflowName, "review-failures", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record WorkflowSpec(string SessionSelector, string? ArtifactPath, string? WorkflowName)
+    {
+        public bool IsNamedRun => !string.IsNullOrWhiteSpace(WorkflowName);
+    }
+
+    private sealed record WorkflowSourceProvenance(
+        IReadOnlyList<string> SourcePaths,
+        IReadOnlyList<string> SourceDocuments,
+        IReadOnlyList<string> SourcePages,
+        IReadOnlyList<MspCommandDiagnostic> Diagnostics);
 }
