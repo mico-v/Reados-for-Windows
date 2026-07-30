@@ -106,11 +106,17 @@ internal sealed class ReadOsMspHostingReadinessService
                     ReadOsMspHostingBoundaryStatus.AppOwned,
                     "Observable routing, selected tabs, layout state, status text, and collection mutation remain WinUI responsibilities."),
                 new ReadOsMspHostingBoundary(
-                    "Parser and runtime dispatch",
+                    "Managed parser, policy, and terminal audit control plane",
                     "ReadOS.Msp",
                     "ReadOS.Msp",
                     ReadOsMspHostingBoundaryStatus.RuntimeOwned,
-                    "Parsing, command dispatch, runtime diagnostics, and workspace contracts already belong to the portable MSP runtime.")
+                    "The managed runtime remains authoritative for request parsing, policy and approval, dry-run, streaming events, terminal results, and exactly-once product audit."),
+                new ReadOsMspHostingBoundary(
+                    "Native core execution proxy",
+                    "ReadOS.Msp.Hosting.Native",
+                    "ReadOS.Msp.Hosting.Native",
+                    ReadOsMspHostingBoundaryStatus.Hosted,
+                    "Canonical pwd and echo execution use the Rust adapter only after the managed control plane and a matching native AST preflight; app-domain and virtual-workspace commands remain managed.")
             },
             new ReadOsMspCommandHostDiagnosticsDecision(
                 ReadOsMspCommandHostDiagnosticsVisibility.InternalHostMetadata,
@@ -127,7 +133,8 @@ internal sealed class ReadOsMspHostingReadinessService
             {
                 "Keep document, PDF, chat, and observable UI projection in ReadOS.App while Hosting grows.",
                 "Only move host-neutral contracts or services that can be tested without ReadOS app models.",
-                "Treat command-host diagnostics as internal host metadata until they become actionable workbench state."
+                "Treat command-host diagnostics as internal host metadata until they become actionable workbench state.",
+                "Expand Rust execution only behind managed policy/audit and only after the corresponding virtual workspace, stream, cancellation, and conformance contracts are verified."
             });
     }
 

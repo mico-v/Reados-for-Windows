@@ -12,14 +12,38 @@ param(
 
     [switch] $NoZip,
 
+    [switch] $SkipSmoke,
+
     [switch] $StopExisting
 )
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory)]
+        [string] $FilePath,
+
+        [string[]] $ArgumentList = @()
+    )
+
+    & $FilePath @ArgumentList
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "External command failed with exit code ${exitCode}: $FilePath $($ArgumentList -join ' ')"
+    }
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$solutionPath = Join-Path $repoRoot "ReadOS.sln"
 $projectPath = Join-Path $repoRoot "src\ReadOS.App\ReadOS.App.csproj"
-$testProjectPath = Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj"
+$nativeRoot = Join-Path $repoRoot "native\msp-core"
+$nativeDllPath = Join-Path $nativeRoot "target\release\msp_core.dll"
+$testProjectPaths = @(
+    (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj"),
+    (Join-Path $repoRoot "tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj"),
+    (Join-Path $repoRoot "tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj")
+)
 $artifactsRoot = Join-Path $repoRoot "artifacts"
 $publishRoot = Join-Path $artifactsRoot "publish\ReadOS-windows-$Runtime"
 $stagingRoot = Join-Path $artifactsRoot "staging"
@@ -33,6 +57,15 @@ $dotnetCandidates = @(
 $dotnet = $dotnetCandidates | Select-Object -First 1
 if (-not $dotnet) {
     throw "dotnet was not found. Install the .NET SDK or add dotnet.exe to PATH."
+}
+
+$cargoCandidates = @(
+    ((Get-Command cargo -ErrorAction SilentlyContinue).Source),
+    (Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe")
+) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) }
+$cargo = $cargoCandidates | Select-Object -First 1
+if (-not $cargo) {
+    throw "cargo was not found. Install Rust or add cargo.exe to PATH."
 }
 
 function Assert-UnderDirectory {
@@ -92,8 +125,7 @@ if ($runningProcesses.Count -gt 0 -and $StopExisting) {
     }
 }
 elseif ($runningProcesses.Count -gt 0) {
-    Write-Warning "ReadOS.App is already running and may lock publish output. Re-run with -StopExisting or close the app window."
-    exit 1
+    throw "ReadOS.App is already running and may lock publish output. Re-run with -StopExisting or close the app window."
 }
 
 New-Item -ItemType Directory -Force -Path $artifactsRoot, $stagingRoot, $releaseRoot | Out-Null
@@ -104,32 +136,96 @@ if (Test-Path $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 
-if (-not $SkipTests) {
-    Write-Host "Running MSP tests..."
-    & $dotnet test $testProjectPath -c $Configuration --no-restore
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-}
+$previousNativeDll = $env:READOS_MSP_NATIVE_DLL
+Push-Location $repoRoot
+try {
+    Push-Location $nativeRoot
+    try {
+        $env:CARGO_INCREMENTAL = "0"
+        if (-not $SkipTests) {
+            Write-Host "Verifying the Rust MSP core..."
+            Invoke-NativeCommand -FilePath $cargo -ArgumentList @("fmt", "--check")
+            Invoke-NativeCommand -FilePath $cargo -ArgumentList @("test")
+            Invoke-NativeCommand -FilePath $cargo -ArgumentList @("clippy", "--all-targets", "--", "-D", "warnings")
+        }
 
-Write-Host "Publishing ReadOS.App ($Configuration, $Runtime, version $Version)..."
-& $dotnet publish $projectPath `
-    -c $Configuration `
-    -r $Runtime `
-    --self-contained true `
-    -o $publishRoot `
-    /p:Version=$Version `
-    /p:InformationalVersion=$Version `
-    /p:AssemblyVersion=$assemblyVersion `
-    /p:FileVersion=$assemblyVersion `
-    /p:WindowsAppSDKSelfContained=true `
-    /p:PublishSingleFile=false
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+        Write-Host "Building the Rust MSP core release DLL..."
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("build", "--release")
+    }
+    finally {
+        Pop-Location
+    }
+
+    if (-not (Test-Path -LiteralPath $nativeDllPath -PathType Leaf)) {
+        throw "Native MSP release DLL was not produced: $nativeDllPath"
+    }
+    & (Join-Path $repoRoot "scripts\verify-msp-native-binary.ps1") `
+        -DllPath $nativeDllPath
+    $env:READOS_MSP_NATIVE_DLL = $nativeDllPath
+
+    if (-not $SkipTests) {
+        Write-Host "Restoring the ReadOS solution..."
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("restore", $solutionPath)
+
+        foreach ($testProjectPath in $testProjectPaths) {
+            Write-Host "Running tests: $testProjectPath"
+            Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("test", $testProjectPath, "-c", $Configuration, "--no-restore")
+        }
+    }
+
+    Write-Host "Restoring ReadOS.App for $Runtime..."
+    Invoke-NativeCommand -FilePath $dotnet -ArgumentList @(
+        "restore",
+        $projectPath,
+        "-r", $Runtime,
+        "/p:WindowsAppSDKSelfContained=true"
+    )
+
+    Write-Host "Publishing ReadOS.App ($Configuration, $Runtime, version $Version)..."
+    Invoke-NativeCommand -FilePath $dotnet -ArgumentList @(
+        "publish",
+        $projectPath,
+        "-c", $Configuration,
+        "-r", $Runtime,
+        "--self-contained", "true",
+        "--no-restore",
+        "-o", $publishRoot,
+        "/p:Version=$Version",
+        "/p:InformationalVersion=$Version",
+        "/p:AssemblyVersion=$assemblyVersion",
+        "/p:FileVersion=$assemblyVersion",
+        "/p:WindowsAppSDKSelfContained=true",
+        "/p:DebugType=None",
+        "/p:DebugSymbols=false",
+        "/p:PathMap=$repoRoot=/_/reados",
+        "/p:PublishSingleFile=false"
+    )
+}
+finally {
+    Pop-Location
+    if ($null -eq $previousNativeDll) {
+        Remove-Item Env:READOS_MSP_NATIVE_DLL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:READOS_MSP_NATIVE_DLL = $previousNativeDll
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
 Copy-Item -Path (Join-Path $publishRoot "*") -Destination $packageRoot -Recurse -Force
+Copy-Item -LiteralPath $nativeDllPath -Destination (Join-Path $packageRoot "msp_core.dll") -Force
+
+$nativeLicenseRoot = Join-Path $packageRoot "licenses\msp-upstream"
+New-Item -ItemType Directory -Force -Path $nativeLicenseRoot | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoRoot "conformance\msp-upstream\APACHE-2.0.txt") `
+    -Destination (Join-Path $nativeLicenseRoot "APACHE-2.0.txt") `
+    -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "conformance\msp-upstream\NOTICE") `
+    -Destination (Join-Path $nativeLicenseRoot "NOTICE") `
+    -Force
+Copy-Item -LiteralPath (Join-Path $nativeRoot "UPSTREAM_MSP.md") `
+    -Destination (Join-Path $nativeLicenseRoot "SOURCE-PROVENANCE.md") `
+    -Force
 
 $releaseNotes = @"
 ReadOS Windows Release
@@ -137,6 +233,7 @@ Version: $Version
 Runtime: $Runtime
 Configuration: $Configuration
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")
+Native MSP: msp_core.dll (ABI 2.0, JSON reados-msp-native/1, static MSVC CRT)
 
 Start:
   Run ReadOS.App.exe
@@ -151,6 +248,23 @@ Distribution:
 
 Set-Content -LiteralPath (Join-Path $packageRoot "RELEASE.txt") -Value $releaseNotes -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination (Join-Path $packageRoot "README.md") -Force
+
+& (Join-Path $repoRoot "scripts\verify-windows-package.ps1") `
+    -PackageRoot $packageRoot `
+    -ArtifactsRoot $artifactsRoot `
+    -RequireNativeMsp
+
+if (-not $SkipSmoke) {
+    Write-Host "Running the staged native MSP ABI smoke..."
+    & (Join-Path $repoRoot "scripts\smoke-msp-native.ps1") `
+        -DllPath (Join-Path $packageRoot "msp_core.dll")
+
+    $smokeRoot = Join-Path $artifactsRoot "smoke\$packageName"
+    & (Join-Path $repoRoot "scripts\smoke-windows-package.ps1") `
+        -PackageRoot $packageRoot `
+        -ArtifactsRoot $artifactsRoot `
+        -SmokeRoot $smokeRoot
+}
 
 if (-not $NoZip) {
     Write-Host "Creating zip package..."

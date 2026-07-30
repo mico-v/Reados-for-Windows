@@ -34,7 +34,7 @@ public sealed class ReadOsMspHostingReadinessServiceTests
     }
 
     [Fact]
-    public void BuildReport_keeps_app_adapters_policy_and_runtime_core_out_of_hosting_split()
+    public void BuildReport_keeps_app_adapters_and_managed_control_plane_while_reporting_native_proxy()
     {
         var service = new ReadOsMspHostingReadinessService();
 
@@ -67,9 +67,15 @@ public sealed class ReadOsMspHostingReadinessServiceTests
         Assert.Contains(
             report.Boundaries,
             boundary =>
-                boundary.Name == "Parser and runtime dispatch" &&
+                boundary.Name == "Managed parser, policy, and terminal audit control plane" &&
                 boundary.TargetOwner == "ReadOS.Msp" &&
                 boundary.Status == ReadOsMspHostingBoundaryStatus.RuntimeOwned);
+        Assert.Contains(
+            report.Boundaries,
+            boundary =>
+                boundary.Name == "Native core execution proxy" &&
+                boundary.TargetOwner == "ReadOS.Msp.Hosting.Native" &&
+                boundary.Status == ReadOsMspHostingBoundaryStatus.Hosted);
     }
 
     [Fact]
@@ -136,6 +142,7 @@ public sealed class ReadOsMspHostingReadinessServiceTests
             report.NextSteps,
             step => Assert.Contains("Keep document, PDF, chat", step),
             step => Assert.Contains("Only move host-neutral contracts", step),
-            step => Assert.Contains("Treat command-host diagnostics as internal host metadata", step));
+            step => Assert.Contains("Treat command-host diagnostics as internal host metadata", step),
+            step => Assert.Contains("Expand Rust execution only behind managed policy/audit", step));
     }
 }

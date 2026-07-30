@@ -50,7 +50,7 @@ public sealed class MspRuntime
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return ExecuteCoreAsync(request, eventSink: null, cancellationToken);
+        return ExecuteSafelyAsync(request, eventSink: null, cancellationToken);
     }
 
     public IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
@@ -76,42 +76,7 @@ public sealed class MspRuntime
         {
             try
             {
-                await ExecuteCoreAsync(request, eventSink, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                var canceled = MspCommandResult.Failure(
-                    "Command execution was canceled.",
-                    exitCode: 130,
-                    code: "msp.canceled",
-                    recoveryHint: "Rerun the command if the canceled operation is still needed.");
-                eventSink.TryPublish(new MspCommandEvent
-                {
-                    Kind = MspCommandEventKind.Canceled,
-                    Actor = request.Actor,
-                    SessionId = request.SessionId,
-                    CommandText = request.CommandText,
-                    ExitCode = canceled.ExitCode,
-                    Result = canceled,
-                    Message = "Command execution was canceled."
-                });
-            }
-            catch (Exception ex)
-            {
-                var failed = MspCommandResult.Failure(
-                    ex.Message,
-                    code: "msp.runtime.exception",
-                    recoveryHint: "Inspect the command and runtime host state before retrying.");
-                eventSink.TryPublish(new MspCommandEvent
-                {
-                    Kind = MspCommandEventKind.Completed,
-                    Actor = request.Actor,
-                    SessionId = request.SessionId,
-                    CommandText = request.CommandText,
-                    ExitCode = failed.ExitCode,
-                    Result = failed,
-                    Message = ex.Message
-                });
+                await ExecuteSafelyAsync(request, eventSink, cancellationToken);
             }
             finally
             {
@@ -127,11 +92,55 @@ public sealed class MspRuntime
         await execution;
     }
 
+    private async ValueTask<MspCommandResult> ExecuteSafelyAsync(
+        MspCommandRequest request,
+        IMspCommandEventSink? eventSink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ExecuteCoreAsync(request, eventSink, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            var canceled = CreateCanceledResult();
+            return await CompleteWithAuditAsync(
+                request,
+                CreateRequestContext(request, eventSink),
+                string.Empty,
+                CreateUnresolvedMetadata(string.Empty),
+                MspCommandPreview.Empty,
+                MspPolicyDecision.NotEvaluated,
+                canceled,
+                eventSink,
+                MspCommandEventKind.Canceled);
+        }
+        catch (Exception ex)
+        {
+            var failed = MspCommandResult.Failure(
+                ex.Message,
+                code: "msp.runtime.exception",
+                recoveryHint: "Inspect the command and runtime host state before retrying.");
+            return await CompleteWithAuditAsync(
+                request,
+                CreateRequestContext(request, eventSink),
+                string.Empty,
+                CreateUnresolvedMetadata(string.Empty),
+                MspCommandPreview.Empty,
+                MspPolicyDecision.NotEvaluated,
+                failed,
+                eventSink,
+                MspCommandEventKind.Completed);
+        }
+    }
+
     private async ValueTask<MspCommandResult> ExecuteCoreAsync(
         MspCommandRequest request,
         IMspCommandEventSink? eventSink,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        var requestContext = CreateRequestContext(request, eventSink);
         MspParsedCommand parsed;
         try
         {
@@ -144,14 +153,19 @@ public sealed class MspRuntime
                 exitCode: 2,
                 code: "msp.parse",
                 recoveryHint: "Check quoting, command name, and reserved shell syntax.");
-            await PublishCompletedAsync(eventSink, request, string.Empty, parsedFailure, cancellationToken);
-            return parsedFailure;
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                string.Empty,
+                CreateUnresolvedMetadata(string.Empty),
+                MspCommandPreview.Empty,
+                MspPolicyDecision.NotEvaluated,
+                parsedFailure,
+                eventSink,
+                MspCommandEventKind.Completed);
         }
 
-        var requestContext = context
-            .WithEventSink(eventSink)
-            .WithWorkingDirectory(request.WorkingDirectory)
-            .WithInvocation(new MspCommandInvocation
+        requestContext = requestContext.WithInvocation(new MspCommandInvocation
             {
                 Actor = request.Actor,
                 CommandText = request.CommandText,
@@ -168,7 +182,7 @@ public sealed class MspRuntime
             CommandText = request.CommandText,
             CommandName = parsed.Name,
             Message = "Command execution started."
-        }, cancellationToken);
+        }, CancellationToken.None);
 
         if (!requestContext.Registry.TryGet(parsed.Name, out var command))
         {
@@ -178,25 +192,68 @@ public sealed class MspRuntime
                 code: "msp.command_not_found",
                 target: parsed.Name,
                 recoveryHint: "Run help to list available MSP commands.");
-            await PublishCompletedAsync(eventSink, request, parsed.Name, missing, cancellationToken);
-            return missing;
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                parsed.Name,
+                CreateUnresolvedMetadata(parsed.Name),
+                MspCommandPreview.Empty,
+                MspPolicyDecision.NotEvaluated,
+                missing,
+                eventSink,
+                MspCommandEventKind.Completed);
         }
 
         var commandMetadata = command.GetMetadata(parsed.Arguments);
         var commandPreview = command.GetPreview(parsed.Arguments);
-        var decision = await requestContext.Policy.AuthorizeAsync(new MspPolicyRequest
+        MspPolicyDecision decision;
+        try
         {
-            CommandName = parsed.Name,
-            CommandText = request.CommandText,
-            Actor = request.Actor,
-            SessionId = request.SessionId,
-            WorkingDirectory = requestContext.WorkingDirectory,
-            DryRun = request.DryRun,
-            Environment = request.Environment,
-            Arguments = parsed.Arguments,
-            CommandMetadata = commandMetadata,
-            Preview = commandPreview
-        }, cancellationToken);
+            decision = await requestContext.Policy.AuthorizeAsync(new MspPolicyRequest
+            {
+                CommandName = parsed.Name,
+                CommandText = request.CommandText,
+                Actor = request.Actor,
+                SessionId = request.SessionId,
+                WorkingDirectory = requestContext.WorkingDirectory,
+                DryRun = request.DryRun,
+                Environment = request.Environment,
+                Arguments = parsed.Arguments,
+                CommandMetadata = commandMetadata,
+                Preview = commandPreview
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                parsed.Name,
+                commandMetadata,
+                commandPreview,
+                MspPolicyDecision.NotEvaluated,
+                CreateCanceledResult(),
+                eventSink,
+                MspCommandEventKind.Canceled);
+        }
+        catch (Exception ex)
+        {
+            var policyFailure = MspCommandResult.Failure(
+                ex.Message,
+                code: "msp.policy.exception",
+                target: parsed.Name,
+                recoveryHint: "Inspect the host policy configuration before retrying the command.");
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                parsed.Name,
+                commandMetadata,
+                commandPreview,
+                MspPolicyDecision.NotEvaluated,
+                policyFailure,
+                eventSink,
+                MspCommandEventKind.Completed);
+        }
         await PublishEventAsync(eventSink, new MspCommandEvent
         {
             Kind = MspCommandEventKind.PolicyDecision,
@@ -208,7 +265,7 @@ public sealed class MspRuntime
             Effects = commandMetadata.Effects,
             Preview = commandPreview,
             Message = $"Policy decision: {decision}"
-        }, cancellationToken);
+        }, CancellationToken.None);
 
         if (decision != MspPolicyDecision.Allow)
         {
@@ -218,22 +275,38 @@ public sealed class MspRuntime
                 code: GetPolicyDiagnosticCode(decision),
                 target: parsed.Name,
                 recoveryHint: GetPolicyRecoveryHint(decision));
-            var deniedAuditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, denied, cancellationToken);
-            var deniedResult = denied with { AuditRecords = new[] { deniedAuditRecord } };
-            await PublishCompletedAsync(eventSink, request, parsed.Name, deniedResult, cancellationToken);
-            return deniedResult;
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                parsed.Name,
+                commandMetadata,
+                commandPreview,
+                decision,
+                denied,
+                eventSink,
+                MspCommandEventKind.Completed);
         }
 
         MspCommandResult result;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             result = request.DryRun
                 ? MspCommandResult.Success($"dry-run: {request.CommandText}")
                 : await command.ExecuteAsync(requestContext, parsed.Arguments, cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            throw;
+            return await CompleteWithAuditAsync(
+                request,
+                requestContext,
+                parsed.Name,
+                commandMetadata,
+                commandPreview,
+                decision,
+                CreateCanceledResult(),
+                eventSink,
+                MspCommandEventKind.Canceled);
         }
         catch (Exception ex)
         {
@@ -244,9 +317,70 @@ public sealed class MspRuntime
                 recoveryHint: "Inspect stderr, command arguments, and workspace state before retrying.");
         }
 
-        var auditRecord = await RecordAuditAsync(request, requestContext, parsed.Name, commandMetadata, commandPreview, decision, result, cancellationToken);
-        var finalResult = result with { AuditRecords = result.AuditRecords.Concat(new[] { auditRecord }).ToArray() };
-        await PublishCompletedAsync(eventSink, request, parsed.Name, finalResult, cancellationToken);
+        return await CompleteWithAuditAsync(
+            request,
+            requestContext,
+            parsed.Name,
+            commandMetadata,
+            commandPreview,
+            decision,
+            result,
+            eventSink,
+            MspCommandEventKind.Completed);
+    }
+
+    private MspCommandContext CreateRequestContext(
+        MspCommandRequest request,
+        IMspCommandEventSink? eventSink)
+    {
+        return context
+            .WithEventSink(eventSink)
+            .WithWorkingDirectory(request.WorkingDirectory);
+    }
+
+    private static MspCommandMetadata CreateUnresolvedMetadata(string commandName)
+    {
+        return MspCommandMetadata.Create(
+            commandName,
+            string.IsNullOrWhiteSpace(commandName)
+                ? "Command text could not be parsed."
+                : "Command is not registered.");
+    }
+
+    private static MspCommandResult CreateCanceledResult()
+    {
+        return MspCommandResult.Failure(
+            "Command execution was canceled.",
+            exitCode: 130,
+            code: "msp.canceled",
+            recoveryHint: "Rerun the command if the canceled operation is still needed.");
+    }
+
+    private static async ValueTask<MspCommandResult> CompleteWithAuditAsync(
+        MspCommandRequest request,
+        MspCommandContext context,
+        string commandName,
+        MspCommandMetadata commandMetadata,
+        MspCommandPreview commandPreview,
+        MspPolicyDecision decision,
+        MspCommandResult result,
+        IMspCommandEventSink? eventSink,
+        MspCommandEventKind terminalKind)
+    {
+        var auditRecord = await RecordAuditAsync(
+            request,
+            context,
+            commandName,
+            commandMetadata,
+            commandPreview,
+            decision,
+            result,
+            CancellationToken.None);
+        var finalResult = result with
+        {
+            AuditRecords = result.AuditRecords.Concat(new[] { auditRecord }).ToArray()
+        };
+        await PublishTerminalAsync(eventSink, request, commandName, finalResult, terminalKind);
         return finalResult;
     }
 
@@ -278,24 +412,26 @@ public sealed class MspRuntime
         return record;
     }
 
-    private static ValueTask PublishCompletedAsync(
+    private static ValueTask PublishTerminalAsync(
         IMspCommandEventSink? eventSink,
         MspCommandRequest request,
         string commandName,
         MspCommandResult result,
-        CancellationToken cancellationToken)
+        MspCommandEventKind terminalKind)
     {
         return PublishEventAsync(eventSink, new MspCommandEvent
         {
-            Kind = MspCommandEventKind.Completed,
+            Kind = terminalKind,
             Actor = request.Actor,
             SessionId = request.SessionId,
             CommandText = request.CommandText,
             CommandName = commandName,
             ExitCode = result.ExitCode,
             Result = result,
-            Message = result.Succeeded ? "Command execution completed." : result.Stderr
-        }, cancellationToken);
+            Message = terminalKind == MspCommandEventKind.Canceled
+                ? "Command execution was canceled."
+                : result.Succeeded ? "Command execution completed." : result.Stderr
+        }, CancellationToken.None);
     }
 
     private static ValueTask PublishEventAsync(
@@ -342,9 +478,5 @@ public sealed class MspRuntime
             return writer.WriteAsync(commandEvent, cancellationToken);
         }
 
-        public void TryPublish(MspCommandEvent commandEvent)
-        {
-            writer.TryWrite(commandEvent);
-        }
     }
 }

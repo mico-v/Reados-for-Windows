@@ -16,6 +16,7 @@ public static class MspCommandLineParser
         var inSingleQuote = false;
         var inDoubleQuote = false;
         var escaping = false;
+        var tokenStarted = false;
 
         foreach (var character in commandText)
         {
@@ -23,24 +24,28 @@ public static class MspCommandLineParser
             {
                 current.Append(character);
                 escaping = false;
+                tokenStarted = true;
                 continue;
             }
 
             if (character == '\\' && !inSingleQuote)
             {
                 escaping = true;
+                tokenStarted = true;
                 continue;
             }
 
             if (character == '\'' && !inDoubleQuote)
             {
                 inSingleQuote = !inSingleQuote;
+                tokenStarted = true;
                 continue;
             }
 
             if (character == '"' && !inSingleQuote)
             {
                 inDoubleQuote = !inDoubleQuote;
+                tokenStarted = true;
                 continue;
             }
 
@@ -48,7 +53,7 @@ public static class MspCommandLineParser
             {
                 if (char.IsWhiteSpace(character))
                 {
-                    FlushToken(tokens, current);
+                    FlushToken(tokens, current, ref tokenStarted);
                     continue;
                 }
 
@@ -60,11 +65,13 @@ public static class MspCommandLineParser
             }
 
             current.Append(character);
+            tokenStarted = true;
         }
 
         if (escaping)
         {
             current.Append('\\');
+            tokenStarted = true;
         }
 
         if (inSingleQuote || inDoubleQuote)
@@ -72,23 +79,32 @@ public static class MspCommandLineParser
             throw new MspParseException("Command text contains an unterminated quote.");
         }
 
-        FlushToken(tokens, current);
+        FlushToken(tokens, current, ref tokenStarted);
         if (tokens.Count == 0)
         {
             throw new MspParseException("Command text is empty.");
         }
 
+        if (tokens[0].Length == 0)
+        {
+            throw new MspParseException("Command name is empty.");
+        }
+
         return new MspParsedCommand(tokens[0], tokens.Skip(1).ToArray());
     }
 
-    private static void FlushToken(ICollection<string> tokens, StringBuilder current)
+    private static void FlushToken(
+        ICollection<string> tokens,
+        StringBuilder current,
+        ref bool tokenStarted)
     {
-        if (current.Length == 0)
+        if (!tokenStarted)
         {
             return;
         }
 
         tokens.Add(current.ToString());
         current.Clear();
+        tokenStarted = false;
     }
 }

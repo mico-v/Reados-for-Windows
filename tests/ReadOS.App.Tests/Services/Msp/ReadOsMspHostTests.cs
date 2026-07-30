@@ -2,9 +2,11 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Policy;
+using ReadOS.Msp.Runtime;
 
 namespace ReadOS.App.Tests.Services.Msp;
 
@@ -86,6 +88,61 @@ public sealed class ReadOsMspHostTests
         Assert.Equal("reados-agent", audit.Actor);
         Assert.Equal(ReadOsMspHost.DefaultSessionId, audit.SessionId);
         Assert.Equal("workspace", audit.CommandName);
+    }
+
+    [Fact]
+    public async Task Host_runtime_factory_protects_pwd_and_echo_as_lazy_native_owned_commands()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var dependencies = CreateHostDependencies(workspace, document);
+        var provider = new TrackingNativeAdapterProvider();
+        using var hostRuntime = new ReadOsMspHostRuntimeFactory().Create(
+            dependencies,
+            ReadOsMspHost.DefaultSessionId,
+            "reados-agent",
+            provider,
+            ownsNativeAdapterProvider: true);
+
+        foreach (var commandName in new[] { "pwd", "PWD", "echo", "EcHo" })
+        {
+            Assert.True(hostRuntime.Composition.Registry.TryGet(commandName, out var command));
+            Assert.IsType<MspNativeBackedCommand>(command);
+        }
+
+        foreach (var commandName in new[] { "ls", "cat", "help", "artifact", "workflow", "workspace" })
+        {
+            Assert.True(hostRuntime.Composition.Registry.TryGet(commandName, out var command));
+            Assert.IsNotType<MspNativeBackedCommand>(command);
+        }
+
+        var result = await hostRuntime.CommandHost.ExecuteAsync(
+            hostRuntime.RequestFactory.Create("workspace info"));
+
+        Assert.True(result.Succeeded, result.Stderr);
+        Assert.False(provider.IsAdapterCreated);
+        Assert.Equal(0, provider.DisposeCalls);
+
+        hostRuntime.Dispose();
+        hostRuntime.Dispose();
+        Assert.Equal(1, provider.DisposeCalls);
+    }
+
+    [Theory]
+    [InlineData("pwd")]
+    [InlineData("PWD")]
+    [InlineData("echo")]
+    [InlineData("EcHo")]
+    public void Native_core_registry_rejects_host_overrides_of_protected_commands(
+        string commandName)
+    {
+        var commandPack = new MspCommandPack(
+            "Hostile overrides",
+            new[] { new ProtectedNameTestCommand(commandName) });
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            ReadOsNativeCoreRegistryFactory.ValidateHostCommandPack(commandPack));
+
+        Assert.Contains("cannot override native-owned command", exception.Message);
     }
 
     [Fact]
@@ -441,7 +498,9 @@ public sealed class ReadOsMspHostTests
             "test-agent");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Chat model provider failed: upstream provider returned 500", result.Stderr);
+        Assert.Equal(
+            "Chat model provider failed. Provider response details were withheld to protect request and credential data.",
+            result.Stderr);
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
         Assert.Equal("OpenAI Compatible/gpt-4.1-mini", diagnostic.Target);
@@ -1103,7 +1162,9 @@ public sealed class ReadOsMspHostTests
             "test-agent");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Chat model provider failed: provider unavailable", result.Stderr);
+        Assert.Equal(
+            "Chat model provider failed. Provider response details were withheld to protect request and credential data.",
+            result.Stderr);
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
         Assert.Contains("provider base URL", diagnostic.RecoveryHint);
@@ -1194,7 +1255,9 @@ public sealed class ReadOsMspHostTests
             "test-agent");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Chat model provider failed: provider unavailable", result.Stderr);
+        Assert.Equal(
+            "Chat model provider failed. Provider response details were withheld to protect request and credential data.",
+            result.Stderr);
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("reados.chat.model_provider_failed", diagnostic.Code);
         Assert.Contains("provider base URL", diagnostic.RecoveryHint);
@@ -1524,6 +1587,40 @@ public sealed class ReadOsMspHostTests
         public string GetAbsolutePath(LibraryItem item)
         {
             return item.RelativePath;
+        }
+    }
+
+    private sealed class ProtectedNameTestCommand(string name) : IMspCommand
+    {
+        public string Name { get; } = name;
+
+        public string Summary => "Synthetic protected-name override.";
+
+        public ValueTask<MspCommandResult> ExecuteAsync(
+            MspCommandContext context,
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(MspCommandResult.Success());
+        }
+    }
+
+    private sealed class TrackingNativeAdapterProvider : IMspNativeAdapterProvider
+    {
+        public bool IsAdapterCreated { get; private set; }
+
+        public int DisposeCalls { get; private set; }
+
+        public IMspNativeAdapter GetRequiredAdapter()
+        {
+            IsAdapterCreated = true;
+            throw new InvalidOperationException(
+                "The test did not expect the native adapter to be created.");
+        }
+
+        public void Dispose()
+        {
+            DisposeCalls++;
         }
     }
 

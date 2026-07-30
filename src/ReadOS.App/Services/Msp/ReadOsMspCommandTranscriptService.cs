@@ -114,7 +114,7 @@ internal sealed class ReadOsMspCommandTranscriptService
         entry.PolicyPreview = auditRecord?.Preview.ToDisplayText() ?? entry.PolicyPreview;
         entry.DiagnosticsSummary = FormatDiagnostics(result.Diagnostics);
         entry.RecoveryHint = GetRecoveryHint(result.Diagnostics);
-        if (entry.WasCanceled && string.IsNullOrWhiteSpace(entry.ProgressMessage))
+        if (entry.WasCanceled)
         {
             entry.ProgressMessage = "MSP 命令已取消。";
         }

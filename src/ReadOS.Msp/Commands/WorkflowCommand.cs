@@ -2,12 +2,16 @@ using System.Text;
 using System.Text.Json;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Runtime;
+using ReadOS.Msp.Workspace;
 
 namespace ReadOS.Msp.Commands;
 
 public sealed class WorkflowCommand : IMspCommand
 {
     private const string ArtifactOption = "--artifact";
+    private const string ArtifactNamespace = "/artifacts";
+    private const string SessionNamespace = "/sessions";
+    private const string TranscriptNamespace = "/transcripts";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -61,7 +65,7 @@ public sealed class WorkflowCommand : IMspCommand
         {
             string.Equals(spec.SessionSelector, "current", StringComparison.OrdinalIgnoreCase)
                 ? "current session"
-                : GetSessionPath(spec.SessionSelector)
+                : $"session: {spec.SessionSelector}"
         };
         if (!string.IsNullOrWhiteSpace(spec.ArtifactPath))
         {
@@ -99,7 +103,12 @@ public sealed class WorkflowCommand : IMspCommand
         }
 
         var sessionId = ResolveSessionId(spec.SessionSelector, context);
-        if (!IsSafeSessionId(sessionId))
+        if (!MspNamespacePathUtility.TryResolveRecordPath(
+                context.Workspace,
+                SessionNamespace,
+                sessionId,
+                ".json",
+                out var sessionPath))
         {
             return MspCommandResult.Failure(
                 "Workflow session id must contain only letters, digits, '.', '-', or '_'.",
@@ -125,7 +134,6 @@ public sealed class WorkflowCommand : IMspCommand
             spec.IsNamedRun ? $"Running workflow {spec.WorkflowName}." : "Reading workflow session.",
             10,
             cancellationToken);
-        var sessionPath = GetSessionPath(sessionId);
         var sessionContent = await context.Workspace.TryReadTextAsync(sessionPath, cancellationToken);
         if (sessionContent is null)
         {
@@ -144,6 +152,16 @@ public sealed class WorkflowCommand : IMspCommand
                 code: "msp.workflow.invalid_session",
                 target: sessionPath,
                 recoveryHint: "Inspect the session projection before generating a workflow summary.");
+        }
+
+        if (!MspNamespacePathUtility.IsValidIdentifier(session.Id))
+        {
+            return MspCommandResult.Failure(
+                "Workflow session record contains an invalid id.",
+                exitCode: 2,
+                code: "msp.workflow.invalid_session_id",
+                target: session.Id,
+                recoveryHint: "Refresh the session projection before rerunning the workflow.");
         }
 
         await context.ReportProgressAsync("Reading workflow transcripts.", 35, cancellationToken);
@@ -227,7 +245,24 @@ public sealed class WorkflowCommand : IMspCommand
         {
             foreach (var transcriptId in session.TranscriptIds)
             {
-                var transcriptPath = GetTranscriptPath(transcriptId);
+                if (!MspNamespacePathUtility.TryResolveRecordPath(
+                        context.Workspace,
+                        TranscriptNamespace,
+                        transcriptId,
+                        ".json",
+                        out var transcriptPath))
+                {
+                    diagnostics.Add(new MspCommandDiagnostic
+                    {
+                        Severity = MspDiagnosticSeverity.Warning,
+                        Code = "msp.workflow.invalid_transcript_id",
+                        Target = transcriptId,
+                        Message = "Workflow session references an invalid transcript id.",
+                        RecoveryHint = "Refresh the session projection before rerunning the workflow."
+                    });
+                    continue;
+                }
+
                 sourcePaths.Add(transcriptPath);
                 var transcript = await ReadTranscriptAsync(context, transcriptPath, diagnostics, cancellationToken);
                 if (transcript is not null)
@@ -272,7 +307,24 @@ public sealed class WorkflowCommand : IMspCommand
 
         foreach (var path in session.ArtifactPaths.Where(path => !string.IsNullOrWhiteSpace(path)))
         {
-            var artifactPath = context.Workspace.NormalizePath(path);
+            if (!MspNamespacePathUtility.TryResolveDescendant(
+                    context.Workspace,
+                    ArtifactNamespace,
+                    path,
+                    "/",
+                    out var artifactPath))
+            {
+                diagnostics.Add(new MspCommandDiagnostic
+                {
+                    Severity = MspDiagnosticSeverity.Warning,
+                    Code = "msp.workflow.invalid_source_artifact_path",
+                    Target = path,
+                    Message = "Workflow session references an artifact outside /artifacts.",
+                    RecoveryHint = "Refresh the session artifact projection before rerunning the named workflow."
+                });
+                continue;
+            }
+
             var manifestPath = GetArtifactManifestPath(artifactPath);
             sourcePaths.Add(artifactPath);
             sourcePaths.Add(manifestPath);
@@ -719,24 +771,18 @@ public sealed class WorkflowCommand : IMspCommand
             : selector;
     }
 
-    private static bool IsSafeSessionId(string sessionId)
-    {
-        return !string.IsNullOrWhiteSpace(sessionId) &&
-            sessionId.All(character =>
-                char.IsLetterOrDigit(character) ||
-                character is '.' or '-' or '_');
-    }
-
     private static bool TryNormalizeArtifactPath(
         MspCommandContext context,
         string path,
         out string normalized,
         out string error)
     {
-        normalized = context.Workspace.NormalizePath(path, context.WorkingDirectory);
-        if (normalized == "/artifacts" ||
-            !normalized.StartsWith("/artifacts/", StringComparison.Ordinal) ||
-            normalized.EndsWith("/", StringComparison.Ordinal))
+        if (!MspNamespacePathUtility.TryResolveDescendant(
+                context.Workspace,
+                ArtifactNamespace,
+                path,
+                context.WorkingDirectory,
+                out normalized))
         {
             error = "workflow --artifact must target a file under /artifacts.";
             return false;
@@ -744,16 +790,6 @@ public sealed class WorkflowCommand : IMspCommand
 
         error = string.Empty;
         return true;
-    }
-
-    private static string GetSessionPath(string sessionId)
-    {
-        return $"/sessions/{sessionId}.json";
-    }
-
-    private static string GetTranscriptPath(string transcriptId)
-    {
-        return $"/transcripts/{transcriptId}.json";
     }
 
     private static string GetArtifactManifestPath(string artifactPath)

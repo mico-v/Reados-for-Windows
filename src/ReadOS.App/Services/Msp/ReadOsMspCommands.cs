@@ -3446,11 +3446,12 @@ internal static class ReadOsMspCommandHelpers
 
     public static MspCommandResult ChatModelProviderFailed(WorkspaceSettings settings, Exception exception)
     {
+        ArgumentNullException.ThrowIfNull(exception);
         var provider = string.IsNullOrWhiteSpace(settings.ProviderName) ? "unknown-provider" : settings.ProviderName;
         var model = string.IsNullOrWhiteSpace(settings.ModelName) ? "unknown-model" : settings.ModelName;
         var target = $"{provider}/{model}";
         return MspCommandResult.Failure(
-            $"Chat model provider failed: {exception.Message}",
+            "Chat model provider failed. Provider response details were withheld to protect request and credential data.",
             code: "reados.chat.model_provider_failed",
             target: target,
             recoveryHint: "Check the chat provider base URL, API key, model name, and network access, or enable offline responses before retrying chat ask.");

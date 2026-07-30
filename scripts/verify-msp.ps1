@@ -6,6 +6,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($SkipDotNet -and $SkipNative) {
+    throw "At least one verification target must be enabled."
+}
+
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory)]
+        [string] $FilePath,
+
+        [string[]] $ArgumentList = @()
+    )
+
+    & $FilePath @ArgumentList
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "External command failed with exit code ${exitCode}: $FilePath $($ArgumentList -join ' ')"
+    }
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $dotnetCandidates = @(
     (Join-Path $env:ProgramFiles "dotnet\dotnet.exe"),
@@ -18,6 +37,7 @@ $cargoCandidates = @(
     (Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe")
 ) | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) }
 $cargo = $cargoCandidates | Select-Object -First 1
+$nativeDllPath = $null
 
 if (-not $SkipNative) {
     if (-not $cargo) {
@@ -27,16 +47,25 @@ if (-not $SkipNative) {
     Push-Location (Join-Path $repoRoot "native\msp-core")
     try {
         $env:CARGO_INCREMENTAL = "0"
-        & $cargo fmt --check
-        & $cargo test
-        & $cargo clippy --all-targets -- -D warnings
-        & $cargo build --release
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("fmt", "--check")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("test")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("clippy", "--all-targets", "--", "-D", "warnings")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("build", "--release")
+        $nativeDllPath = Join-Path (Get-Location) "target\release\msp_core.dll"
+        if (-not (Test-Path -LiteralPath $nativeDllPath -PathType Leaf)) {
+            throw "Native MSP release DLL was not produced: $nativeDllPath"
+        }
+        & (Join-Path $repoRoot "scripts\verify-msp-native-binary.ps1") `
+            -DllPath $nativeDllPath
     }
     finally {
         Pop-Location
     }
 
     & (Join-Path $repoRoot "scripts\smoke-msp-native.ps1") -Configuration release
+    if (-not $?) {
+        throw "Native MSP FFI smoke failed."
+    }
 }
 
 if (-not $SkipDotNet) {
@@ -44,11 +73,36 @@ if (-not $SkipDotNet) {
         throw "dotnet was not found. Install the .NET SDK or add dotnet.exe to PATH."
     }
 
-    & $dotnet restore (Join-Path $repoRoot "ReadOS.sln")
-    & $dotnet test (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj") --no-restore
-    & $dotnet test (Join-Path $repoRoot "tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj") --no-restore
-    & $dotnet test (Join-Path $repoRoot "tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj") --no-restore
-    & $dotnet build (Join-Path $repoRoot "ReadOS.sln") --no-restore
+    $previousNativeDll = $env:READOS_MSP_NATIVE_DLL
+    if ($nativeDllPath) {
+        $env:READOS_MSP_NATIVE_DLL = $nativeDllPath
+    }
+
+    Push-Location $repoRoot
+    try {
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("restore", (Join-Path $repoRoot "ReadOS.sln"))
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("test", (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj"), "--no-restore")
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("test", (Join-Path $repoRoot "tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj"), "--no-restore")
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("test", (Join-Path $repoRoot "tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj"), "--no-restore")
+        Invoke-NativeCommand -FilePath $dotnet -ArgumentList @("build", (Join-Path $repoRoot "ReadOS.sln"), "--no-restore")
+    }
+    finally {
+        Pop-Location
+        if ($null -eq $previousNativeDll) {
+            Remove-Item Env:READOS_MSP_NATIVE_DLL -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:READOS_MSP_NATIVE_DLL = $previousNativeDll
+        }
+    }
 }
 
-Write-Host "MSP verification passed."
+if ($SkipDotNet) {
+    Write-Host "Native MSP verification passed."
+}
+elseif ($SkipNative) {
+    Write-Host "Managed MSP verification passed."
+}
+else {
+    Write-Host "MSP verification passed."
+}

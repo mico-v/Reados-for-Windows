@@ -1,315 +1,411 @@
-use serde::{Deserialize, Serialize};
+mod abi_v2;
+mod command_core;
+mod composite_workspace;
+mod contract;
+mod output_sanitizer;
+mod runtime;
+mod shell;
+mod workspace_capabilities;
+mod workspace_fs;
+mod workspace_path;
+
+pub use composite_workspace::{CompositeReadOnlyWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount};
+pub use contract::{
+    MspAuditRecord, MspCommandRequest, MspCommandResult, MspDiagnostic, MspDiagnosticSeverity,
+    MspPolicyDecision, MspPolicyDecisionKind, MspPolicyRequest, MspShellParseRequest,
+    MspShellParseResult, MspWorkspacePathRequest, MspWorkspacePathResult,
+    INTERNAL_CONTRACT_VERSION,
+};
+pub use output_sanitizer::{StreamingWindowsPathSanitizer, WindowsPathSanitizer};
+pub use runtime::execute_request;
+pub use shell::{
+    parse as parse_shell, ParsedAssignment, ParsedCommandLine, ParsedCommandPipeline,
+    ParsedListOperator, ParsedPipeOperator, ParsedRedirection, ParsedRedirectionOperator,
+    ParsedShellScript, ParsedWord, ParsedWordPart, ShellParseError, ShellParseErrorKind,
+};
+pub use workspace_capabilities::WorkspaceReadCapabilities;
+pub use workspace_fs::{
+    ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WorkspaceDirectoryEntry,
+    WorkspaceFileInfo, WorkspaceFileType,
+};
+pub use workspace_path::{
+    normalize as normalize_workspace_path, VirtualPath, WorkspacePathError, WorkspacePathPolicy,
+};
+
+pub use abi_v2::{
+    msp_free_buffer_v2, msp_get_abi_info_v2, msp_invoke_v2, MspAbiInfoV2, MSP_ABI_V2_CAPABILITIES,
+    MSP_ABI_V2_CAP_EXECUTE, MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON, MSP_ABI_V2_CAP_NORMALIZE,
+    MSP_ABI_V2_CAP_PARSE, MSP_ABI_V2_CONTRACT_ID, MSP_ABI_V2_INFO_SIZE, MSP_ABI_V2_MAJOR,
+    MSP_ABI_V2_MAX_EXECUTE_REQUEST_BYTES, MSP_ABI_V2_MAX_EXECUTE_RESPONSE_BYTES,
+    MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES, MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES,
+    MSP_ABI_V2_MAX_PARSE_REQUEST_BYTES, MSP_ABI_V2_MAX_PARSE_RESPONSE_BYTES,
+    MSP_ABI_V2_MAX_REQUEST_BYTES, MSP_ABI_V2_MAX_RESPONSE_BYTES, MSP_ABI_V2_MINOR,
+    MSP_ABI_V2_OPERATION_EXECUTE, MSP_ABI_V2_OPERATION_NORMALIZE, MSP_ABI_V2_OPERATION_PARSE,
+    MSP_ABI_V2_REQUIRED_CAPABILITIES, MSP_ABI_V2_STATUS_INVALID_ARGUMENT, MSP_ABI_V2_STATUS_OK,
+    MSP_ABI_V2_STATUS_PANIC, MSP_ABI_V2_STATUS_REQUEST_TOO_LARGE,
+    MSP_ABI_V2_STATUS_RESPONSE_TOO_LARGE, MSP_ABI_V2_STATUS_UNSUPPORTED_OPERATION,
+};
+
 use std::ffi::{c_char, CStr, CString};
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MspCommandRequest {
-    pub command_text: String,
-    #[serde(default = "default_working_directory")]
-    pub working_directory: String,
-    #[serde(default = "default_actor")]
-    pub actor: String,
-    #[serde(default)]
-    pub dry_run: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MspCommandResult {
-    pub exit_code: i32,
-    pub stdout: String,
-    pub stderr: String,
-    pub audit_records: Vec<MspAuditRecord>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MspAuditRecord {
-    pub actor: String,
-    pub command_name: String,
-    pub command_text: String,
-    pub working_directory: String,
-    pub exit_code: i32,
-}
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[no_mangle]
-/// Executes a JSON MSP command request and returns a heap-allocated JSON command
-/// result string.
+/// Executes an internal ReadOS-to-Rust MSP command JSON request.
+///
+/// This structured boundary is for SDK/runtime integration. It is not the
+/// agent-facing MSP `exec_command` result, which remains terminal text.
 ///
 /// # Safety
 ///
-/// `request_json` must be either null or point to a valid null-terminated UTF-8
-/// string for the duration of this call. The returned pointer must be released
-/// exactly once with [`msp_free_string`].
+/// `request_json` must be null or point to a valid null-terminated UTF-8 string
+/// for the duration of this call. Release the returned pointer exactly once
+/// with [`msp_free_string`].
 pub unsafe extern "C" fn msp_execute_json(request_json: *const c_char) -> *mut c_char {
-    let result = execute_json(request_json)
-        .unwrap_or_else(|error| failure_result(error, "unknown", "", "/"));
-    to_c_string(&serde_json::to_string(&result).unwrap_or_else(|_| {
-        "{\"exitCode\":1,\"stdout\":\"\",\"stderr\":\"serialization failed\",\"auditRecords\":[]}".to_string()
-    }))
+    guarded_json(
+        || execute_json(request_json),
+        || {
+            MspCommandResult::failure(
+                1,
+                "native execution failed\n",
+                MspDiagnostic::error("msp.native.panic", "native execution failed"),
+            )
+        },
+    )
+}
+
+fn execute_json(request_json: *const c_char) -> MspCommandResult {
+    match read_json(request_json) {
+        Ok(json) => execute_json_bytes(json.as_bytes()),
+        Err(error) => invalid_request_result(error),
+    }
+}
+
+pub(crate) fn execute_json_bytes(request_json: &[u8]) -> MspCommandResult {
+    read_json_bytes(request_json)
+        .and_then(|json| {
+            serde_json::from_str::<MspCommandRequest>(json)
+                .map_err(|error| format!("invalid request JSON: {error}"))
+        })
+        .map(execute_request)
+        .unwrap_or_else(invalid_request_result)
 }
 
 #[no_mangle]
-/// Releases strings returned by [`msp_execute_json`].
+/// Parses shell text into the internal, serializable MSP shell AST.
 ///
 /// # Safety
 ///
-/// `value` must be either null or a pointer returned by [`msp_execute_json`]
-/// that has not already been freed.
-pub unsafe extern "C" fn msp_free_string(value: *mut c_char) {
-    if value.is_null() {
-        return;
-    }
+/// `request_json` follows the same ownership rules as [`msp_execute_json`].
+pub unsafe extern "C" fn msp_parse_json(request_json: *const c_char) -> *mut c_char {
+    guarded_json(
+        || parse_json(request_json),
+        || MspShellParseResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            succeeded: false,
+            script: None,
+            error: Some(ShellParseError {
+                kind: ShellParseErrorKind::Syntax,
+                exit_code: 1,
+                message: "native parsing failed".to_string(),
+            }),
+        },
+    )
+}
 
-    unsafe {
-        let _ = CString::from_raw(value);
+fn parse_json(request_json: *const c_char) -> MspShellParseResult {
+    match read_json(request_json) {
+        Ok(json) => parse_json_bytes(json.as_bytes()),
+        Err(error) => invalid_parse_result(error),
     }
 }
 
-fn execute_json(request_json: *const c_char) -> Result<MspCommandResult, String> {
-    if request_json.is_null() {
+pub(crate) fn parse_json_bytes(request_json: &[u8]) -> MspShellParseResult {
+    match read_json_bytes(request_json).and_then(|json| {
+        serde_json::from_str::<MspShellParseRequest>(json)
+            .map_err(|error| format!("invalid parse request JSON: {error}"))
+    }) {
+        Ok(request) => {
+            if let Err(message) = contract::validate_contract_version(&request.contract_version) {
+                MspShellParseResult {
+                    contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+                    succeeded: false,
+                    script: None,
+                    error: Some(ShellParseError {
+                        kind: ShellParseErrorKind::Syntax,
+                        exit_code: 2,
+                        message,
+                    }),
+                }
+            } else {
+                match parse_shell(&request.command_text) {
+                    Ok(script) => MspShellParseResult {
+                        contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+                        succeeded: true,
+                        script: Some(script),
+                        error: None,
+                    },
+                    Err(error) => MspShellParseResult {
+                        contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+                        succeeded: false,
+                        script: None,
+                        error: Some(error),
+                    },
+                }
+            }
+        }
+        Err(message) => invalid_parse_result(message),
+    }
+}
+
+fn invalid_parse_result(message: String) -> MspShellParseResult {
+    MspShellParseResult {
+        contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+        succeeded: false,
+        script: None,
+        error: Some(ShellParseError {
+            kind: ShellParseErrorKind::Syntax,
+            exit_code: 1,
+            message,
+        }),
+    }
+}
+
+#[no_mangle]
+/// Normalizes a model-visible WorkspaceFS path without exposing a host path.
+///
+/// # Safety
+///
+/// `request_json` follows the same ownership rules as [`msp_execute_json`].
+pub unsafe extern "C" fn msp_normalize_workspace_path_json(
+    request_json: *const c_char,
+) -> *mut c_char {
+    guarded_json(
+        || normalize_workspace_path_json(request_json),
+        || MspWorkspacePathResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            succeeded: false,
+            virtual_path: None,
+            error: Some("native workspace path normalization failed".to_string()),
+        },
+    )
+}
+
+fn normalize_workspace_path_json(request_json: *const c_char) -> MspWorkspacePathResult {
+    match read_json(request_json) {
+        Ok(json) => normalize_workspace_path_json_bytes(json.as_bytes()),
+        Err(error) => invalid_workspace_path_result(error),
+    }
+}
+
+pub(crate) fn normalize_workspace_path_json_bytes(request_json: &[u8]) -> MspWorkspacePathResult {
+    match read_json_bytes(request_json).and_then(|json| {
+        serde_json::from_str::<MspWorkspacePathRequest>(json)
+            .map_err(|error| format!("invalid workspace path request JSON: {error}"))
+    }) {
+        Ok(request) => {
+            let version = contract::validate_contract_version(&request.contract_version);
+            match version.and_then(|_| {
+                normalize_workspace_path(&request.path, &request.current_directory)
+                    .map_err(|error| error.to_string())
+            }) {
+                Ok(virtual_path) => MspWorkspacePathResult {
+                    contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+                    succeeded: true,
+                    virtual_path: Some(virtual_path),
+                    error: None,
+                },
+                Err(error) => MspWorkspacePathResult {
+                    contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+                    succeeded: false,
+                    virtual_path: None,
+                    error: Some(error),
+                },
+            }
+        }
+        Err(error) => invalid_workspace_path_result(error),
+    }
+}
+
+fn invalid_workspace_path_result(error: String) -> MspWorkspacePathResult {
+    MspWorkspacePathResult {
+        contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+        succeeded: false,
+        virtual_path: None,
+        error: Some(error),
+    }
+}
+
+#[no_mangle]
+/// Releases strings returned by the MSP native JSON functions.
+///
+/// # Safety
+///
+/// `value` must be null or a pointer returned by this library that has not
+/// already been freed.
+pub unsafe extern "C" fn msp_free_string(value: *mut c_char) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if value.is_null() {
+            return;
+        }
+        unsafe {
+            let _ = CString::from_raw(value);
+        }
+    }));
+}
+
+fn read_json(value: *const c_char) -> Result<String, String> {
+    if value.is_null() {
         return Err("request_json is null".to_string());
     }
-
-    let input = unsafe { CStr::from_ptr(request_json) }
+    let text = unsafe { CStr::from_ptr(value) }
         .to_str()
         .map_err(|_| "request_json is not valid UTF-8".to_string())?;
-    let request: MspCommandRequest =
-        serde_json::from_str(input).map_err(|error| format!("invalid request JSON: {error}"))?;
-
-    execute_request(request)
+    Ok(text.to_string())
 }
 
-fn execute_request(request: MspCommandRequest) -> Result<MspCommandResult, String> {
-    let tokens = parse_tokens(&request.command_text)?;
-    if tokens.is_empty() {
-        return Err("Command text is empty.".to_string());
-    }
-
-    let command_name = tokens[0].clone();
-    let args = &tokens[1..];
-    let result = if request.dry_run {
-        success_result(
-            format!("dry-run: {}\n", request.command_text),
-            &request,
-            &command_name,
-        )
-    } else {
-        match command_name.as_str() {
-            "echo" => success_result(format!("{}\n", args.join(" ")), &request, &command_name),
-            "pwd" => success_result(format!("{}\n", request.working_directory), &request, &command_name),
-            "help" => success_result("echo\tWrite arguments to stdout.\npwd\tPrint working directory.\nhelp\tList commands.\n".to_string(), &request, &command_name),
-            _ => failure_result_for_request(
-                format!("Command not found: {command_name}"),
-                &request,
-                &command_name,
-            ),
-        }
-    };
-
-    Ok(result)
+fn read_json_bytes(value: &[u8]) -> Result<&str, String> {
+    std::str::from_utf8(value).map_err(|_| "request_json is not valid UTF-8".to_string())
 }
 
-fn parse_tokens(command_text: &str) -> Result<Vec<String>, String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-    let mut escaping = false;
-
-    for character in command_text.chars() {
-        if escaping {
-            current.push(character);
-            escaping = false;
-            continue;
-        }
-
-        if character == '\\' && !in_single_quote {
-            escaping = true;
-            continue;
-        }
-
-        if character == '\'' && !in_double_quote {
-            in_single_quote = !in_single_quote;
-            continue;
-        }
-
-        if character == '"' && !in_single_quote {
-            in_double_quote = !in_double_quote;
-            continue;
-        }
-
-        if !in_single_quote && !in_double_quote {
-            if character.is_whitespace() {
-                flush_token(&mut tokens, &mut current);
-                continue;
-            }
-
-            if matches!(character, '|' | ';' | '<' | '>') {
-                return Err("Pipes, redirection, and compound shell forms are reserved for the next MSP runtime phase.".to_string());
-            }
-        }
-
-        current.push(character);
-    }
-
-    if escaping {
-        current.push('\\');
-    }
-
-    if in_single_quote || in_double_quote {
-        return Err("Command text contains an unterminated quote.".to_string());
-    }
-
-    flush_token(&mut tokens, &mut current);
-    Ok(tokens)
+fn invalid_request_result(error: String) -> MspCommandResult {
+    MspCommandResult::failure(
+        1,
+        format!("{error}\n"),
+        MspDiagnostic::error("msp.native.invalid_request", error),
+    )
 }
 
-fn flush_token(tokens: &mut Vec<String>, current: &mut String) {
-    if current.is_empty() {
-        return;
-    }
-
-    tokens.push(current.clone());
-    current.clear();
-}
-
-fn success_result(
-    stdout: String,
-    request: &MspCommandRequest,
-    command_name: &str,
-) -> MspCommandResult {
-    MspCommandResult {
-        exit_code: 0,
-        stdout,
-        stderr: String::new(),
-        audit_records: vec![audit_record(request, command_name, 0)],
-    }
-}
-
-fn failure_result(
-    error: String,
-    actor: &str,
-    command_name: &str,
-    working_directory: &str,
-) -> MspCommandResult {
-    MspCommandResult {
-        exit_code: 1,
-        stdout: String::new(),
-        stderr: error,
-        audit_records: vec![MspAuditRecord {
-            actor: actor.to_string(),
-            command_name: command_name.to_string(),
-            command_text: String::new(),
-            working_directory: working_directory.to_string(),
-            exit_code: 1,
-        }],
-    }
-}
-
-fn failure_result_for_request(
-    error: String,
-    request: &MspCommandRequest,
-    command_name: &str,
-) -> MspCommandResult {
-    MspCommandResult {
-        exit_code: 1,
-        stdout: String::new(),
-        stderr: error,
-        audit_records: vec![audit_record(request, command_name, 1)],
-    }
-}
-
-fn audit_record(request: &MspCommandRequest, command_name: &str, exit_code: i32) -> MspAuditRecord {
-    MspAuditRecord {
-        actor: request.actor.clone(),
-        command_name: command_name.to_string(),
-        command_text: request.command_text.clone(),
-        working_directory: request.working_directory.clone(),
-        exit_code,
-    }
-}
-
-fn to_c_string(value: &str) -> *mut c_char {
-    CString::new(value)
-        .unwrap_or_else(|_| CString::new("{\"exitCode\":1,\"stdout\":\"\",\"stderr\":\"nul byte in response\",\"auditRecords\":[]}").expect("static string"))
+fn serialize_to_c_string<T: serde::Serialize>(value: &T) -> *mut c_char {
+    let json = serde_json::to_string(value).unwrap_or_else(|_| fallback_json());
+    CString::new(json)
+        .unwrap_or_else(|_| CString::new(fallback_json()).expect("fallback JSON contains no NUL"))
         .into_raw()
 }
 
-fn default_working_directory() -> String {
-    "/".to_string()
+fn guarded_json<T, F, G>(operation: F, panic_result: G) -> *mut c_char
+where
+    T: serde::Serialize,
+    F: FnOnce() -> T,
+    G: FnOnce() -> T,
+{
+    match catch_unwind(AssertUnwindSafe(|| serialize_to_c_string(&operation()))) {
+        Ok(value) => value,
+        Err(_) => match catch_unwind(AssertUnwindSafe(|| serialize_to_c_string(&panic_result()))) {
+            Ok(value) => value,
+            Err(_) => CString::new(fallback_json())
+                .expect("fallback JSON contains no NUL")
+                .into_raw(),
+        },
+    }
 }
 
-fn default_actor() -> String {
-    "agent".to_string()
+fn fallback_json() -> String {
+    format!(
+        "{{\"contractVersion\":\"{INTERNAL_CONTRACT_VERSION}\",\"exitCode\":1,\"stdout\":\"\",\"stderr\":\"serialization failed\\n\",\"stdoutBytesBase64\":\"\",\"stderrBytesBase64\":\"c2VyaWFsaXphdGlvbiBmYWlsZWQK\",\"auditRecords\":[],\"diagnostics\":[]}}"
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::{CStr, CString};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn parser_preserves_quoted_arguments() {
-        let tokens = parse_tokens("echo \"hello world\" '/docs/a b.txt'").unwrap();
-
-        assert_eq!(tokens, vec!["echo", "hello world", "/docs/a b.txt"]);
-    }
-
-    #[test]
-    fn parser_rejects_reserved_shell_forms() {
-        let error = parse_tokens("echo hello | cat").unwrap_err();
-
-        assert!(error.contains("reserved"));
-    }
-
-    #[test]
-    fn execute_request_supports_echo_and_audit() {
-        let result = execute_request(MspCommandRequest {
-            command_text: "echo hello MSP".to_string(),
-            working_directory: "/".to_string(),
-            actor: "unit-test".to_string(),
-            dry_run: false,
-        })
-        .unwrap();
-
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, "hello MSP\n");
-        assert_eq!(result.audit_records.len(), 1);
-        assert_eq!(result.audit_records[0].actor, "unit-test");
-        assert_eq!(result.audit_records[0].command_name, "echo");
-        assert_eq!(result.audit_records[0].command_text, "echo hello MSP");
-    }
-
-    #[test]
-    fn execute_request_supports_dry_run() {
-        let result = execute_request(MspCommandRequest {
-            command_text: "future mutate".to_string(),
-            working_directory: "/".to_string(),
-            actor: "unit-test".to_string(),
-            dry_run: true,
-        })
-        .unwrap();
-
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, "dry-run: future mutate\n");
-    }
-
-    #[test]
-    fn ffi_executes_json_request() {
+    fn ffi_executes_backward_compatible_json_request() {
         let request = CString::new(
             r#"{"commandText":"pwd","workingDirectory":"/documents","actor":"ffi-test"}"#,
         )
         .unwrap();
 
         let raw = unsafe { msp_execute_json(request.as_ptr()) };
+        let response = take_string(raw);
+        let result: MspCommandResult = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(result.contract_version, INTERNAL_CONTRACT_VERSION);
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout_text(), "/documents\n");
+        assert_eq!(result.audit_records[0].actor, "ffi-test");
+    }
+
+    #[test]
+    fn ffi_exposes_shell_ast_and_workspace_path_without_host_paths() {
+        let parse_request = CString::new(format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","commandText":"echo '' |& wc -c"}}"#
+        ))
+        .unwrap();
+        let parse_raw = unsafe { msp_parse_json(parse_request.as_ptr()) };
+        let parsed: MspShellParseResult = serde_json::from_str(&take_string(parse_raw)).unwrap();
+        assert!(parsed.succeeded);
+        assert_eq!(parsed.script.unwrap().pipelines[0].commands.len(), 2);
+
+        let path_request = CString::new(format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","path":"../../reports/a.txt","currentDirectory":"/docs/current"}}"#
+        ))
+        .unwrap();
+        let path_raw = unsafe { msp_normalize_workspace_path_json(path_request.as_ptr()) };
+        let path: MspWorkspacePathResult = serde_json::from_str(&take_string(path_raw)).unwrap();
+        assert_eq!(path.virtual_path.as_deref(), Some("/reports/a.txt"));
+    }
+
+    #[test]
+    fn ffi_guard_converts_panics_to_contract_results() {
+        let raw = guarded_json(
+            || -> MspCommandResult { panic!("must not cross the C ABI") },
+            || {
+                MspCommandResult::failure(
+                    1,
+                    "native execution failed\n",
+                    MspDiagnostic::error("msp.native.panic", "native execution failed"),
+                )
+            },
+        );
+        let result: MspCommandResult = serde_json::from_str(&take_string(raw)).unwrap();
+        assert_eq!(result.exit_code, 1);
+        assert_eq!(result.diagnostics[0].code, "msp.native.panic");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ffi_workspace_root_runs_binary_cat_without_serializing_host_path() {
+        let root = temporary_directory("ffi-workspace");
+        fs::write(root.join("binary.bin"), [0x00, 0xff, b'A', b'\n']).unwrap();
+        let root_text = root.to_string_lossy();
+        let request = CString::new(format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","commandText":"cat /binary.bin","workspaceRoot":{}}}"#,
+            serde_json::to_string(root_text.as_ref()).unwrap()
+        ))
+        .unwrap();
+
+        let raw = unsafe { msp_execute_json(request.as_ptr()) };
+        let response = take_string(raw);
+        let result: MspCommandResult = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout_data, [0x00, 0xff, b'A', b'\n']);
+        assert!(response.contains("\"stdoutBytesBase64\":\"AP9BCg==\""));
+        let escaped_root = serde_json::to_string(root_text.as_ref()).unwrap();
+        assert!(!response.contains(escaped_root.trim_matches('"')));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn take_string(raw: *mut c_char) -> String {
         assert!(!raw.is_null());
         let response = unsafe { CStr::from_ptr(raw) }.to_str().unwrap().to_string();
         unsafe { msp_free_string(raw) };
+        response
+    }
 
-        let result: MspCommandResult = serde_json::from_str(&response).unwrap();
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, "/documents\n");
-        assert_eq!(result.audit_records[0].actor, "ffi-test");
+    fn temporary_directory(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("msp-core-{label}-{nonce}"));
+        fs::create_dir_all(&path).unwrap();
+        path
     }
 }

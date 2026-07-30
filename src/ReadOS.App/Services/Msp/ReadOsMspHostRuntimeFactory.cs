@@ -1,22 +1,28 @@
 using ReadOS.Msp.Hosting.Policy;
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Hosting.Runtime;
 
 namespace ReadOS.App.Services.Msp;
 
-internal sealed class ReadOsMspHostRuntime
+internal sealed class ReadOsMspHostRuntime : IDisposable
 {
+    private readonly IMspNativeAdapterProvider? ownedNativeAdapterProvider;
+    private bool disposed;
+
     public ReadOsMspHostRuntime(
         IMspCommandHost commandHost,
         MspCommandRequestFactory requestFactory,
         IMspApprovalGrantStore approvalGrants,
         MspCommandHostComposition composition,
-        MspCommandHostDiagnostics diagnostics)
+        MspCommandHostDiagnostics diagnostics,
+        IMspNativeAdapterProvider? ownedNativeAdapterProvider)
     {
         CommandHost = commandHost;
         RequestFactory = requestFactory;
         ApprovalGrants = approvalGrants;
         Composition = composition;
         Diagnostics = diagnostics;
+        this.ownedNativeAdapterProvider = ownedNativeAdapterProvider;
     }
 
     public IMspCommandHost CommandHost { get; }
@@ -28,6 +34,17 @@ internal sealed class ReadOsMspHostRuntime
     public MspCommandHostComposition Composition { get; }
 
     public MspCommandHostDiagnostics Diagnostics { get; }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        ownedNativeAdapterProvider?.Dispose();
+    }
 }
 
 internal sealed class ReadOsMspHostRuntimeFactory
@@ -35,9 +52,16 @@ internal sealed class ReadOsMspHostRuntimeFactory
     public ReadOsMspHostRuntime Create(
         ReadOsMspHostDependencies dependencies,
         string defaultSessionId,
-        string defaultActor)
+        string defaultActor,
+        IMspNativeAdapterProvider? nativeAdapterProvider = null,
+        bool ownsNativeAdapterProvider = false)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
+
+        var createdNativeAdapterProvider = nativeAdapterProvider is null;
+        var resolvedNativeAdapterProvider = nativeAdapterProvider ??
+            new LazyMspNativeAdapterProvider(
+                () => MspNativeAdapter.LoadPackagedWindows());
 
         var workspace = new ReadOsVirtualWorkspace(
             dependencies.WorkspaceStore,
@@ -55,7 +79,11 @@ internal sealed class ReadOsMspHostRuntimeFactory
             dependencies.AttachmentSink,
             dependencies.ClearAttachments,
             dependencies.ChatResultSink).CreateCommandPack();
-        var composition = new MspCommandHostCompositionBuilder().Build(commandPack);
+        var nativeCoreRegistryFactory = new ReadOsNativeCoreRegistryFactory(
+            resolvedNativeAdapterProvider);
+        ReadOsNativeCoreRegistryFactory.ValidateHostCommandPack(commandPack);
+        var composition = new MspCommandHostCompositionBuilder(
+            nativeCoreRegistryFactory.Create).Build(commandPack);
         var requestFactory = new MspCommandRequestFactory(defaultSessionId, defaultActor);
         var approvalGrants = new MspApprovalGrantStore();
         var policy = new ReadOsOperatorApprovalPolicy(dependencies.SettingsProvider, approvalGrants);
@@ -72,6 +100,9 @@ internal sealed class ReadOsMspHostRuntimeFactory
             requestFactory,
             approvalGrants,
             composition,
-            diagnostics);
+            diagnostics,
+            createdNativeAdapterProvider || ownsNativeAdapterProvider
+                ? resolvedNativeAdapterProvider
+                : null);
     }
 }

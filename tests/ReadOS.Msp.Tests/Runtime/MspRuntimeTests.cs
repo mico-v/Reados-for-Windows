@@ -49,6 +49,24 @@ public sealed class MspRuntimeTests
     }
 
     [Fact]
+    public void Parser_preserves_explicit_empty_arguments()
+    {
+        var parsed = MspCommandLineParser.Parse("echo '' \"\" before''after");
+
+        Assert.Equal("echo", parsed.Name);
+        Assert.Equal(new[] { string.Empty, string.Empty, "beforeafter" }, parsed.Arguments);
+    }
+
+    [Fact]
+    public void Parser_rejects_an_explicitly_empty_command_name()
+    {
+        var exception = Assert.Throws<MspParseException>(() =>
+            MspCommandLineParser.Parse("'' argument"));
+
+        Assert.Contains("Command name is empty", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Runtime_executes_basic_workspace_commands()
     {
         var workspace = new InMemoryMspWorkspace();
@@ -79,6 +97,184 @@ public sealed class MspRuntimeTests
         Assert.Equal("test-agent", record.Actor);
         Assert.Equal("echo", record.CommandName);
         Assert.Equal(0, record.ExitCode);
+    }
+
+    [Fact]
+    public async Task Runtime_records_parse_failures_in_result_and_audit_sink()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            MspRuntime.CreateDefaultRegistry(),
+            new AllowAllMspPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "parse-agent",
+            SessionId = "parse-session",
+            WorkingDirectory = "/documents",
+            CommandText = "echo \"unterminated"
+        });
+
+        Assert.Equal(2, result.ExitCode);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        var sinkRecord = Assert.Single(audit.Records);
+        Assert.Equal(resultRecord, sinkRecord);
+        Assert.Equal(MspPolicyDecision.NotEvaluated, resultRecord.Decision);
+        Assert.Equal(string.Empty, resultRecord.CommandName);
+        Assert.Equal("/documents", resultRecord.WorkingDirectory);
+        Assert.Equal("msp.parse", Assert.Single(resultRecord.Diagnostics).Code);
+    }
+
+    [Fact]
+    public async Task Runtime_records_unknown_commands_without_claiming_policy_authorization()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            MspRuntime.CreateDefaultRegistry(),
+            new AllowAllMspPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            Actor = "unknown-agent",
+            CommandText = "missing-command"
+        });
+
+        Assert.Equal(127, result.ExitCode);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.NotEvaluated, resultRecord.Decision);
+        Assert.Equal("missing-command", resultRecord.CommandName);
+        Assert.Equal(MspCommandEffects.None, resultRecord.Effects);
+        Assert.Equal("msp.command_not_found", Assert.Single(resultRecord.Diagnostics).Code);
+    }
+
+    [Fact]
+    public async Task Runtime_returns_and_audits_command_cancellation()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var registry = new MspCommandRegistry().Register(new CancelingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new AllowAllMspPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "cancel-me"
+        });
+
+        Assert.Equal(130, result.ExitCode);
+        Assert.Equal("msp.canceled", Assert.Single(result.Diagnostics).Code);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.Allow, resultRecord.Decision);
+        Assert.Equal(130, resultRecord.ExitCode);
+    }
+
+    [Fact]
+    public async Task Runtime_audits_policy_cancellation_as_not_evaluated()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var registry = new MspCommandRegistry().Register(new MutatingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new CancelingPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "mutate"
+        });
+
+        Assert.Equal(130, result.ExitCode);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.NotEvaluated, resultRecord.Decision);
+        Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, resultRecord.Effects);
+    }
+
+    [Fact]
+    public async Task Runtime_audits_policy_exceptions_with_stable_diagnostics()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var registry = new MspCommandRegistry().Register(new MutatingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new ThrowingPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "mutate"
+        });
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("msp.policy.exception", Assert.Single(result.Diagnostics).Code);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.NotEvaluated, resultRecord.Decision);
+        Assert.Equal(MspCommandEffects.WriteWorkspace | MspCommandEffects.CreateArtifact, resultRecord.Effects);
+    }
+
+    [Fact]
+    public async Task Runtime_audits_requests_canceled_before_parsing()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            MspRuntime.CreateDefaultRegistry(),
+            new AllowAllMspPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await runtime.ExecuteAsync(
+            new MspCommandRequest { CommandText = "echo should-not-run" },
+            cancellation.Token);
+
+        Assert.Equal(130, result.ExitCode);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.NotEvaluated, resultRecord.Decision);
+        Assert.Equal(string.Empty, resultRecord.CommandName);
+    }
+
+    [Fact]
+    public async Task Runtime_audits_command_exceptions_with_stable_diagnostics()
+    {
+        var audit = new InMemoryMspAuditSink();
+        var registry = new MspCommandRegistry().Register(new ThrowingTestCommand());
+        var context = new MspCommandContext(
+            new InMemoryMspWorkspace(),
+            registry,
+            new AllowAllMspPolicy(),
+            audit);
+        var runtime = new MspRuntime(context);
+
+        var result = await runtime.ExecuteAsync(new MspCommandRequest
+        {
+            CommandText = "throw-test"
+        });
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("msp.exception", Assert.Single(result.Diagnostics).Code);
+        var resultRecord = Assert.Single(result.AuditRecords);
+        Assert.Equal(resultRecord, Assert.Single(audit.Records));
+        Assert.Equal(MspPolicyDecision.Allow, resultRecord.Decision);
+        Assert.Contains("test failure", resultRecord.Message ?? string.Empty);
     }
 
     [Fact]
@@ -814,17 +1010,21 @@ public sealed class MspRuntimeTests
         var diagnostic = Assert.Single(completed.Result!.Diagnostics);
         Assert.Equal("msp.parse", diagnostic.Code);
         Assert.Contains("quoting", diagnostic.RecoveryHint);
+        Assert.Equal(
+            MspPolicyDecision.NotEvaluated,
+            Assert.Single(completed.Result.AuditRecords).Decision);
     }
 
     [Fact]
     public async Task Runtime_streams_canceled_event_when_command_is_canceled()
     {
         var registry = new MspCommandRegistry().Register(new CancelingTestCommand());
+        var audit = new InMemoryMspAuditSink();
         var context = new MspCommandContext(
             new InMemoryMspWorkspace(),
             registry,
             new AllowAllMspPolicy(),
-            new InMemoryMspAuditSink());
+            audit);
         var runtime = new MspRuntime(context);
         var events = new List<MspCommandEvent>();
 
@@ -839,6 +1039,8 @@ public sealed class MspRuntimeTests
         Assert.Contains(events, item => item.Kind == MspCommandEventKind.Progress);
         Assert.Equal(MspCommandEventKind.Canceled, events[^1].Kind);
         Assert.Equal(130, events[^1].Result?.ExitCode);
+        Assert.Single(events[^1].Result!.AuditRecords);
+        Assert.Single(audit.Records);
     }
 
     private sealed class CapturingPolicy : IMspPolicy
@@ -851,6 +1053,27 @@ public sealed class MspRuntimeTests
         {
             LastRequest = request;
             return ValueTask.FromResult(MspPolicyDecision.Allow);
+        }
+    }
+
+    private sealed class CancelingPolicy : IMspPolicy
+    {
+        public ValueTask<MspPolicyDecision> AuthorizeAsync(
+            MspPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromException<MspPolicyDecision>(
+                new OperationCanceledException("Policy authorization was canceled.", cancellationToken));
+        }
+    }
+
+    private sealed class ThrowingPolicy : IMspPolicy
+    {
+        public ValueTask<MspPolicyDecision> AuthorizeAsync(
+            MspPolicyRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("policy failure");
         }
     }
 
@@ -897,6 +1120,21 @@ public sealed class MspRuntimeTests
         {
             await context.ReportProgressAsync("halfway", 40, cancellationToken);
             return MspCommandResult.Success("done");
+        }
+    }
+
+    private sealed class ThrowingTestCommand : IMspCommand
+    {
+        public string Name => "throw-test";
+
+        public string Summary => "Throw a test exception.";
+
+        public ValueTask<MspCommandResult> ExecuteAsync(
+            MspCommandContext context,
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("test failure");
         }
     }
 

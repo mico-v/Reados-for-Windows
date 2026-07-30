@@ -1,0 +1,60 @@
+{
+  "profile": "msp-v1-linux-command-layer",
+  "case_type": "reados-windows-rust-compatible-slice",
+  "source_revision": "982baa54e9093e39f828d8827be6c75aed7502ff",
+  "source_paths": [
+    "Conformance/Fixtures/MSPV1LinuxCommandLayer.direct-parity-cases.json",
+    "Conformance/Fixtures/MSPV1LinuxCommandLayer.edge-parity-cases.json"
+  ],
+  "license": "Apache-2.0",
+  "cases": [
+    {
+      "id": "direct-colon",
+      "command": ":",
+      "command_line": ":",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "id": "direct-echo",
+      "command": "echo",
+      "command_line": "echo hello",
+      "stdout": "hello\n",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "id": "direct-false",
+      "command": "false",
+      "command_line": "false",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 1
+    },
+    {
+      "id": "direct-pwd",
+      "command": "pwd",
+      "command_line": "pwd",
+      "stdout": "/\n",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "id": "direct-true",
+      "command": "true",
+      "command_line": "true",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0
+    },
+    {
+      "id": "echo-escape-mode",
+      "command": "echo",
+      "command_line": "echo -e 'a\\nb'",
+      "stdout": "a\nb\n",
+      "stderr": "",
+      "exit_code": 0
+    }
+  ]
+}

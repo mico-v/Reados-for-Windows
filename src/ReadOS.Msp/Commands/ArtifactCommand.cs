@@ -2,11 +2,13 @@ using System.Text;
 using System.Text.Json;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Runtime;
+using ReadOS.Msp.Workspace;
 
 namespace ReadOS.Msp.Commands;
 
 public sealed class ArtifactCommand : IMspCommand
 {
+    private const string ArtifactNamespace = "/artifacts";
     private const string ManifestSuffix = ".manifest.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -126,9 +128,13 @@ public sealed class ArtifactCommand : IMspCommand
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        var path = arguments.Count == 0 ? "/artifacts" : arguments[0];
-        var normalized = context.Workspace.NormalizePath(path, context.WorkingDirectory);
-        if (!normalized.StartsWith("/artifacts", StringComparison.Ordinal))
+        var path = arguments.Count == 0 ? ArtifactNamespace : arguments[0];
+        if (!MspNamespacePathUtility.TryResolveRootOrDescendant(
+                context.Workspace,
+                ArtifactNamespace,
+                path,
+                context.WorkingDirectory,
+                out var normalized))
         {
             return MspCommandResult.Failure("artifact list only supports /artifacts paths.", exitCode: 2);
         }
@@ -166,7 +172,11 @@ public sealed class ArtifactCommand : IMspCommand
             return MspCommandResult.Failure("Usage: artifact show <path>", exitCode: 2);
         }
 
-        var path = NormalizeArtifactPath(context, arguments[0]);
+        if (!TryNormalizeArtifactPath(context, arguments[0], out var path))
+        {
+            return InvalidArtifactPath(arguments[0]);
+        }
+
         var content = await context.Workspace.TryReadTextAsync(path, cancellationToken);
         return content is null
             ? MspCommandResult.Failure($"Artifact not found: {path}")
@@ -185,7 +195,11 @@ public sealed class ArtifactCommand : IMspCommand
             return MspCommandResult.Failure("Usage: artifact write <path> <content...>", exitCode: 2);
         }
 
-        var path = NormalizeArtifactPath(context, arguments[0]);
+        if (!TryNormalizeArtifactPath(context, arguments[0], out var path))
+        {
+            return InvalidArtifactPath(arguments[0]);
+        }
+
         var content = string.Join(' ', arguments.Skip(1));
         var now = DateTimeOffset.UtcNow;
         var artifact = new MspArtifact
@@ -218,8 +232,16 @@ public sealed class ArtifactCommand : IMspCommand
             return MspCommandResult.Failure("Usage: artifact rename <source> <target>", exitCode: 2);
         }
 
-        var sourcePath = NormalizeArtifactPath(context, arguments[0]);
-        var targetPath = NormalizeArtifactPath(context, arguments[1]);
+        if (!TryNormalizeArtifactPath(context, arguments[0], out var sourcePath))
+        {
+            return InvalidArtifactPath(arguments[0]);
+        }
+
+        if (!TryNormalizeArtifactPath(context, arguments[1], out var targetPath))
+        {
+            return InvalidArtifactPath(arguments[1]);
+        }
+
         if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase))
         {
             return MspCommandResult.Failure("Artifact source and target paths must differ.", exitCode: 2);
@@ -277,24 +299,30 @@ public sealed class ArtifactCommand : IMspCommand
             return MspCommandResult.Failure("Usage: artifact delete <path>", exitCode: 2);
         }
 
-        var path = NormalizeArtifactPath(context, arguments[0]);
+        if (!TryNormalizeArtifactPath(context, arguments[0], out var path))
+        {
+            return InvalidArtifactPath(arguments[0]);
+        }
+
         var removed = await context.Workspace.TryDeleteAsync(path, cancellationToken);
         return removed
             ? MspCommandResult.Success($"deleted\t{path}{Environment.NewLine}")
             : MspCommandResult.Failure($"Artifact not found: {path}", target: path);
     }
 
-    private static string NormalizeArtifactPath(MspCommandContext context, string path)
+    private static bool TryNormalizeArtifactPath(
+        MspCommandContext context,
+        string path,
+        out string normalized)
     {
-        var normalized = context.Workspace.NormalizePath(path, context.WorkingDirectory);
-        if (normalized == "/artifacts")
+        if (!MspNamespacePathUtility.TryResolveDescendant(
+                context.Workspace,
+                ArtifactNamespace,
+                path,
+                context.WorkingDirectory,
+                out normalized))
         {
-            throw new InvalidOperationException("Artifact path must include a file name.");
-        }
-
-        if (!normalized.StartsWith("/artifacts/", StringComparison.Ordinal))
-        {
-            normalized = context.Workspace.NormalizePath("/artifacts/" + path.TrimStart('/'));
+            return false;
         }
 
         if (TryResolveManifestPath(normalized, out var artifactPath))
@@ -302,7 +330,17 @@ public sealed class ArtifactCommand : IMspCommand
             normalized = artifactPath;
         }
 
-        return normalized;
+        return !string.Equals(normalized, ArtifactNamespace, StringComparison.Ordinal);
+    }
+
+    private static MspCommandResult InvalidArtifactPath(string path)
+    {
+        return MspCommandResult.Failure(
+            "Artifact path must target a file under /artifacts.",
+            exitCode: 2,
+            code: "msp.artifact.invalid_path",
+            target: path,
+            recoveryHint: "Use a file path such as /artifacts/report.md.");
     }
 
     private static async ValueTask<MspArtifact?> ReadArtifactManifestAsync(
@@ -333,11 +371,11 @@ public sealed class ArtifactCommand : IMspCommand
 
     private static bool TryResolveManifestPath(string path, out string artifactPath)
     {
-        if (path.StartsWith("/artifacts/", StringComparison.Ordinal) &&
+        if (path.StartsWith(ArtifactNamespace + "/", StringComparison.Ordinal) &&
             path.EndsWith(ManifestSuffix, StringComparison.OrdinalIgnoreCase))
         {
             artifactPath = path[..^ManifestSuffix.Length];
-            return artifactPath.Length > "/artifacts/".Length;
+            return artifactPath.Length > (ArtifactNamespace + "/").Length;
         }
 
         artifactPath = string.Empty;

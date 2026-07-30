@@ -1,0 +1,12 @@
+ReadOS MSP conformance snapshot
+
+This directory contains a minimal observable-behavior snapshot derived from
+the MSP project at revision 982baa54e9093e39f828d8827be6c75aed7502ff.
+
+Upstream project: MSP
+Upstream copyright: Copyright 2026 Nian
+Upstream license: Apache License, Version 2.0
+Source fixture paths are recorded in each snapshot JSON file.
+
+The snapshot contains data only. No Swift implementation source is copied.
+See APACHE-2.0.txt in this directory for the applicable license text.

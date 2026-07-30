@@ -1,24 +1,34 @@
 using System.Runtime.CompilerServices;
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
 
 namespace ReadOS.App.Services.Msp;
 
-public sealed class ReadOsMspHost : IMspCommandHost
+public sealed class ReadOsMspHost : IMspCommandHost, IDisposable
 {
     public const string DefaultSessionId = "reados-workbench";
 
     private readonly IMspCommandHost commandHost;
     private readonly MspCommandHostFacade commandFacade;
+    private readonly ReadOsMspHostRuntime runtimeHost;
 
     public ReadOsMspHost(ReadOsMspHostDependencies dependencies)
+        : this(dependencies, nativeAdapterProvider: null)
+    {
+    }
+
+    internal ReadOsMspHost(
+        ReadOsMspHostDependencies dependencies,
+        IMspNativeAdapterProvider? nativeAdapterProvider)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
-        var runtimeHost = new ReadOsMspHostRuntimeFactory().Create(
+        runtimeHost = new ReadOsMspHostRuntimeFactory().Create(
             dependencies,
             DefaultSessionId,
-            "reados-agent");
+            "reados-agent",
+            nativeAdapterProvider);
         commandHost = runtimeHost.CommandHost;
         commandFacade = new MspCommandHostFacade(
             commandHost,
@@ -79,5 +89,10 @@ public sealed class ReadOsMspHost : IMspCommandHost
         {
             yield return commandEvent;
         }
+    }
+
+    public void Dispose()
+    {
+        runtimeHost.Dispose();
     }
 }

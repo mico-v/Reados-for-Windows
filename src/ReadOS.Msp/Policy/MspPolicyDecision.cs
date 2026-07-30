@@ -4,5 +4,6 @@ public enum MspPolicyDecision
 {
     Allow,
     Deny,
-    RequireConfirmation
+    RequireConfirmation,
+    NotEvaluated
 }
