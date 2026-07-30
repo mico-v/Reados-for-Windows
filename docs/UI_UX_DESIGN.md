@@ -43,33 +43,40 @@ Patterns ReadOS should not copy directly:
 
 ## Current ReadOS Baseline
 
-The current implementation already has the right outer shell:
+The current implementation has the intended supervision shell:
 
 ```text
 Title bar
 Workspace sidebar | Active chat thread | Unified inspector
-Status bar
+Bottom Runtime Drawer
 ```
 
 Implemented files:
 
-- `src/ReadOS.App/MainWindow.xaml`: 3-column shell, title toolbar, status bar, splitters.
+- `src/ReadOS.App/MainWindow.xaml`: 3-column shell, title toolbar, splitters, and bottom Runtime Drawer.
 - `src/ReadOS.App/Views/WorkspaceSidebarView.xaml`: conversations/materials sidebar.
 - `src/ReadOS.App/Views/ChatSurfaceView.xaml`: thread header, transcript, composer.
 - `src/ReadOS.App/Views/InspectorView.xaml`: context, run, evidence, attachments, preview tabs.
-- `src/ReadOS.App/Services/LayoutService.cs`: responsive breakpoints and pane width calculation.
+- `src/ReadOS.App/Services/LayoutService.cs`: responsive breakpoints, remembered pane widths, and compact/medium/wide pane calculation.
 - `src/ReadOS.App/ViewModels/ShellViewModel.cs`: MSP command execution, streaming status, approvals, audit transcript, artifacts/session rebuilding.
 - `src/ReadOS.App/Models/WorkbenchUiModels.cs`: timeline records project explicit message, MSP, approval, artifact, evidence, and error types for the thread surface.
 
-Main gaps:
+Implemented interaction baseline:
 
-- The transcript has moved beyond generic chat cards with typed record labels, MSP state titles, distinct body sections for approvals, running commands, failed commands, artifacts, evidence, and ordinary messages, plus actions that route artifacts/evidence/diagnostics into the inspector. Run and Policy inspector tabs now show selected transcript detail cards and visible selected-row state.
-- The inspector has too many peer tabs, so "run supervision" and "evidence review" feel buried.
-- MSP command output is trapped inside the `Run` tab instead of being available as a persistent runtime surface.
-- Approval exists in `MspTranscriptEntry`, but the UI does not make pending approval impossible to miss.
-- Composer now exposes queued evidence as removable chips, approval-mode segmented controls, and runtime chips; its primary action switches between send and stop based on runtime state, pending approval chips open the Policy inspector, running-state drafts can be queued and restored, and selected artifacts can be steered into refinement workflow drafts from the current composer text.
-- MSP session sidebar rows now show active state, pending approvals, failures, and artifact counts. Thread row status and richer material/artifact row counters still need refinement.
-- Preview, outline, document search, and evidence attachments are functional but split across competing surfaces.
+- The thread uses typed message, evidence, approval, running command, completed/canceled result, failure, and artifact records, with actions that route artifacts/evidence/diagnostics into the matching inspector context.
+- Run and Policy inspector tabs show selected transcript details and a visible selected-row state.
+- Pending approvals are visible and actionable from the global toolbar, composer, sidebar/session state, timeline, Policy inspector, and Runtime Drawer.
+- The composer exposes removable evidence chips, approval modes, runtime state, send/stop behavior, queued drafts, and selected-artifact refinement steering.
+- MSP session rows expose running, approval, failure, completion, and artifact counts.
+- The Runtime Drawer provides persistent transcript rows, output previews, progress/status, approval/deny/cancel actions, and open/close/pin controls.
+- Compact mode preserves the user's non-compact pane widths and opens the sidebar or Review Dock in flyouts from the thread header.
+
+Remaining T94 gaps:
+
+- Runtime Drawer height and pin state are not durable, and the drawer still lacks selectable full stdout/stderr/diagnostic/effect/artifact detail.
+- Document/page/presenter/thumbnail async loads still need cancellation and latest-request-wins protection.
+- Deprecated `PresenterSurfaceView` and stale presenter-primary layout state still need removal after preview equivalence is verified.
+- Responsive and accessibility behavior needs final visual/manual acceptance across compact, medium, wide, light, dark, keyboard, and reduced-motion conditions.
 
 ## Codex-Native Architecture Decision
 
@@ -258,6 +265,8 @@ The inspector should react to selection:
 
 Purpose: persistent runtime output without stealing the inspector.
 
+Current baseline: implemented. The drawer opens from global/composer controls, follows command activity and approval navigation, renders transcript status and output previews, and exposes approval, denial, cancellation, pin, and close actions.
+
 Use a collapsible bottom drawer for:
 
 - Live MSP stdout/stderr.
@@ -268,10 +277,18 @@ Use a collapsible bottom drawer for:
 
 Behavior:
 
-- Closed by default.
-- Auto-peek when a command starts, fails, or needs approval.
-- User can pin open.
+- Closed by default unless opened by runtime/navigation state.
+- Opens when command work, failure review, or approval context requires it.
+- User can pin it open for the current process.
 - Does not replace the right inspector; it complements it.
+
+T94 hardening still required:
+
+- draggable, clamped height;
+- persisted height and pin state;
+- selectable command rows;
+- complete stdout, stderr, diagnostics, recovery hints, effects, policy decision, timing, and artifact details;
+- responsive/manual verification rather than relying only on the current preview rows.
 
 No independent status bar is needed. When the drawer is closed, compact runtime state remains visible in the global toolbar and composer chips.
 
@@ -346,6 +363,8 @@ Recommended layout tokens:
 
 ### Phase 1: Information Architecture Cleanup
 
+Status: implemented for the primary shell and inspector navigation.
+
 Scope: XAML and light ViewModel projection only.
 
 - Rename inspector tabs around user jobs: `Evidence`, `Preview`, `Run`, `Artifacts`, `Policy`.
@@ -364,7 +383,9 @@ Primary files:
 
 ### Phase 2: Typed Thread Timeline
 
-Scope: add UI projection for existing data.
+Status: implemented.
+
+Scope: typed UI projection for existing data.
 
 - Introduce timeline item view models that wrap chat messages, MSP transcript entries, attachments, and artifacts.
 - Render different templates for message, MSP command, approval, artifact, evidence, and error items.
@@ -378,6 +399,8 @@ Primary files:
 - `src/ReadOS.App/Models/WorkspaceModels.cs`
 
 ### Phase 3: Composer Control Center
+
+Status: substantially implemented; a broader command palette remains optional follow-up, not a substitute for T94 hardening.
 
 Scope: improve task entry ergonomics.
 
@@ -396,12 +419,14 @@ Primary files:
 
 ### Phase 4: Bottom Run Drawer
 
+Status: baseline implemented; supervision and persistence hardening remain in T94.
+
 Scope: new shell area for runtime supervision.
 
-- Add a collapsible bottom drawer between main workspace and status bar.
-- Show live MSP transcript, stdout/stderr, progress, and approval queue.
-- Auto-open on command start, failure, or approval required.
-- Add pin/collapse controls and remember drawer height.
+- The collapsible bottom Runtime Drawer is present beneath the main workspace.
+- It shows transcript rows, output previews, progress/status, and approval/cancel actions.
+- Runtime and approval navigation can open it, and pin/collapse controls are present.
+- T94 must add resize, persisted height/pin state, row selection, and complete stdout/stderr/diagnostic/effect/artifact details.
 
 Primary files:
 
@@ -411,6 +436,8 @@ Primary files:
 - `src/ReadOS.App/ViewModels/ShellViewModel.cs`
 
 ### Phase 5: Artifacts And Evidence Cohesion
+
+Status: implemented for the current artifact inspector, lineage, workflow drafting, and reuse actions.
 
 Scope: make generated output inspectable and reusable.
 
@@ -432,9 +459,11 @@ Primary files:
 
 ### Phase 6: Polish And Responsiveness
 
+Status: in progress under T94.
+
 Scope: make the redesign feel native and stable.
 
-- Add visual states for compact, medium, wide, and extra-wide windows.
+- Compact/medium/wide/extra-wide breakpoints are present; compact flyout access and non-compact width memory are implemented.
 - Animate panel open/close with short reduced-motion-aware transitions.
 - Tune light/dark theme tokens after checking screenshots.
 - Verify no text overlap in sidebar rows, composer controls, approval records, and inspector tabs.
@@ -450,21 +479,21 @@ Primary files:
 ## Acceptance Criteria
 
 - First screen is immediately useful: sidebar, active thread, inspector, and composer are all visible when space allows.
-- A running MSP command is visible in at least two places: thread timeline and run drawer/status.
+- A running MSP command is visible in at least two places: thread timeline and Runtime Drawer/global runtime controls.
 - A pending approval is impossible to miss and includes command, effects, policy preview, and approve/deny actions.
 - Evidence can be attached from composer or preview and later reopened from the timeline.
 - Artifacts can be found from the timeline and inspector without searching the filesystem.
-- Narrow windows collapse side surfaces predictably while keeping the thread and composer usable.
+- Narrow windows collapse side surfaces predictably, preserve wide-layout preferences, and expose sidebar/Review Dock flyouts while keeping the thread and composer usable.
 - The UI uses existing WinUI controls, keyboard focus, tooltips, and theme resources.
 - `dotnet build .\ReadOS.sln` succeeds after each implementation phase.
 
 ## Near-Term Recommendation
 
-Do not rebuild the whole UI at once. The current 3-column shell is a good base. Start by changing information hierarchy:
+The information hierarchy, typed timeline, approval visibility, artifact/evidence flows, compact flyout access, and Runtime Drawer baseline are already present. Continue through T94 without rebuilding the shell:
 
-1. Make pending MSP activity and approval state visible in the title/header/sidebar.
-2. Convert chat cards into typed timeline records.
-3. Add the bottom run drawer.
-4. Then refine inspector tabs and artifact/evidence flows.
+1. Finish Runtime Drawer resize, persisted height/pin state, command selection, and complete terminal details.
+2. Add cancellation and latest-request-wins to document, page, presenter, outline/search, and thumbnail loading.
+3. Prove compact/medium/wide accessibility and theme behavior with screenshots or a short recording, then remove deprecated `PresenterSurfaceView` and stale layout state.
+4. Split large ViewModel/service code only where those hardening changes reveal stable feature boundaries.
 
-This sequence gives ReadOS the Codex-like supervision model without losing the document-centered strengths that make ReadOS different.
+T93's restart-capable flagship integration suite covers approval, evidence extraction, synthesis, persistence, denial, lineage back to an imported PDF page, cancellation without partial output, invalid-page failure, and secret-safe provider failure/restart/retry. Visible WinUI interaction, real provider/network behavior, and the flagship workflow across a packaged-process restart are still required before the product-level workflow is complete.

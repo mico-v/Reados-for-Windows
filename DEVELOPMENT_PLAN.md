@@ -2,18 +2,36 @@
 
 ## Purpose
 
-This plan turns ReadOS into an MSP-first vertical application service. The current WinUI document workbench and MSP runtime are the starting point; the next phase is to make MSP the product architecture instead of a hidden helper inside a reader.
+This plan advances ReadOS as an MSP-first vertical application service. The WinUI workbench, portable runtime, host-neutral Hosting layer, durable workspace, policy/audit path, and document workflows are now the product architecture; the next phase is to prove that architecture through a repeatable product-level workflow and align its Windows runtime-neutral core with upstream MSP behavior.
 
 Day-to-day execution is tracked in [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md). Update that tracker whenever a planned item starts, changes scope, passes verification, or is deferred.
 
 ## Current Implementation Progress
+
+Verified baseline (2026-07-11):
+
+- `ReadOS.Msp.Tests`: 69 passed.
+- `ReadOS.Msp.Hosting.Tests`: 259 passed, including 3/3 real release-DLL adapter operations.
+- `ReadOS.App.Tests`: 300 passed.
+- Managed total: 628 passed.
+- Rust `native/msp-core`: 66 passed; native binary and FFI smoke verification passed. The candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+- `ReadOS.sln`: 0 warnings, 0 errors through the fail-fast verification path.
+
+Trustworthy-boundary work is complete for the current architecture: artifact/session/transcript path and identifier confinement, terminal audit evidence for parse/unknown/policy/exception/cancel paths, fail-fast verification and packaging scripts, pinned .NET SDK plus Windows CI, and DPAPI `CurrentUser` provider credentials outside workspace JSON and exports. This closes T92; it does not close the in-progress T93 product E2E, T94 Workbench hardening, or T95 upstream-aligned Windows core work.
+
+T93 service-level recovery evidence now covers cancellation with exit 130 and no partial artifact, invalid outline-page diagnostics with no artifact after restart, and provider failure/restart/retry without API-key or sensitive-request leakage while preserving lineage and audit. Visible WinUI, a real provider/network boundary, and the flagship workflow across a packaged-process restart remain open.
+
+T95 now includes the handle-based read-only fixed-NTFS WorkspaceFS, Rust path sanitizer, stable `reados-msp-native/1` Hosting adapter, static MSVC CRT, real release-DLL tests, the completed `native_pwd_echo_adoption_v1` product slice, the completed `native_abi_v2_handshake_v1` boundary/release slice, and the completed `native_command_core_registry_v1` runtime/release slice. Managed `MspRuntime` remains the control plane for parse, policy/approval, dry-run, streaming events, terminal results, and exactly-once product audit; only canonical lowercase `pwd` and `echo` execute through Rust. Case variants fail closed without managed fallback, while `ls`, `cat`, `help`, and app-domain commands remain managed. ABI v2 uses a verified 32-byte `2.0` handshake (`0x324D534F44414552`, capabilities `0xF`) and explicit pointer/length buffers; only total absence of its three exports allows the isolated v1 fallback. The full verifier and 12-case baseline/candidate ABI v1/v2 differential pass. The latest completed no-skip package is `0.1.0-native-command-registry-verified`; staged/package smoke reports `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five native commands exiting 0, and three proxy audit counts of 1. The next slice is `native_mixed_workspace_read_v1`, followed by streams, mutable WorkspaceFS/trash, pipelines, sessions, ConPTY, and wider conformance.
 
 Implemented:
 
 - WinUI 3 app frame with library, reader, chat, settings, and workspace persistence.
 - PDF import, rendering, text extraction, search, page labels, outlines, region attachments, and per-document conversations.
 - OpenAI-compatible chat service with offline fallback.
+- Provider API key abstraction backed by Windows DPAPI `CurrentUser`, with provider scoping, legacy plaintext migration, missing-credential behavior, and workspace export exclusion.
 - Portable .NET MSP runtime in `src/ReadOS.Msp`.
+- Shared namespace/path/identifier validation that confines artifact operations, workflow session/transcript reads, and manifest lookups to their virtual namespaces.
+- Complete terminal result/audit behavior for success, parse failure, unknown command, policy confirmation/denial, command exception, and cancellation.
 - First `ReadOS.Msp.Hosting` project boundary with host-neutral command host, session projection, artifact catalog, approval grant, and active-command cancellation contracts.
 - Host-neutral session summary projection in `ReadOS.Msp.Hosting`, with app workspace models adapted back into observable `MspSessionEntry` state.
 - Host-neutral artifact catalog filtering, lookup, content fallback, and evidence metadata checks in `ReadOS.Msp.Hosting`, with app workspace artifacts adapted back into UI models.
@@ -64,9 +82,10 @@ Implemented:
 - Agent/MSP bridge instruction text, command request parsing, and MSP execution report formatting are extracted into a separately tested app service.
 - Workbench transcript progress display and operator cancellation for running MSP commands.
 - Thread timeline projection for chat messages, MSP transcript records, and artifacts is extracted into a separately tested app service.
+- Typed timeline rendering for message, evidence, approval, running command, result, failure, and artifact records.
 - Timeline item action routing for artifacts, evidence, MSP approvals, diagnostics, and command records is extracted into a separately tested app service.
 - Durable MSP session records that group transcript entries, artifacts, approvals, and last command state.
-- MSP transcript persistence and session projection are extracted into a separately tested app service before a future hosting-layer split.
+- MSP transcript persistence and session projection use separately tested app adapters over the established Hosting session-store boundary.
 - MSP transcript workspace refresh, persist, remove, and full-session rebuild entry points are wrapped by a separately tested app service.
 - MSP command transcript projection for running, streaming events, completion, cancellation, diagnostics, and artifact summaries is extracted into a separately tested app service.
 - Active MSP command cancellation ownership is extracted into a separately tested app service that tracks current entry IDs and linked cancellation tokens.
@@ -91,6 +110,8 @@ Implemented:
 - Document search preparation, result status projection, and hit-to-page routing are extracted into a separately tested app service.
 - Reader attachment preparation for current page, page ranges, text files, and region selections is extracted into a separately tested app service.
 - Reader navigation, workspace layout preset, sidebar/tab selection, outline toggle, and run drawer pinning decisions are extracted into a separately tested app service.
+- Bottom Runtime Drawer with transcript status, output previews, progress/approval/cancel actions, open/close, and in-memory pin state.
+- Compact sidebar and Review Dock flyouts plus remembered non-compact pane widths, with responsive layout service coverage.
 - Hosting-split readiness is captured in a separately tested app service, and the first `ReadOS.Msp.Hosting` boundary now owns reusable approval-grant, active-command cancellation, command request/approval orchestration, command registry composition, command-host diagnostics, session projection, session/transcript workspace projection, artifact catalog, artifact provenance classification, and session store contracts while App remains responsible for document/PDF/chat adapters, operator policy mode, workspace persistence, app command construction, export/clipboard/chat artifact actions, and WinUI projection.
 - Composer queue state now captures draft text plus evidence while MSP work is running and restores queued items without sending automatically.
 - Composer and Policy inspector approval-mode controls now switch between policy approval, confirm-all, and allow-workspace modes, and those choices affect subsequent MSP policy decisions.
@@ -108,6 +129,7 @@ Implemented:
 - App-side `workflow run review-evidence` artifact composition workflow that reads structured evidence JSON and writes Markdown review notes with inherited source provenance.
 - App-side `workflow run synthesize-evidence` model workflow that reads structured evidence JSON, calls the configured chat model, and writes source-grounded Markdown synthesis with inherited provenance.
 - App-side `workflow run refine-artifact` steer/resume workflow that refines an existing artifact with an operator instruction while inheriting citation provenance.
+- Restart-capable flagship service integration coverage for PDF import, outline-driven extraction, approval restoration, synthesis, durable session/transcript/artifact/manifest state, denied refinement, lineage, and source-page navigation.
 - Artifacts inspector lineage that labels source artifacts, sidecar manifests, virtual page paths, source documents, and page ranges, with navigation back to openable source artifacts.
 - Guided Inspector actions that compose exact `workflow run ...` command drafts from selected PDF outline sections or artifacts, then route operators to the Run inspector for review and execution.
 - Guided workflow MSP command composition for document, evidence, refinement, and failure-review drafts is extracted into a separately tested app service.
@@ -120,7 +142,8 @@ Implemented:
 - Run inspector prepared-command history that keeps the latest workflow draft presets available for restore without executing them automatically.
 - Prepared MSP command history recording, duplicate promotion, title normalization, and cap behavior are extracted into a separately tested app service.
 - Rust `native/msp-core` prototype and FFI smoke script.
-- MSP test project with parser/runtime/audit coverage and app-level virtual workspace coverage.
+- Three managed test projects covering the core runtime, host-neutral Hosting layer, and ReadOS app services.
+- Fail-fast Rust/native/managed/solution verification, fail-fast release packaging across all three managed test projects, a pinned .NET SDK, and Windows CI using the same verifier.
 
 ### UI Layout Redesign (2026-07-03)
 
@@ -135,6 +158,7 @@ The app frame was reworked from a nested 5-column layout into a flat 3-column re
 - **LayoutModels** — `LayoutConfiguration` and `LayoutBreakpoint` types for the computed layout state.
 - **SplitPane control** — Reusable `Controls/SplitPane.xaml` UserControl with `PrimaryContent`/`SecondaryContent` dependency properties and built-in drag-to-collapse.
 - **Thread timeline projection** — Timeline records now expose visible record-type labels and distinguish MSP approval, running, canceled, completed, failed, artifact, evidence, and message states at the model layer. The chat surface renders separate body sections for MSP approvals, running commands, results, failures, artifacts, evidence, and messages, and timeline/session actions route records into the matching inspector context with selected transcript detail cards in Run and Policy.
+- **Runtime Drawer** — The bottom drawer renders transcript state, output previews, progress, approval/deny/cancel actions, and open/close/pin controls. T94 owns resizing, persisted height/pin state, selected-command details, and full stdout/stderr/diagnostic supervision.
 
 ### XAML Compiler Bug Workarounds
 
@@ -144,7 +168,7 @@ Two WinUI 3 / .NET 10 XAML compiler issues were discovered and fixed during the 
 
 2. **Runtime XamlParseException** — Assigning a `{StaticResource x:Double}` to a `Thickness` property (e.g. `Padding="{StaticResource SpacingMd}"`) compiles but fails at runtime because WinUI 3 `Thickness` has no implicit conversion from `Double`. The compiler generates a direct property assignment without invoking the type converter. All such occurrences in `MainWindow.xaml`, `ChatSurfaceView.xaml`, and `InspectorView.xaml` were replaced with literal values.
 
-The main gap is not another reader feature. The remaining near-term product gaps are composer/runtime ergonomics, broader named workflows, and eventual extraction of the stable host/session/policy/artifact layer.
+The main gap is not another reader feature or another Hosting split. The remaining near-term product gaps are the T93 product-level workflow proof, T94 Workbench hardening, and T95 upstream-aligned Windows Rust core plus stable .NET adapter.
 
 ## Target Solution Shape
 
@@ -156,12 +180,13 @@ src/
     Controls/          SplitPane reusable control
     Models/            LayoutConfiguration, LayoutBreakpoint
     Services/          LayoutService, PdfDocumentService, WorkspaceStore, AiChatService, MSP host
-    Views/             InspectorView, ChatSurfaceView, WorkspaceSidebarView, SettingsView, PresenterSurfaceView
+    Views/             InspectorView, ChatSurfaceView, WorkspaceSidebarView, SettingsView; deprecated PresenterSurfaceView pending removal
     ViewModels/        ShellViewModel
   ReadOS.Msp/        .NET MSP runtime, SDK contracts, command model
   ReadOS.Msp.Hosting/
     Artifacts/       host-neutral artifact catalog and provenance services
     Commands/        active command cancellation registry
+    Native/          stable internal managed/native adapter
     Policy/          approval grant store
     Runtime/         command host contract, string-command facade, runtime command-host adapter, command-pack descriptor, command composition, diagnostics projection, runtime host factory
     Sessions/        session projection contract, projection service, and virtual workspace path projection
@@ -169,27 +194,33 @@ tests/
   ReadOS.Msp.Tests/  parser/runtime/workspace tests
   ReadOS.Msp.Hosting.Tests/
                     hosting contract/service tests
+  ReadOS.App.Tests/  app services, workflows, persistence, security, and UI projection tests
 native/
-  msp-core/          Rust native core prototype
+  msp-core/          Windows runtime-neutral Rust core mainline
+MSP/                 nested local Apache-2.0 reference only; ignored and not packaged
 docs/
   UI_UX_DESIGN.md, MSP_PLAN.md, MSP_SDK_DEVELOPMENT_PLAN.md, MSP_AGENT_COMMAND_LOOP.md, ENVIRONMENT_SETUP.md
 ```
 
-Near-term target:
+Next contract target:
 
 ```text
 src/
   ReadOS.App/          WinUI workbench and document-domain UI
-  ReadOS.Msp/          core .NET SDK contracts and runtime
-  ReadOS.Msp.Hosting/  service host/session/policy/artifact layer
+  ReadOS.Msp/          temporary managed product runtime and compatibility oracle
+  ReadOS.Msp.Hosting/  stable native adapter plus service host/session/policy/artifact layer
 tests/
   ReadOS.Msp.Tests/
   ReadOS.Msp.Hosting.Tests/
+  ReadOS.App.Tests/
 native/
-  msp-core/
+  msp-core/            Windows-compatible Rust runtime-neutral MSP core
+MSP/                   local reference checkout only; absent from Git/package output
 ```
 
-Grow `ReadOS.Msp.Hosting` only with host-neutral contracts and services that are covered by separate tests. Keep document/PDF/chat adapters and observable WinUI state in `ReadOS.App`.
+The Hosting project boundary is established. Grow it only with host-neutral contracts and services that are covered by separate tests. Keep document/PDF/chat adapters, provider credential storage, workspace persistence, and observable WinUI state in `ReadOS.App`. T95 must preserve this ownership boundary while moving runtime-neutral behavior behind a stable .NET-to-Rust adapter.
+
+The root `MSP/` repository is a nested, local-only upstream design/conformance input, not a ReadOS source subtree, CI dependency, runtime input, parent Git payload, or package payload. Its `Implementations/Windows` directory currently contains only `.gitkeep`; ReadOS implements the Windows-compatible Rust core in `native/msp-core`. Raw `MSP/` content must not enter ReadOS package output. Copied or derived Apache-2.0 code/fixtures require NOTICE, modification, and source-provenance records in the ReadOS distribution surface that contains them.
 
 ## Architecture Principles
 
@@ -200,13 +231,17 @@ Grow `ReadOS.Msp.Hosting` only with host-neutral contracts and services that are
 - The virtual workspace is the canonical agent read model.
 - Mutating commands must declare side effects before execution and pass policy.
 - Generated outputs should become artifacts with paths, media types, provenance, and previews.
-- Runtime-neutral behavior should be proven in .NET before extraction into Rust.
+- Runtime-neutral behavior should be compared against `MSP/Spec`, `MSP/Conformance`, and the Swift `MSPCore`, `MSPShell`, and `MSPPOSIXCore` implementation before and during Rust implementation.
+- ReadOS integrates the Rust core through a stable .NET adapter; domain commands and UI services do not call an unstable FFI surface directly.
+- Provider secrets must remain outside virtual workspace JSON, exports, audit, transcript, artifacts, adapter payloads, and conformance inputs.
+- Upstream reference use must remain traceable and license-correct; the local `MSP/` checkout is never a ReadOS package payload.
+- Virtual namespace membership must be checked after normalization; string-prefix checks and unvalidated record IDs are not security boundaries.
 
 ## Milestones
 
 ### Milestone 0: Direction Alignment
 
-Status: in progress.
+Status: done for the current repository baseline; ongoing documents must stay aligned with the tracker.
 
 - Reframe README, product goal, development plan, and MSP docs around the vertical service direction.
 - Keep historical reader docs only where they still explain the first domain.
@@ -214,16 +249,18 @@ Status: in progress.
 
 ### Milestone 1: MSP Contract Hardening
 
+Status: implemented for the current .NET runtime boundary. Upstream behavior mapping and a stable .NET/Rust adapter remain in progress under T95.
+
 - Add command metadata: name, summary, argument shape, mutability, external effects, and artifact outputs.
 - Keep `MspCommandResult` structured with exit code, stdout/stderr, artifacts, audit records, and diagnostics.
 - Add test coverage for quoting, unknown commands, command failure, audit records, and workspace path normalization.
-- Define stable JSON examples for command request/result/audit/artifact.
+- Keep managed request/result/audit/artifact serialization stable where the .NET adapter needs it, without treating a ReadOS-only JSON envelope as the MSP specification.
 
-Current status: command metadata, previews, artifacts, audit records, streaming events, and structured diagnostics are implemented in the .NET runtime. Failure diagnostics use stable codes and recovery hints for parse errors, unknown commands, policy confirmation, cancellation, and runtime exceptions.
+Current status: command metadata, previews, artifacts, audit records, streaming events, and structured diagnostics are implemented in the .NET runtime. Failure diagnostics use stable codes and recovery hints for parse errors, unknown commands, policy confirmation/denial, cancellation, policy/command exceptions, and runtime exceptions. Every command attempt now produces terminal result/audit evidence, with `NotEvaluated` used when parsing or pre-policy cancellation prevents authorization. Artifact, session, transcript, and workflow manifest paths use normalized namespace/identifier validation. T95 must map these semantics to upstream MSP contracts and conformance evidence rather than freezing the current managed shape as a new protocol.
 
 ### Milestone 2: Service Host Layer
 
-Status: started.
+Status: implemented as an active host-neutral project boundary.
 
 - Introduce session IDs and command transcript records.
 - Add cancellation and progress event surfaces.
@@ -235,7 +272,7 @@ Current status: command transcripts are visible in the workbench, persisted with
 
 ### Milestone 3: Artifact System
 
-Status: started.
+Status: implemented for the current artifact lifecycle and virtual workspace.
 
 - Add `/artifacts` to the virtual workspace.
 - Persist generated Markdown, JSON, extracted snippets, summaries, and exported attachments.
@@ -282,7 +319,7 @@ Current status: `ReadOsMspHost` exposes normal and approval-token streaming exec
 
 ### Milestone 6: Workflow Runtime
 
-Status: started.
+Status: implemented for the named workflows listed below; product-level restart/recovery acceptance is in progress under T93.
 
 - Add command scripts or named workflows once single commands are reliable.
 - Support document-centered workflows such as "summarize this chapter", "extract evidence", and "build review notes".
@@ -290,99 +327,54 @@ Status: started.
 
 Current status: `workflow summary current|<session-id>` creates a workflow-level Markdown report from durable `/sessions` and `/transcripts` projections. `workflow run summarize-current` produces the same inspectable report through the workflow-run command shape. `workflow run review-failures` produces a focused recovery report for failed transcript entries, including diagnostics and recovery hints. With `--artifact`, session workflow reports are approval-gated, persist Markdown under `/artifacts`, and record session/transcript source provenance. Named session workflow paths additionally inherit source document/page provenance from upstream artifact manifests referenced by the current session. The ReadOS app command pack now overrides `workflow` for `workflow run explain-section`, `workflow run extract-evidence`, `workflow run review-evidence`, `workflow run synthesize-evidence`, and `workflow run refine-artifact`, delegates existing session workflows back to the core runtime command, and implements document outline resolution, page extraction, model explanation, structured evidence output, evidence review notes, evidence-to-model synthesis, steer/resume artifact refinement, artifact writing, and source-page provenance in the app domain layer. The Inspector can compose these workflow commands from selected outline sections, artifacts, and failed transcript diagnostics without executing them immediately, and the Run inspector keeps a compact in-memory history so prepared drafts can be restored after other commands are reviewed or run.
 
-### Milestone 7: Native Core And SDK Extraction
+### Milestone 7: Upstream-Aligned Windows Native Core And Adapter
 
-- Move parser/runtime-neutral contracts into `native/msp-core` after .NET behavior stabilizes.
-- Keep host adapters in .NET.
-- Add conformance fixtures shared by Rust and .NET.
-- Package native binaries through a future .NET binding layer only after FFI behavior is stable.
+Status: in progress as T95.
+
+- Treat local `MSP/Spec`, `MSP/Conformance`, and Swift `MSPCore`/`MSPShell`/`MSPPOSIXCore` as upstream behavior references.
+- Implement a Windows-compatible runtime-neutral MSP core in Rust under `native/msp-core`; do not wait for `MSP/Implementations/Windows`, which is currently only a placeholder.
+- Connect the Rust core to ReadOS through a stable .NET adapter while retaining document/PDF/chat/workflow behavior in app/domain code.
+- Run applicable upstream conformance cases plus ReadOS compatibility tests, documenting deliberate Windows/platform deviations.
+- Exclude the raw local `MSP/` repository from ReadOS packages and maintain Apache-2.0 NOTICE/provenance for copied or derived material.
+
+Current verified slice: backend-neutral paths, handle-confined read-only NTFS WorkspaceFS, Rust `ls`/binary `cat`, chunk-safe host-path sanitization, panic-contained internal ABI, stable Hosting adapter, static CRT, native binary/content checks, bounded product execution through Rust, the negotiated length-delimited ABI v2, and validated deterministic Rust command registry/pack composition all pass the full verifier. The product host proxies only canonical lowercase `pwd`/`echo`; managed `MspRuntime` still owns the surrounding lifecycle and audit, and all other commands retain their prior managed ownership.
+
+Completed adoption gate, `native_pwd_echo_adoption_v1`: native Parse validates the original command text as one pipeline and one command with no operator, redirection, assignment, negation, newline, or unquoted ampersand; managed/native argument disagreement, missing DLL, native audit drift, state changes, and unrepresentable binary output fail closed. Native audit is used only as execution evidence and is not appended to the managed result. Package smoke proves `pwd`, `echo ''`, and `echo -n reados-native-proxy` through the real host proxy with one managed audit each.
+
+Completed boundary gate, `native_abi_v2_handshake_v1`: the DLL now has seven verified exports and a fixed 32-byte ABI-info layout reporting major `2`, minor `0`, contract `0x324D534F44414552`, and capabilities `0xF`. V2 invoke/free use explicit pointer/`ulong` length values and preserve embedded NUL bytes. Parse/Execute/Normalize request caps are 128 KiB/1 MiB/1 MiB and response caps are 16 MiB/64 MiB/1 MiB. A bounded writer stops before reserve/copy, closing the measured 54.5x Parse amplification path. Hosting falls back to v1 only when all three v2 exports are absent; partial exports, handshake drift, or missing capabilities fail closed. V1/v2 allocators never mix, every native-return path frees exactly once, invoke/dispose share one lock, and runtime ABI information is exposed for package evidence. The full verifier, 3/3 real-DLL operations, staged v2/v1 FFI smoke, and the no-skip package gate pass.
+
+Completed runtime gate, `native_command_core_registry_v1`: small Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts now replace the hard-coded command list and dispatch. Registration validation, duplicate rejection, unknown lookup, deterministic ordering, pack composition, and registry-derived `help` are covered. The 12-case baseline/candidate ABI v1/v2 differential passes, preserving command bytes, exit codes, diagnostics, audit evidence, state changes, fixtures, ABI behavior, and product routing without adding commands or capabilities.
+
+Next adoption gate, `native_mixed_workspace_read_v1`: add capability-based read-only WorkspaceFS traits, deterministic longest-prefix mount routing/rebasing, and a lifetime-safe bridge to the app-owned virtual workspace. Define opaque handles, callback ownership, disposal, cancellation, concurrency, and .NET delegate lifetime before managed callbacks are enabled. Preserve the verified fixed-local-NTFS backend, ABI v2, path sanitization, and managed lifecycle/audit authority; do not product-route `ls`/`cat` through Rust until this gate passes. Synchronous native invocation still cannot preempt work already in flight, so current cancellation checks remain bounded around side-effect-free `pwd`/`echo` calls.
+
+T95 compatibility gates:
+
+| Stage | Compatibility focus | Acceptance gate |
+| --- | --- | --- |
+| 0. Reference inventory | `MSP/Spec`, `MSP/Conformance`, Swift MSPCore/Shell/POSIXCore, license and Windows placeholder state | Versioned inventory maps each selected upstream contract/fixture/source to `reference`, `adapt`, `defer`, or `Windows deviation`; package exclusion and NOTICE/provenance rules are automated or reviewable. |
+| 1. Rust core semantics | WorkspaceFS paths, commands/results/streams, policy, audit, diagnostics | Rust tests pass the selected MSPCore conformance cases without host-path leakage and document every intentional deviation. |
+| 2. Shell and command profile | MSPShell parsing/execution plus an explicit MSPPOSIXCore command subset on Windows | Per-feature/command matrix records `conformant`, `partial`, `deferred`, or `not applicable`; applicable upstream fixtures pass in CI. |
+| 3. Stable .NET adapter | Request, streaming, cancellation, result, policy/audit, workspace, and artifact interop | Managed adapter contract tests and C#-vs-Rust differential tests pass; ReadOS business services depend only on the adapter, never raw FFI. |
+| 4. Product/release adoption | Existing ReadOS workflows over the Rust core | T92/T93 safety and workflow tests pass through the adapter; package contains only required native binaries/notices and excludes the raw `MSP/` tree. |
 
 ## Immediate Backlog
 
-The active backlog is maintained in [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md). Current priority order:
+The authoritative item-level backlog is [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md). T1-T91 are retained there as completed execution history; they are no longer presented here as the current backlog.
 
-1. Keep document/PDF/chat adapters and observable workbench UI projection in `ReadOS.App` while Hosting grows.
-2. Avoid moving ReadOS-specific command implementations into Hosting; only extract contracts or services that can be tested without app models.
-3. Keep command-host diagnostics as internal host metadata until they become actionable startup, support, or plugin-loading state.
+1. **T93 — Product-Level End-to-End Acceptance (in progress):** deterministic restart/lineage/denial plus cancellation, invalid-page, secret-safe provider failure, restart, and retry are implemented; visible WinUI, real provider/network, and the flagship workflow across a packaged-process restart remain.
+2. **T94 — Workbench Hardening (in progress):** compact flyout access and width restoration are implemented; Runtime Drawer resizing/persistence/selection/details, latest-request-wins cancellation, deprecated presenter cleanup, and feature-driven ViewModel/service splits remain.
+3. **T95 — Upstream-Aligned Windows MSP Core (in progress):** the read-only handle-based NTFS core, sanitizer, stable Hosting adapter, static CRT, bounded canonical-lowercase `pwd`/`echo` product adoption, length-delimited ABI v2 handshake/release gate, and zero-behavior-change Rust command registry are complete. Next add `native_mixed_workspace_read_v1` before product `ls`/`cat`, a bounded byte-stream core, mutable WorkspaceFS/trash, pipelines, sessions, ConPTY, and wider conformance without moving ReadOS PDF/chat/workflow behavior into Rust.
 
-Recently closed: core MSP command context working-directory normalization.
-Recently closed: core MSP runtime constructor and request guards.
-Recently closed: core MSP command registry validation.
-Recently closed: core MSP command context dependency guards.
-Recently closed: host-neutral runtime host factory working-directory normalization.
-Recently closed: host-neutral runtime host constructor guards.
-Recently closed: host-neutral runtime command-host adapter request guards.
-Recently closed: host-neutral command-host facade contract coverage.
-Recently closed: host-neutral approval token normalization.
-Recently closed: host-neutral approval-grant metadata normalization.
-Recently closed: host-neutral approved-command actor normalization.
-Recently closed: host-neutral command request metadata normalization.
-Recently closed: host-neutral runtime host audit sink factory validation.
-Recently closed: host-neutral core registry command-name validation during command composition.
-Recently closed: host-neutral command registry composition input validation.
-Recently closed: host-neutral command-name token character validation at the command-pack boundary.
-Recently closed: host-neutral command-name whitespace validation at the command-pack boundary.
-Recently closed: host-neutral command-name trim validation at the command-pack boundary.
-Recently closed: host-neutral command-pack validation for null, empty, duplicate, and core-override command names.
-Recently closed: app-side hosting readiness projection refresh and internal command-host diagnostics visibility decision.
-Recently closed: host-neutral command-host diagnostics projection for request defaults, command-pack, command counts, and override reporting.
-Recently closed: host-neutral string-command host facade for default request creation and approved string execution.
-Recently closed: host-neutral runtime command-host adapter for normal and streaming `IMspCommandHost` execution.
-Recently closed: app-owned MSP host runtime factory for virtual workspace, command-pack, policy, request, approval, and runtime assembly.
-Recently closed: app-owned `ReadOsMspHostDependencies` object for grouped host construction inputs.
-Recently closed: host-neutral command-pack descriptor metadata for pack names, command names, and core override reporting.
-Recently closed: host-neutral runtime host factory for workspace, registry, policy, audit, context, and runtime composition.
-Recently closed: app command-pack descriptor/factory boundary for ReadOS command construction.
-Recently closed: host-neutral command registry composition builder.
-Recently closed: host-neutral command request factory and approved-command orchestration service.
-Recently closed: host-neutral session/transcript virtual workspace projection path service.
-Recently closed: host-neutral artifact provenance source classifier with App lineage row mapping.
-Recently closed: workspace-backed session projection store adapter for transcript persistence entry points.
-Recently closed: host-neutral artifact catalog/read metadata service with app workspace adapter.
-Recently closed: host-neutral session projection service with app workspace adapter.
-Recently closed: first `ReadOS.Msp.Hosting` project boundary with tested approval-grant and active-command cancellation primitives.
-Recently closed: hosting-split readiness projection with tested ownership boundaries.
-Recently closed: reader layout/toggle command extraction from the ShellViewModel.
-Recently closed: reader attachment command extraction from the ShellViewModel.
-Recently closed: document search routing extraction from the ShellViewModel.
-Recently closed: outline editing extraction from the ShellViewModel.
-Recently closed: page-label editing extraction from the ShellViewModel.
-Recently closed: page navigation persistence extraction from the ShellViewModel.
-Recently closed: thumbnail load preparation extraction from the ShellViewModel.
-Recently closed: presenter load preparation extraction from the ShellViewModel.
-Recently closed: document collection refresh extraction from the ShellViewModel.
-Recently closed: active document context refresh extraction from the ShellViewModel.
-Recently closed: pending approval navigation extraction from the ShellViewModel.
-Recently closed: compact command-preset history for prepared workflow drafts.
-Recently closed: composer approval-mode controls wired into MSP policy decisions.
-Recently closed: composer steer/resume draft action for selected artifacts.
-Recently closed: artifact rename/delete MSP commands with explicit destructive policy and audit behavior.
-Recently closed: operator approval policy extraction from the ReadOS MSP host.
-Recently closed: MSP transcript/session store extraction from the ShellViewModel.
-Recently closed: artifact catalog/lineage/reuse service extraction from the ShellViewModel.
-Recently closed: MSP command transcript projection extraction from the ShellViewModel.
-Recently closed: prepared MSP command history extraction from the ShellViewModel.
-Recently closed: active MSP command cancellation extraction from the ShellViewModel.
-Recently closed: attachment queue service extraction from the ShellViewModel.
-Recently closed: pending approval review flow extraction from the ShellViewModel.
-Recently closed: agent MSP bridge instruction, command parsing, and report formatting extraction from the ShellViewModel.
-Recently closed: chat turn prompt and message construction extraction from the ShellViewModel.
-Recently closed: conversation list/message projection and create-if-needed rules extraction from the ShellViewModel.
-Recently closed: MSP session filtering, stale-selection detection, and inspector routing extraction from the ShellViewModel.
-Recently closed: MSP transcript workspace refresh/persist/remove/rebuild bridge extraction from the ShellViewModel.
-Recently closed: thread timeline projection extraction from the ShellViewModel.
-Recently closed: timeline item action routing extraction from the ShellViewModel.
-Recently closed: guided workflow command composition extraction from the ShellViewModel.
-Recently closed: guided workflow validation and path-selection extraction from the ShellViewModel.
-Recently closed: selected artifact preview/copy/export/attachment preparation extraction from the ShellViewModel.
-Recently closed: artifact lineage open-source routing extraction from the ShellViewModel.
+Recently closed: **T92 — Trustworthy MSP Boundary**, covering namespace confinement, terminal audit consistency, fail-fast verification/package/CI, pinned SDK, and DPAPI provider credentials. See the tracker for its exact acceptance and verification evidence.
 
 ## Verification
 
-Managed tests:
+Managed tests (verified 2026-07-11: 69 + 259 + 300 = 628):
 
 ```powershell
 dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
+dotnet test .\tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj
+dotnet test .\tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj
 ```
 
 Full MSP verification:
@@ -390,6 +382,16 @@ Full MSP verification:
 ```powershell
 .\scripts\verify-msp.ps1
 ```
+
+The verifier fails immediately on Rust fmt/test/clippy/release build, native binary/FFI smoke, restore, any of the three managed test projects (including real release-DLL adapter tests), or solution build. `.github/workflows/windows-ci.yml` runs the same path with the SDK selected from `global.json`.
+
+Release package:
+
+```powershell
+.\scripts\package-windows.ps1 -StopExisting
+```
+
+The package script restores from a clean state, runs all three managed test projects unless explicitly skipped, propagates restore/test/publish failures, verifies the static-CRT native binary and package contents, runs staged ABI v2/v1 FFI, and runs the staged executable through isolated app state plus a separate fixed-NTFS native WorkspaceFS smoke unless `-SkipSmoke` is explicitly supplied. The latest completed no-skip gate is `0.1.0-native-command-registry-verified`, producing `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`. Staged FFI and package smoke pass with `LengthDelimitedV2` 2.0 runtime evidence, 532 ZIP entries, `RawMSP`/PDB/`.git` counts of zero, five `nativeCommands` all exiting 0, three proxy audit counts of 1, cleanup, redaction, and required license/NOTICE/provenance. The packaged DLL retains SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 
 Workbench build/run:
 

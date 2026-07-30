@@ -49,6 +49,9 @@ secrets.json
 .agents/
 .codex/
 
+# Local upstream MSP design/conformance reference (separate Git repository)
+/MSP/
+
 # OS files
 Thumbs.db
 Desktop.ini

@@ -12,17 +12,33 @@ This tracker turns the current ReadOS plan into executable work. Keep it updated
 
 ## Current Baseline
 
-Last verified: 2026-07-07.
+Last verified: 2026-07-11.
 
 - `.\scripts\verify-msp.ps1` passed.
-- Rust native MSP tests passed: 5 passed, 0 failed.
-- Native MSP FFI smoke passed.
-- `ReadOS.Msp.Tests` passed: 20 passed, 0 failed.
-- `ReadOS.Msp.Hosting.Tests` passed: 43 passed, 0 failed.
-- `ReadOS.App.Tests` passed: 269 passed, 0 failed.
+- Rust native MSP tests passed: 66 passed, 0 failed.
+- Native MSP binary and FFI smoke verification passed; the release DLL exposes all seven required exports and uses the static MSVC CRT.
+- The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+- `ReadOS.Msp.Tests` passed: 69 passed, 0 failed.
+- `ReadOS.Msp.Hosting.Tests` passed: 259 passed, 0 failed, including 3/3 real release-DLL operations with no skip.
+- `ReadOS.App.Tests` passed: 300 passed, 0 failed.
+- Managed total: 628 passed, 0 failed.
 - `ReadOS.sln` built with 0 warnings and 0 errors.
+- Verification and packaging scripts propagate external-command failures; Windows CI runs the verifier with the SDK pinned by `global.json`.
+- Provider credentials are protected with Windows DPAPI `CurrentUser` outside workspace JSON/exports, with legacy plaintext migration coverage.
+- The latest completed no-skip package gate is `package-windows.ps1 -StopExisting -Version 0.1.0-native-command-registry-verified`, which produced `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`. Staged FFI and packaged-process smoke pass with `LengthDelimitedV2` 2.0, 532 ZIP entries, `RawMSP`/PDB/`.git` counts of zero, five `nativeCommands` all exiting 0, an audit count of 1 for each of the three product proxies, cleanup, content, license/provenance, and redaction checks.
 
-## Active Workstream
+## Current Roadmap
+
+- **T92 — Trustworthy MSP Boundary:** done. Namespace confinement, terminal audit evidence, fail-fast verification/package/CI, SDK pinning, and DPAPI provider credentials are verified below.
+- **T93 — Product-Level End-to-End Acceptance:** in progress. The deterministic restart/lineage/denial path plus cancellation, invalid-page, provider-failure, secret-safety, restart, and retry branches are covered. Visible UI is covered by the operator runbook and a WinUI smoke; a real provider/network boundary and packaged-process flagship restart remain open.
+- **T94 — Workbench Hardening:** done. Compact flyout access and width memory, async latest-request-wins generation/cancellation, deprecated `PresenterSurfaceView` removal, and the re-homed Runtime Drawer (resizable height, pin, persisted layout, simplified MSP transcript) are complete; verified by `dotnet build ReadOS.App -c Debug` (0 warnings/errors) and `ReadOS.App.Tests` (`Run_drawer_layout_persists_height_and_pin`).
+- **T95 — Upstream-Aligned Windows MSP Core:** in progress. The handle-based read-only NTFS WorkspaceFS, native adapter, static CRT, direct native `ls`/`cat`, bounded canonical-lowercase `pwd`/`echo` adoption, ABI v2 handshake/release gate, and zero-behavior-change Rust command registry are verified. The next implementation slice is `native_mixed_workspace_read_v1`, followed by streams, mutable WorkspaceFS, broader product adoption, sessions, and wider conformance.
+
+Do not mark T93-T95 done from component-level tests alone. Each item has its own acceptance evidence below.
+
+## Completed Execution History (T1-T91)
+
+The detailed entries below preserve the implementation trail that produced the current Hosting, workflow, timeline, artifact, and workbench baseline. They are historical closure records, not the active priority list.
 
 ### T1: Named Workflow Orchestration
 
@@ -2881,7 +2897,196 @@ Verification:
 
 Result: command contexts now normalize working-directory metadata consistently for direct construction and runtime context updates.
 
+## Current Workstream Details (T92-T95)
+
+### T92: Trustworthy MSP Boundary
+
+Status: done.
+
+Goal: close the P0 trust gaps that could let MSP escape an app-owned namespace, lose terminal command evidence, report a false-green verification result, or persist provider secrets as ordinary workspace data.
+
+Acceptance criteria:
+
+- Artifact `list/show/write/rename/delete` resolves paths through a shared normalized namespace check and cannot address anything outside `/artifacts`.
+- Workflow session/transcript/source-artifact reads validate record identifiers and namespace membership before constructing or following virtual paths.
+- Regression coverage includes `..`, backslashes, rooted paths, Windows drive prefixes, namespace prefix siblings, manifest aliases, rename/delete, malicious session records, and malicious transcript IDs; normalization is centralized before namespace membership is checked.
+- Success, parse failure, unknown command, policy confirmation/denial, policy exception, command exception, cancellation during policy/command execution, and cancellation before parsing all return a terminal result with persistent audit evidence.
+- Pre-policy failures use an explicit `NotEvaluated` policy decision instead of implying authorization.
+- Verification and packaging stop on the first failing external process; packaging restores from a clean state and runs all three managed test projects unless tests are explicitly skipped.
+- A pinned .NET SDK and Windows CI execute the same full verifier used locally.
+- Provider API keys are excluded from workspace JSON and workspace exports, protected per provider with Windows DPAPI `CurrentUser`, migrated safely from legacy plaintext state, and optional at startup without leaking into a provider request.
+
+Implemented:
+
+- Added `MspNamespacePathUtility` for normalized root/descendant resolution and token-safe record path construction.
+- Applied the shared boundary to artifact content/manifest operations and workflow session, transcript, and upstream artifact-manifest lookups.
+- Added artifact and workflow path-security suites covering escape attempts and namespace-confused persisted records.
+- Completed terminal runtime audit construction for parse errors, unknown commands, confirmation/denial, policy failures, command failures, and cancellation while preserving stable diagnostics and exit codes.
+- Added `MspPolicyDecision.NotEvaluated` for attempts that never reached an authorization decision.
+- Made `verify-msp.ps1` and `package-windows.ps1` check every native process exit code and throw immediately on failure.
+- Made packaging restore the solution and runtime-specific app assets, run core/Hosting/App tests, and propagate publish failures.
+- Added `global.json` and `.github/workflows/windows-ci.yml`; CI invokes `verify-msp.ps1` on Windows with the pinned SDK and Rust toolchain.
+- Added `IProviderCredentialStore` and `WindowsDpapiProviderCredentialStore`, removed API key serialization, migrated legacy plaintext only after protected persistence succeeds, and excluded the external credential directory from workspace exports.
+- Added missing-credential chat behavior and credential persistence/migration/export tests without writing secrets to test output.
+
+Verification:
+
+- 2026-07-10: `.\scripts\verify-msp.ps1` passed end to end.
+- 2026-07-10: Rust tests passed with 5 tests; native FFI smoke passed.
+- 2026-07-10: `dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj` passed with 67 tests.
+- 2026-07-10: `dotnet test .\tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj` passed with 89 tests.
+- 2026-07-10: `dotnet test .\tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj` passed with 286 tests.
+- 2026-07-10: `dotnet build .\ReadOS.sln` passed with 0 warnings and 0 errors through the verifier.
+- Static release-gate evidence: `.github/workflows/windows-ci.yml` calls the full verifier using `global.json`; `package-windows.ps1` restores, runs all three managed suites, and fails on nonzero restore/test/publish exit codes. This record does not claim a remote GitHub Actions run or a package smoke run that is not shown above.
+
+Result: the current MSP boundary is namespace-confined, terminally auditable, locally verifiable without false-green process handling, CI-ready, and no longer treats provider API keys as workspace/export data.
+
+### T93: Product-Level End-to-End Acceptance
+
+Status: in progress.
+
+Goal: prove one repeatable user-visible ReadOS workflow across real service boundaries rather than inferring product readiness from isolated command and service tests.
+
+Flagship scenario:
+
+```text
+import PDF
+-> select outline section
+-> workflow run extract-evidence
+-> approve artifact write
+-> workflow run synthesize-evidence
+-> persist session/transcript/artifact/manifest
+-> restart and restore workspace
+-> follow artifact lineage to the original document pages
+```
+
+Acceptance criteria:
+
+- A deterministic fixture or test document drives the full scenario without hidden UI-only state.
+- The generated evidence and synthesis artifacts retain document ID, page range, virtual page paths, source artifact, session, transcript, actor, command, and manifest provenance as applicable.
+- Restart creates new app/service objects and reloads durable state; an in-memory refresh is not sufficient evidence.
+- Lineage navigation reopens the correct source document and page/range after restart.
+- The same harness covers cancellation, invalid pages, provider failure, denied approval, and a recoverable retry without partial writes or secret leakage.
+- Service/integration automation is primary; a minimal WinUI smoke and an operator runbook cover the shell interactions that cannot be proven below UI level.
+- The full verifier and a Windows package smoke pass after the scenario is added.
+
+Progress and evidence:
+
+- `ReadOsFlagshipWorkflowIntegrationTests.Flagship_workflow_survives_restart_and_traces_synthesis_back_to_imported_pdf_page` imports a deterministic PDF fixture through `WorkspaceStore` and selects a controlled outline section.
+- The test persists an approval-required extraction request, constructs fresh store/host/service objects, restores the pending approval, approves extraction, and writes page-provenance evidence.
+- It approval-gates and executes evidence synthesis, persists artifact/manifest/session/transcript state, denies a refinement without a partial artifact/model call, restarts again, and follows synthesis -> evidence -> original virtual PDF page -> page navigation.
+- `Canceled_extraction_persists_one_terminal_record_without_partial_artifact` proves exit 130, one terminal transcript/session record, a stable `msp.canceled` diagnostic/audit record, restart persistence, and no partial artifact.
+- `Invalid_outline_page_returns_stable_diagnostic_without_artifact` proves `reados.pdf.invalid_page`, terminal audit/session evidence, restart persistence, and no artifact for the invalid range.
+- `Provider_failure_is_secret_safe_and_retry_after_restart_preserves_lineage_and_audit` proves provider failure does not expose the API key or sensitive request through stderr, diagnostics, audit, transcript, or workspace; restart restores the failed attempt, and a successful retry preserves lineage and both terminal records.
+- Provider exception bodies are withheld from diagnostics, and cancellation projects an explicit terminal canceled message.
+- The 2026-07-11 App suite passes with all four flagship integration scenarios plus the package-smoke isolation/cleanup, native-proxy, and ABI-runtime-info regressions; the verified baseline is Rust 66, Core 69, Hosting 259, App 300 (628 managed total).
+- The earlier managed staged startup smoke still proves isolated WorkspaceStore persistence, DPAPI round trip/cleanup, Hosting composition, and `workspace info`, but it does not satisfy the newer native WorkspaceFS package gate.
+- The corrected native package smoke uses a separate fixed-NTFS temporary root, runs packaged Rust `ls /` and binary `cat /workspace.json`, redacts the native path, and removes the native run directory in `finally`. The full no-skip package gate and direct smoke rerun pass; native residue is zero.
+- Visible WinUI interaction is now covered: the operator runbook (`docs/OPERATOR_RUNBOOK.md`) documents the shell path import -> outline -> extract-evidence -> approve -> synthesize-evidence -> artifacts/lineage -> restart, and `ReadOS.App.Tests` adds a minimal WinUI smoke (`ShellViewModelTests.Flagship_evidence_and_synthesis_workflows_are_visible_through_shell`) that drives the flagship extract/synthesize-evidence path through `ShellViewModel` (prepare draft -> run -> approve from the shell -> visible transcript + artifact) with controlled PDF/chat doubles, no real provider.
+- A real provider/network boundary and the full flagship workflow across a packaged-process restart remain open (CI/packaging); therefore T93 is not done.
+
+### T94: Workbench Hardening
+
+Status: in progress.
+
+Goal: turn the implemented three-column shell, typed timeline, inspector, and Runtime Drawer into a resilient workbench across compact layouts and overlapping asynchronous document/runtime activity.
+
+Current baseline:
+
+- Typed timeline records and inspector routing are implemented.
+- The Runtime Drawer is implemented with transcript rows, output previews, progress/status, approval/deny/cancel actions, open/close, and in-memory pin state.
+- Responsive breakpoints collapse side panes, and `PresenterSurfaceView` is marked deprecated but still exists.
+
+Acceptance criteria:
+
+- Entering and leaving compact mode preserves the operator's sidebar and inspector widths instead of overwriting them with zero-width computed state.
+- Compact mode provides overlay/flyout access to the sidebar and inspector while keeping the thread/composer usable.
+- The Runtime Drawer supports constrained vertical resize, persists height and pin state, selects a command, and shows full stdout, stderr, diagnostics, recovery hints, effects, policy decision, timing, and artifacts for that command.
+- Document, page, outline/search, presenter, and thumbnail loads use cancellation plus latest-request-wins so stale completions cannot replace newer selections.
+- Deprecated `PresenterSurfaceView` and obsolete presenter-primary/layout state are removed after the inspector preview path is proven equivalent.
+- `ShellViewModel` and large command services are split only along exercised feature boundaries with focused tests; line-count-only refactors do not satisfy the item.
+- Managed tests, solution build, responsive manual checks, and screenshots or a short recording verify compact/medium/wide behavior and runtime supervision.
+
+Progress and evidence:
+
+- `LayoutService` now remembers bounded sidebar/inspector preferences independently of the zero-width compact projection, and `MainWindow` no longer writes computed compact widths back into the ViewModel.
+- Compact thread-header controls open app-bound `WorkspaceSidebarView` and `InspectorView` flyouts and dismiss them when layout/visibility changes.
+- `LayoutServiceTests` cover compact/medium/wide restoration, visibility toggles, and width clamping; the 2026-07-10 App suite and full verifier pass with these tests included.
+- The InspectorView Run-tab selected-command card now shows full supervision detail for the selected transcript: scrollable read-only stdout/stderr, diagnostics (danger brush), recovery hint (warning brush), effects, policy preview, artifacts, exit code, and start→complete timing — all projected from `MspTranscriptEntry`. The model gained `HasEffects` (excludes the default `None`), `TimingLabel`, and `ExitCodeLabel` projections; `ReadOS.App` builds clean and `tests/ReadOS.App.Tests/Models/MspTranscriptEntryTests.cs` covers them.
+- Removed the deprecated `PresenterSurfaceView` (`Views/PresenterSurfaceView.xaml` + `.xaml.cs`) and its `<Page>` reference in `ReadOS.App.csproj`; `ReadOS.App` and `ReadOS.App.Tests` compile clean. The bound `ShellViewModel` state (thumbnails, page/outline/search, presenter text/region, layout commands) is still consumed by the InspectorView Preview tab, so presenter-primary/layout VM state is retained pending a separate confirmation pass.
+- Document, page, outline/search, presenter-text, and thumbnail loads in `ShellViewModel` now use per-category generation counters plus a `CancellationTokenSource` so a stale completion cannot overwrite a newer selection, and the in-flight request is canceled through the already token-aware `IPdfDocumentService`. `ReadOS.App` builds clean; automated coverage of the race is still pending CI/verify.
+- Runtime Drawer resize/persistence/pin, presenter-primary/layout VM state cleanup, and final responsive/manual evidence remain open; therefore T94 is not done.
+
+### T95: Upstream-Aligned Windows MSP Runtime-Neutral Core
+
+Status: in progress.
+
+Goal: use upstream MSP design and behavior evidence to build the general Windows-compatible runtime-neutral core in Rust under `native/msp-core`, then connect it to ReadOS through a stable .NET adapter while keeping ReadOS document, PDF, chat, workflow, credential, persistence, and WinUI behavior in C# app/domain layers.
+
+Upstream reference boundary:
+
+- The root `MSP/` directory is a local Apache-2.0 reference repository, not a ReadOS runtime dependency or package payload.
+- Primary inputs are `MSP/Spec`, `MSP/Conformance`, and the Swift `MSPCore`, `MSPShell`, and `MSPPOSIXCore` implementations.
+- `MSP/Implementations/Windows` currently contains only `.gitkeep`; it supplies no Windows implementation to ship or wrap.
+- T95 must derive Windows behavior from the upstream contracts and evidence; it must not redefine MSP as a ReadOS-only minimal JSON protocol.
+- Any copied or derived upstream source, fixture, or documentation must record its source revision/snapshot, modifications, Apache-2.0 license, NOTICE obligations, and downstream provenance.
+- The raw `MSP/` tree must be excluded from ReadOS package output. Only required ReadOS-built native binaries, adapter assemblies, and applicable notice/provenance files may ship.
+
+Acceptance criteria:
+
+- A versioned upstream-input inventory maps selected Spec sections, profiles, conformance fixtures, and Swift reference components to Rust modules/tests and records `reference`, `adapt`, `defer`, or explicit `Windows deviation` decisions.
+- `native/msp-core` implements the selected runtime-neutral WorkspaceFS, command/result/stream, shell parsing/execution, policy, audit, diagnostics, and command-profile semantics without exposing raw host paths or arbitrary system shell access.
+- A per-feature and per-command compatibility matrix reports `conformant`, `partial`, `deferred`, or `not applicable`, with evidence links and Windows-specific rationale.
+- Applicable upstream conformance fixtures run against the Rust core. ReadOS-specific fixtures may supplement them but cannot replace upstream behavior evidence.
+- A stable .NET adapter owns request, streaming, cancellation, result, policy/audit, workspace, and artifact interop; ReadOS business services never depend directly on raw FFI details.
+- Differential tests compare the existing managed runtime and Rust core for the adopted surface until the adapter becomes authoritative.
+- C# remains the ReadOS business layer: PDF, documents, chat/provider, workflows, workspace persistence, credentials, and WinUI do not move into the generic Rust core.
+- Secrets and app-private data remain excluded from adapter diagnostics, conformance inputs, audit examples, and native logs.
+- Packaging and CI prove that `MSP/` is not distributed, required NOTICE/provenance accompanies copied or derived material, and Rust/adapter/conformance tests run with the existing release gates.
+
+Phased compatibility matrix and acceptance gates:
+
+| Stage | Scope | Gate to advance |
+| --- | --- | --- |
+| 0. Reference and license inventory | Spec/Profiles, Conformance fixtures, Swift MSPCore/Shell/POSIXCore, source revision, Apache-2.0/NOTICE, Windows placeholder | Reviewed mapping and provenance ledger exists; raw `MSP/` package exclusion is testable. |
+| 1. Rust MSPCore parity | WorkspaceFS paths, command registry, results/streams, policy, audit, diagnostics | Selected MSPCore cases pass in Rust; host paths/secrets do not leak; deviations are recorded. |
+| 2. Shell and POSIXCore compatibility | MSPShell parsing/execution and explicit MSPPOSIXCore subset adapted for Windows/virtual WorkspaceFS | Feature/command matrix is complete for the selected subset and applicable upstream fixtures pass in CI. |
+| 3. Stable .NET adapter | Managed/native lifecycle, request, streaming, cancellation, workspace, policy/audit, results/artifacts | Adapter contract and C#-vs-Rust differential tests pass; no app service calls raw FFI. |
+| 4. ReadOS adoption and release | Existing ReadOS command/workflow paths use the adapter | T92 safety and T93 workflow evidence pass through Rust; package contains required binaries/notices but no raw `MSP/` tree. |
+
+Current evidence:
+
+- The local reference repository exposes the required Spec, Conformance, and Swift reference surfaces and declares Apache-2.0 in `MSP/LICENSE` with project notices in `MSP/NOTICE`.
+- `MSP/Implementations/Windows` is confirmed to be only `.gitkeep`, establishing that `native/msp-core` is the Windows implementation workstream rather than a wrapper around existing Windows code.
+- `native/msp-core` now has versioned internal request/result/diagnostic/policy/audit contracts, byte-authoritative stdout/stderr with Base64 JSON transport, a serializable shell AST, selected built-ins behind validated deterministic `Command`/`Registry`/`CommandPack` composition, a backend-neutral `VirtualPath`, panic-contained legacy entry points, and a negotiated length-delimited ABI v2.
+- The Windows read-only WorkspaceFS retains root/target handles, checks final-handle containment with case-insensitive component boundaries, rejects UNC/mapped/removable/non-NTFS/drive/ADS/device injection, hides `.msp` again after final-path resolution, and implements handle-based `stat`, stable listing, and binary range reads. Rust `ls` and binary-safe `cat` exercise this backend.
+- Rust output sanitization covers DOS, verbatim, slash, JSON-escaped, file-URL, and percent-encoded workspace-root forms across chunk boundaries; output and directory resources are bounded. Native UTF-16LE process streams remain deferred until external processes exist.
+- `ReadOS.Msp.Hosting.Native` implements the internal `reados-msp-native/1` adapter with safe DLL loading, strict UTF-8/JSON/Base64 decoding, deep-frozen contracts, operation-specific request/response limits, contract/audit/AST validation, host-path disclosure checks including UTF-16LE variants, and exception text that omits stack/build-machine paths.
+- `native_pwd_echo_adoption_v1` is complete. The ReadOS product registry protects `pwd` and `echo` from host-pack overrides with ordinal-ignore-case validation and replaces their execution bodies with one shared lazy native adapter. Only exact canonical lowercase command names route to Rust; case variants fail closed without managed fallback. `ls`, `cat`, `help`, and all app-domain commands remain managed.
+- Managed `MspRuntime` remains authoritative for parse, policy/approval, dry-run, streaming events, terminal results, cancellation projection, and exactly-once product audit. Native Parse must agree with the original command text, command name, explicit-empty-aware arguments, and a single simple AST before execute; pipelines, lists, redirections, assignments, negation, raw newlines, and unquoted ampersands fail closed. Native execution must return exactly one matching `Allow` audit and no state change; its audit is evidence only and is not appended to the managed result. The native request receives no approval environment, credentials, or workspace root.
+- `native_abi_v2_handshake_v1` is complete. The fixed 32-byte ABI info reports major `2`, minor `0`, contract `0x324D534F44414552`, and capabilities `0xF`; v2 request/response ownership is explicit pointer/`ulong` length and embedded NUL is not truncated. Hosting permits full v1 fallback only when `msp_get_abi_info_v2`, `msp_invoke_v2`, and `msp_free_buffer_v2` are all absent. Partial availability, size/version/contract/capability drift, or malformed results fail closed. V1/v2 allocations and free functions never mix, every native-return path frees exactly once, and invoke/dispose share one lock. Runtime ABI information is exposed for staged-package evidence.
+- Parse/Execute/Normalize v2 request caps are 128 KiB/1 MiB/1 MiB and response caps are 16 MiB/64 MiB/1 MiB. Rust's bounded writer refuses growth before reserve/copy, eliminating the measured 54.5x Parse response-amplification path while keeping contract-shaped bounded failures.
+- Release builds use the static MSVC CRT. Native binary verification checks all seven required exports and rejects dynamic CRT markers; the current release DLL depends only on Windows system libraries.
+- The committed Apache-2.0 conformance snapshot records upstream revision and fixture paths for `:`, `echo`, `false`, `pwd`, `true`, and `echo -e`; clean checkout tests no longer require the nested `MSP/` clone.
+- [MSP_UPSTREAM_COMPATIBILITY_MATRIX.md](MSP_UPSTREAM_COMPATIBILITY_MATRIX.md) records the current adopted surface, Windows deviations, managed status, and next acceptance gate.
+- Rust fmt/test/clippy/release build, native binary/FFI smoke, 69 Core tests, 259 Hosting tests (including 3/3 real release-DLL operations without skip), 300 App tests, and the zero-warning/zero-error solution build pass; Rust has 66 tests and the managed total is 628. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+- Packaging builds and copies `msp_core.dll`, supplies license/NOTICE/provenance, rejects raw `MSP/`, `.git`, credentials/private state, PDBs, and dynamic CRT markers, and requires the reported runtime ABI information. The latest completed no-skip package is `0.1.0-native-command-registry-verified`: staged FFI and packaged `LengthDelimitedV2` 2.0 negotiation succeed, the ZIP contains 532 entries with `RawMSP`/PDB/`.git` counts of zero, all five `nativeCommands` exit 0, each of the three proxied commands has one managed audit, cleanup leaves zero native residue, and the ZIP is `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`.
+- `native_command_core_registry_v1` is complete. Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace hard-coded command enumeration and dispatch; validation, duplicates, unknown lookup, deterministic names, pack composition, and registry-derived `help` are covered. The 12-case baseline/candidate ABI v1/v2 differential passes with no command-byte, exit-code, diagnostic, audit, state-change, fixture, ABI, or product-routing drift.
+- `native_mixed_workspace_read_v1` is the next dependency-ordered slice before product-routing `ls`/`cat`, followed by `native_stream_core_v1`; mutable WorkspaceFS/trash, pipelines/redirection, model-facing sessions, external processes/ConPTY, and wider shell/command conformance remain later independent gates. It must define capability traits, longest-prefix mount routing/rebasing, opaque callback handles, disposal, cancellation, concurrency, and .NET delegate lifetime without weakening fixed-local-NTFS confinement, ABI v2, sanitization, or managed lifecycle/audit authority. Synchronous native invocation cannot interrupt an already-running call; current cancellation checks only bound the side-effect-free `pwd`/`echo` calls before and after invocation. Therefore T95 remains in progress.
+
 ## Decision Log
+
+### 2026-07-11: Complete The Rust Command Core Registry
+
+`native_command_core_registry_v1` replaces hard-coded Rust command enumeration and dispatch with validated deterministic registry/pack composition. Sixty-six Rust tests, the full managed baseline, the zero-warning/zero-error solution build, and a 12-case baseline/candidate ABI v1/v2 differential pass against DLL SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`. The no-skip `0.1.0-native-command-registry-verified` package gate also passes with the staged/package evidence recorded above; the next implementation slice is `native_mixed_workspace_read_v1`.
+
+### 2026-07-11: Complete The Length-Delimited ABI v2 Boundary
+
+`native_abi_v2_handshake_v1` closes the native binary negotiation, length-delimited ownership, allocator separation, operation-limit, amplification-resistance, real-DLL, and no-skip packaged-process evidence gaps without changing command behavior or product routing. The next implementation slice is the Rust command core registry.
+
+### 2026-07-10: Move From Component Growth To Trust, Product Proof, And Upstream-Aligned Windows Core
+
+T1-T91 established the vertical service architecture, Hosting boundary, workflows, typed timeline, and artifact lineage. T92 closes the immediate P0 trust gaps. T93 and T94 continue product proof and workbench hardening. T95 uses the local upstream MSP repository as Apache-2.0 design/conformance input for a general Windows-compatible Rust core plus stable .NET adapter; it is not a ReadOS-only JSON protocol exercise, a raw source-tree dependency, or a migration of ReadOS business logic into Rust.
 
 ### 2026-07-07: Track Development From the Plan
 
