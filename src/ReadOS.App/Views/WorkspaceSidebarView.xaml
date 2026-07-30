@@ -19,7 +19,7 @@
                     BorderBrush="{ThemeResource ReadOSBorderBrush}"
                     BorderThickness="0,0,1,0">
                 <Grid Padding="6,8">
-                    <StackPanel Spacing="8"
+                        <StackPanel Spacing="{StaticResource SpacingSm}"
                                 VerticalAlignment="Top"
                                 Margin="0,4,0,0">
                         <ToggleButton Style="{StaticResource ReadOSRailButtonStyle}"
@@ -204,7 +204,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="8"
-                                      ColumnSpacing="8"
+                                      ColumnSpacing="{StaticResource SpacingSm}"
                                       MinHeight="56">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="30" />
@@ -246,7 +246,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="8"
-                                      ColumnSpacing="8"
+                                      ColumnSpacing="{StaticResource SpacingSm}"
                                       MinHeight="64">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="30" />
@@ -310,7 +310,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="8"
-                                      ColumnSpacing="8"
+                                      ColumnSpacing="{StaticResource SpacingSm}"
                                       MinHeight="62">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="30" />

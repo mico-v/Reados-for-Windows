@@ -83,6 +83,7 @@ public sealed partial class WorkspaceSettings : ObservableObject
     public partial string ProviderBaseUrl { get; set; } = "https://api.openai.com/v1";
 
     [ObservableProperty]
+    [JsonIgnore]
     public partial string ProviderApiKey { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -108,6 +109,12 @@ public sealed partial class WorkspaceSettings : ObservableObject
 
     [ObservableProperty]
     public partial string MinorUEndpoint { get; set; } = "https://mineru.net/api";
+
+    [ObservableProperty]
+    public partial double RunDrawerHeight { get; set; } = 240;
+
+    [ObservableProperty]
+    public partial bool IsRunDrawerPinned { get; set; }
 }
 
 public sealed partial class ProjectItem : ObservableObject
@@ -579,11 +586,13 @@ public sealed partial class MspTranscriptEntry : ObservableObject
     partial void OnCompletedAtChanged(DateTimeOffset value)
     {
         OnPropertyChanged(nameof(CompletedLabel));
+        OnPropertyChanged(nameof(TimingLabel));
     }
 
     partial void OnExitCodeChanged(int value)
     {
         NotifyStatusChanged();
+        OnPropertyChanged(nameof(ExitCodeLabel));
     }
 
     partial void OnStdoutChanged(string value)
@@ -642,6 +651,27 @@ public sealed partial class MspTranscriptEntry : ObservableObject
         OnPropertyChanged(nameof(Succeeded));
         OnPropertyChanged(nameof(IsApprovalRequired));
         OnPropertyChanged(nameof(StatusLabel));
+    }
+
+    [JsonIgnore]
+    public bool HasEffects => !string.IsNullOrWhiteSpace(Effects)
+        && !string.Equals(Effects, "None", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string ExitCodeLabel => $"exit {ExitCode}";
+
+    [JsonIgnore]
+    public string TimingLabel =>
+        $"{StartedAt.ToLocalTime():HH:mm:ss} -> {CompletedAt.ToLocalTime():HH:mm:ss} ({(CompletedAt - StartedAt).TotalSeconds:0.0}s)";
+
+    partial void OnStartedAtChanged(DateTimeOffset value)
+    {
+        OnPropertyChanged(nameof(TimingLabel));
+    }
+
+    partial void OnEffectsChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasEffects));
     }
 }
 

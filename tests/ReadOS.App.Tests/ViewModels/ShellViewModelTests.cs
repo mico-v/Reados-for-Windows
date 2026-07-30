@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.ViewModels;
+using ReadOS.Msp.Models;
 
 namespace ReadOS.App.Tests.ViewModels;
 
@@ -291,6 +292,41 @@ public sealed class ShellViewModelTests
         Assert.True(viewModel.Inspector.IsAllowWorkspaceApprovalModeSelected);
         Assert.Contains("允许写入", viewModel.ApprovalModeLabel);
         Assert.True(workspaceStore.SaveCount > saveCount);
+    }
+
+    [Fact]
+    public async Task Run_drawer_layout_persists_height_and_pin()
+    {
+        var workspace = new WorkspaceState
+        {
+            Settings = new WorkspaceSettings
+            {
+                RunDrawerHeight = 320,
+                IsRunDrawerPinned = true
+            }
+        };
+        var workspaceStore = new TestWorkspaceStore(workspace);
+        var viewModel = new ShellViewModel(
+            workspaceStore,
+            new TestPdfDocumentService(),
+            new TestFileDialogService(),
+            new TestAiChatService());
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(320, viewModel.RunDrawerHeight);
+        Assert.True(viewModel.IsRunDrawerPinned);
+
+        viewModel.RunDrawerHeight = 400;
+        await viewModel.CommitRunDrawerLayoutAsync();
+
+        Assert.Equal(400, workspace.Settings.RunDrawerHeight);
+        Assert.True(workspaceStore.SaveCount > 0);
+
+        viewModel.PinRunDrawerCommand.Execute(null);
+
+        Assert.False(viewModel.IsRunDrawerPinned);
+        Assert.False(workspace.Settings.IsRunDrawerPinned);
     }
 
     [Fact]
@@ -1385,6 +1421,143 @@ public sealed class ShellViewModelTests
 
             LastAttachmentTexts = attachmentTexts;
             return Response;
+        }
+    }
+
+    [Fact]
+    public async Task Flagship_evidence_and_synthesis_workflows_are_visible_through_shell()
+    {
+        var workspace = new WorkspaceState();
+        var project = new ProjectItem { Id = "project-1", Name = "Project" };
+        var document = new LibraryItem
+        {
+            Id = "doc-1",
+            ProjectId = project.Id,
+            Kind = LibraryItemKind.Pdf,
+            Name = "Service Manual.pdf",
+            RelativePath = "V:\\ReadOS-Test\\Library\\service-manual.pdf",
+            PageCount = 8
+        };
+        document.Outline.Add(new OutlineItem
+        {
+            Id = "section-3-2",
+            Title = "3.2 Service Layer",
+            Page = 4,
+            Level = 2
+        });
+        project.LibraryItems.Add(document);
+        workspace.Projects.Add(project);
+
+        var viewModel = new ShellViewModel(
+            new TestWorkspaceStore(workspace),
+            new FlagshipPdfDocumentService(),
+            new TestFileDialogService(),
+            new FlagshipAiChatService());
+
+        await viewModel.InitializeAsync();
+
+        // Operator selects the outline section in the inspector and prepares the evidence command.
+        viewModel.SelectedOutlineItem = viewModel.Outline.Single(item => item.Title == "3.2 Service Layer");
+        viewModel.Inspector.PrepareExtractEvidenceWorkflowCommand.Execute(null);
+
+        Assert.Contains("extract-evidence", viewModel.MspCommandDraft);
+        Assert.Equal(InspectorTab.Run, viewModel.SelectedInspectorTab);
+
+        // Run -> pending approval (surfaced in the approvals flyout / top-bar badge).
+        await viewModel.RunMspCommandCommand.ExecuteAsync(null);
+
+        var pendingExtract = viewModel.MspTranscript.Single(entry => entry.CommandText.Contains("extract-evidence"));
+        Assert.True(viewModel.HasPendingApprovals);
+        Assert.Equal("RequireConfirmation", pendingExtract.Decision);
+
+        // Operator approves the artifact write from the shell.
+        await viewModel.ApproveMspCommandCommand.ExecuteAsync(pendingExtract);
+
+        var extractEntry = viewModel.MspTranscript.Single(entry => entry.CommandText.Contains("extract-evidence"));
+        Assert.True(extractEntry.Succeeded, extractEntry.Stderr);
+        Assert.False(viewModel.HasPendingApprovals);
+
+        var evidenceArtifact = Assert.Single(
+            workspace.Artifacts,
+            artifact => artifact.Path.Contains("evidence.json"));
+        Assert.Contains("page four evidence", evidenceArtifact.Content);
+
+        // Operator selects the evidence artifact and prepares the synthesis command.
+        viewModel.SelectedArtifact = evidenceArtifact;
+        viewModel.Inspector.PrepareSynthesizeEvidenceWorkflowCommand.Execute(null);
+
+        Assert.Contains("synthesize-evidence", viewModel.MspCommandDraft);
+
+        await viewModel.RunMspCommandCommand.ExecuteAsync(null);
+
+        var pendingSynthesis = viewModel.MspTranscript.Single(entry => entry.CommandText.Contains("synthesize-evidence"));
+        Assert.True(viewModel.HasPendingApprovals);
+
+        await viewModel.ApproveMspCommandCommand.ExecuteAsync(pendingSynthesis);
+
+        var synthesisEntry = viewModel.MspTranscript.Single(entry => entry.CommandText.Contains("synthesize-evidence"));
+        Assert.True(synthesisEntry.Succeeded, synthesisEntry.Stderr);
+
+        var synthesisArtifact = Assert.Single(
+            workspace.Artifacts,
+            artifact => artifact.Path.Contains("evidence-synthesis.md"));
+        Assert.Contains(evidenceArtifact.Path, synthesisArtifact.SourcePaths);
+    }
+
+    private sealed class FlagshipPdfDocumentService : IPdfDocumentService
+    {
+        private static readonly IReadOnlyDictionary<int, string> PageText = new Dictionary<int, string>
+        {
+            [4] = "page four evidence",
+            [5] = "page five evidence",
+            [6] = "page six evidence"
+        };
+
+        public Task<PdfDocumentInfo> InspectAsync(string path, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new PdfDocumentInfo(
+                8,
+                new[] { new PageLabelRule { PdfPage = 4, Label = "S-1" } },
+                new[]
+                {
+                    new OutlineItem { Id = "chapter-3", Title = "3 Architecture", Page = 2, Level = 1 },
+                    new OutlineItem { Id = "section-3-2", Title = "3.2 Service Layer", Page = 4, Level = 2 }
+                }));
+        }
+
+        public Task<BitmapImage> RenderPageAsync(string path, int pageNumber, double width, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<PageImageItem>> RenderThumbnailsAsync(string path, int pageCount, int maxPages, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<PageImageItem>>(Array.Empty<PageImageItem>());
+
+        public Task<IReadOnlyList<PdfTextHit>> SearchAsync(string path, string query, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<PdfTextHit>>(Array.Empty<PdfTextHit>());
+
+        public Task<string> ExtractPageTextAsync(string path, int startPage, int endPage, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(PageText.TryGetValue(startPage, out var text) ? text : string.Empty);
+        }
+    }
+
+    private sealed class FlagshipAiChatService : IAiChatService
+    {
+        public Task<string> SendAsync(
+            WorkspaceSettings settings,
+            LibraryItem? document,
+            IEnumerable<ChatMessage> history,
+            string userPrompt,
+            IEnumerable<ChatAttachment> attachments,
+            Func<ChatAttachment, Task<string>> attachmentTextProvider,
+            string? mspInstruction = null,
+            string? mspExecutionContext = null,
+            bool allowMspCommandRequests = true,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult("Synthesized durable MSP boundary evidence.");
         }
     }
 }

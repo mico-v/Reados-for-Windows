@@ -1,0 +1,1018 @@
+<UserControl
+    x:Class="ReadOS.App.Views.ChatTimelineView"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:ReadOS.App.Models.ChatUi"
+    xmlns:converters="using:ReadOS.App.Converters"
+    xmlns:chatui="using:ReadOS.App.Controls.ChatUi"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="720"
+    d:DesignWidth="540">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- userBubbleBackgroundColor: light rgba(0,0,0,0.055) / dark rgba(255,255,255,0.10) -->
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="MspUserBubbleBrush" Color="#0E000000" />
+                    <SolidColorBrush x:Key="MspUserBubbleBorderBrush" Color="#1A000000" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="MspUserBubbleBrush" Color="#0E000000" />
+                    <SolidColorBrush x:Key="MspUserBubbleBorderBrush" Color="#1A000000" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="MspUserBubbleBrush" Color="#1AFFFFFF" />
+                    <SolidColorBrush x:Key="MspUserBubbleBorderBrush" Color="#24FFFFFF" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <!-- Block selector: wire all 16 canonical block templates.
+                 Previously declared without these properties → SelectTemplateCore
+                 returned null and every block rendered blank. -->
+            <converters:ChatUiBlockTemplateSelector x:Key="BlockTemplateSelector"
+                MarkdownTemplate="{StaticResource MarkdownTemplate}"
+                ToolCallTemplate="{StaticResource ToolCallTemplate}"
+                ToolGroupTemplate="{StaticResource ToolGroupTemplate}"
+                ProcessingTemplate="{StaticResource ProcessingTemplate}"
+                ReasoningTemplate="{StaticResource ReasoningTemplate}"
+                ProgressTemplate="{StaticResource ProgressTemplate}"
+                VideoProgressTemplate="{StaticResource VideoProgressTemplate}"
+                ProposedPlanTemplate="{StaticResource ProposedPlanTemplate}"
+                NoticeTemplate="{StaticResource NoticeTemplate}"
+                AttachmentTemplate="{StaticResource AttachmentTemplate}"
+                ImageTemplate="{StaticResource ImageTemplate}"
+                SearchResultsTemplate="{StaticResource SearchResultsTemplate}"
+                SearchProgressTemplate="{StaticResource SearchProgressTemplate}"
+                SourcesTemplate="{StaticResource SourcesTemplate}"
+                TextSelectionTemplate="{StaticResource TextSelectionTemplate}"
+                FooterTemplate="{StaticResource FooterTemplate}" />
+
+            <!-- Message selector: user bubble vs assistant open, per renderer.manifest.json. -->
+            <converters:ChatUiMessageTemplateSelector x:Key="MessageTemplateSelector"
+                UserMessageTemplate="{StaticResource UserMessageTemplate}"
+                AssistantMessageTemplate="{StaticResource AssistantMessageTemplate}" />
+
+            <converters:StringToVisibilityConverter x:Key="StringToVisibility" />
+            <converters:NullableDoubleConverter x:Key="NullableDouble" />
+            <converters:CountToVisibilityConverter x:Key="CountToVisibility" />
+            <converters:ChatUiRoleLabelConverter x:Key="RoleLabel" />
+            <converters:ChatUiDurationLabelConverter x:Key="DurationLabel" />
+
+            <!-- Default renderer bubble tokens (mirror Renderers/Default/renderer.manifest.json). -->
+            <CornerRadius x:Key="MspBubbleRadius">22</CornerRadius>
+            <CornerRadius x:Key="MspBlockRadius">10</CornerRadius>
+            <Thickness x:Key="MspBubblePadding">16,12</Thickness>
+            <Thickness x:Key="MspBlockPadding">12,10</Thickness>
+            <x:Double x:Key="MspMessageMaxWidth">720</x:Double>
+            <x:Double x:Key="MspPagePaddingX">12</x:Double>
+            <x:Double x:Key="MspMessageGap">12</x:Double>
+
+            <SolidColorBrush x:Key="MspAssistantBubbleBrush" Color="Transparent" />
+
+        <!-- ── Block templates: all 16 canonical block types ───────────── -->
+
+        <DataTemplate x:Key="MarkdownTemplate">
+            <StackPanel Spacing="0">
+                <chatui:ChatUiMarkdownTextBlock Markdown="{Binding Text}" Streaming="{Binding Streaming}" HorizontalAlignment="Stretch" />
+                <!-- Streaming shimmer — caret only when the block is running. -->
+                <Border Background="{ThemeResource ReadOSAccentMutedBrush}"
+                        CornerRadius="6" Padding="8,2"
+                        Visibility="{Binding Streaming, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ProgressRing Width="11" Height="11" IsActive="True" />
+                        <TextBlock Text="生成中" FontSize="10"
+                                   Foreground="{ThemeResource ReadOSAccentBrush}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolCallTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE9D9;"
+                                  FontSize="11"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding ToolName}"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding DurationMs, Converter={StaticResource DurationLabel}}"
+                                   FontSize="10"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="12"
+                               FontFamily="Cascadia Code, Consolas"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                               Visibility="{Binding Title, Converter={StaticResource StringToVisibility}}" />
+                    <TextBlock Text="{Binding DetailText}"
+                               FontSize="11"
+                               FontFamily="Cascadia Code, Consolas"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               Visibility="{Binding DetailText, Converter={StaticResource StringToVisibility}}" />
+                    <TextBlock Text="{Binding OutputText}"
+                               FontSize="11"
+                               FontFamily="Cascadia Code, Consolas"
+                               TextWrapping="Wrap"
+                               MaxLines="6"
+                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                               Visibility="{Binding OutputText, Converter={StaticResource StringToVisibility}}" />
+                    <Border Background="{ThemeResource ReadOSDangerBrush}"
+                            CornerRadius="4"
+                            Padding="8,4"
+                            Visibility="{Binding ErrorText, Converter={StaticResource StringToVisibility}}">
+                        <TextBlock Text="{Binding ErrorText}" FontSize="11" Foreground="White" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolGroupTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                               Visibility="{Binding Title, Converter={StaticResource StringToVisibility}}" />
+                    <ItemsRepeater ItemsSource="{Binding ToolCalls}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="4" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE9D9;" FontSize="10"
+                                              Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ToolName}" FontSize="11"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProcessingTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressRing Width="13" Height="13" IsActive="{Binding Active, FallbackValue=True}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding DurationMs, Converter={StaticResource DurationLabel}}"
+                                   FontSize="10" Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{Binding Items}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="3" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe Fluent Icons"
+                                              Glyph="&#xE943;"
+                                              FontSize="9"
+                                              Foreground="{ThemeResource ReadOSTextTertiaryBrush}" />
+                                    <TextBlock Grid.Column="1"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}">
+                                        <Run Text="{Binding Text, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding DetailText, Mode=OneWay}" />
+                                    </TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ReasoningTemplate">
+            <Border Background="{ThemeResource ReadOSPanelBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                    BorderThickness="1"
+                    Opacity="0.96">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE9D9;" FontSize="11"
+                                  Foreground="{ThemeResource ReadOSTextTertiaryBrush}" />
+                        <TextBlock Text="推理" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}" />
+                    </StackPanel>
+                    <chatui:ChatUiMarkdownTextBlock Markdown="{Binding Text}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProgressTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressRing Width="13" Height="13" IsActive="True" />
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding DetailText}" FontSize="11"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding DetailText, Converter={StaticResource StringToVisibility}}" />
+                    </Grid>
+                    <ProgressBar Value="{Binding Progress, Converter={StaticResource NullableDouble}}"
+                                 Minimum="0" Maximum="100" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="VideoProgressTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" FontFamily="Segoe Fluent Icons" Glyph="&#xE714;" FontSize="12"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}">
+                            <Run Text="{Binding Progress, Converter={StaticResource NullableDouble}}" /><Run Text="%" />
+                        </TextBlock>
+                    </Grid>
+                    <ProgressBar Value="{Binding Progress, Converter={StaticResource NullableDouble}}"
+                                 Minimum="0" Maximum="100"
+                                 Foreground="{ThemeResource ReadOSAccentBrush}" />
+                    <TextBlock Text="{Binding DetailText}" FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding DetailText, Converter={StaticResource StringToVisibility}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProposedPlanTemplate">
+            <Border Background="{ThemeResource ReadOSAccentMutedBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE9D9;" FontSize="11"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding PhaseTitle, FallbackValue='执行计划'}"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSAccentBrush}"
+                                   Visibility="{Binding PhaseTitle, Converter={StaticResource StringToVisibility}}" />
+                    </StackPanel>
+                    <chatui:ChatUiMarkdownTextBlock Markdown="{Binding Text}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="NoticeTemplate">
+            <Border Background="{ThemeResource ReadOSAccentMutedBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                    BorderThickness="1"
+                    Padding="0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="3" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Grid.Column="0" Fill="{ThemeResource ReadOSAccentBrush}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                Padding="{StaticResource MspBlockPadding}">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7BA;" FontSize="12"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Text}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AttachmentTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" FontFamily="Segoe Fluent Icons" Glyph="&#xE8A5;" FontSize="12"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="附件" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}" VerticalAlignment="Center" />
+                        <Border Grid.Column="2" Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                CornerRadius="8" Padding="6,1"
+                                Visibility="{Binding Attachments, Converter={StaticResource CountToVisibility}}">
+                            <TextBlock Text="{Binding Attachments.Count}" FontSize="10"
+                                       Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{Binding Attachments}"
+                                  Visibility="{Binding Attachments, Converter={StaticResource CountToVisibility}}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="4" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7B8;" FontSize="12"
+                                              Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                        <TextBlock Text="{Binding Name, FallbackValue='附件文件'}" FontSize="11"
+                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding MimeType, FallbackValue=''}" FontSize="10"
+                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding MimeType, Converter={StaticResource StringToVisibility}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ImageTemplate">
+            <StackPanel Spacing="6">
+                <ItemsRepeater ItemsSource="{Binding Images}"
+                              Visibility="{Binding Images, Converter={StaticResource CountToVisibility}}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate>
+                            <Border CornerRadius="{StaticResource MspBlockRadius}"
+                                    Background="{ThemeResource ReadOSPanelBrush}"
+                                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                                    BorderThickness="1"
+                                    Padding="8">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="40" Height="40" CornerRadius="6"
+                                            Background="{ThemeResource ReadOSSubtleBrush}"
+                                            VerticalAlignment="Center">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE91B;" FontSize="18"
+                                                  Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding Name, FallbackValue='图像'}" FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Caption, FallbackValue=''}" FontSize="10"
+                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding Caption, Converter={StaticResource StringToVisibility}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SearchResultsTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" FontFamily="Segoe Fluent Icons" Glyph="&#xE721;" FontSize="12"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="搜索结果" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}" VerticalAlignment="Center" />
+                        <Border Grid.Column="2" Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                CornerRadius="8" Padding="6,1"
+                                Visibility="{Binding SearchQueries, Converter={StaticResource CountToVisibility}}">
+                            <TextBlock Text="{Binding SearchQueries.Count}" FontSize="10"
+                                       Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{Binding SearchQueries}"
+                                  Visibility="{Binding SearchQueries, Converter={StaticResource CountToVisibility}}">
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE721;" FontSize="10"
+                                              Foreground="{ThemeResource ReadOSTextTertiaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" FontSize="11"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                    <TextBlock FontSize="11" Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               Visibility="{Binding SearchReferences, Converter={StaticResource CountToVisibility}}">
+                        <Run Text="{Binding SearchReferences.Count, FallbackValue=0}" /><Run Text=" 条引用来源" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SearchProgressTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ProgressRing Width="11" Height="11" IsActive="True" />
+                        <TextBlock Text="{Binding Title}" FontSize="11"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding DetailText}" FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               Visibility="{Binding DetailText, Converter={StaticResource StringToVisibility}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SourcesTemplate">
+            <Border Background="{ThemeResource ReadOSSubtleBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSHairlineBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" FontFamily="Segoe Fluent Icons" Glyph="&#xE71B;" FontSize="12"
+                                  Foreground="{ThemeResource ReadOSTextSecondaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="来源" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}" VerticalAlignment="Center" />
+                        <Border Grid.Column="2" Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                CornerRadius="8" Padding="6,1"
+                                Visibility="{Binding Sources, Converter={StaticResource CountToVisibility}}">
+                            <TextBlock Text="{Binding Sources.Count, FallbackValue=0}" FontSize="10"
+                                       Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{Binding Sources}"
+                                  Visibility="{Binding Sources, Converter={StaticResource CountToVisibility}}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="3" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A1;" FontSize="10"
+                                              Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Title, FallbackValue='来源条目'}" FontSize="11"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="TextSelectionTemplate">
+            <Border Background="{ThemeResource ReadOSAccentMutedBrush}"
+                    CornerRadius="{StaticResource MspBlockRadius}"
+                    Padding="{StaticResource MspBlockPadding}"
+                    BorderBrush="{ThemeResource ReadOSAccentBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEF20;" FontSize="11"
+                                  Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="引用选择" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSAccentBrush}" />
+                        <TextBlock Text="{Binding TextSelection.Count, FallbackValue=0}" FontSize="10"
+                                   Foreground="{ThemeResource ReadOSAccentBrush}" VerticalAlignment="Center"
+                                   Visibility="{Binding TextSelection, Converter={StaticResource CountToVisibility}}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding TextSelection.Text, FallbackValue=''}" FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}" TextWrapping="Wrap"
+                               Visibility="{Binding TextSelection.Text, Converter={StaticResource StringToVisibility}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="FooterTemplate">
+            <TextBlock Text="{Binding Text}"
+                       FontSize="11"
+                       Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                       FontFamily="Cascadia Code, Consolas" />
+        </DataTemplate>
+
+        <!-- ── Message containers: strict dual-bubble per manifest ─────────
+             User  → gray bubble (showsUserBubbleBackground: true)
+             Other → open markdown, no bubble (showsAssistantBubbleBackground: false) -->
+
+        <DataTemplate x:Key="UserMessageTemplate">
+            <Border Background="{ThemeResource MspUserBubbleBrush}"
+                    BorderBrush="{ThemeResource MspUserBubbleBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource MspBubbleRadius}"
+                    Padding="{StaticResource MspBubblePadding}"
+                    HorizontalAlignment="Stretch">
+                <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8" Padding="4,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" CornerRadius="6"
+                                Background="{ThemeResource ReadOSSubtleBrush}"
+                                Padding="6,2">
+                            <TextBlock Text="{Binding Role, Converter={StaticResource RoleLabel}}"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="{Binding TimeText}"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding TimeText, Converter={StaticResource StringToVisibility}}" />
+                        <Button Grid.Column="3" Width="28" Height="24" Padding="0"
+                                Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="复制消息"
+                                AutomationProperties.Name="复制消息"
+                                Click="CopyMessageButton_Click">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8C8;" FontSize="12" />
+                        </Button>
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{Binding Blocks}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <ContentControl Content="{Binding}"
+                                                ContentTemplateSelector="{StaticResource BlockTemplateSelector}"
+                                                HorizontalContentAlignment="Stretch" />
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantMessageTemplate">
+            <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                <Grid ColumnSpacing="8" Padding="4,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" CornerRadius="6"
+                            Background="{ThemeResource ReadOSSubtleBrush}"
+                            Padding="6,2">
+                        <TextBlock Text="{Binding Role, Converter={StaticResource RoleLabel}}"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="{Binding ModelName}"
+                               FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding ModelName, Converter={StaticResource StringToVisibility}}" />
+                    <TextBlock Grid.Column="2" Text="{Binding TimeText}"
+                               FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding TimeText, Converter={StaticResource StringToVisibility}}" />
+                    <Button Grid.Column="4" Width="28" Height="24" Padding="0"
+                            Style="{StaticResource ReadOSIconButtonStyle}"
+                            ToolTipService.ToolTip="复制消息"
+                            AutomationProperties.Name="复制消息"
+                            Click="CopyMessageButton_Click">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8C8;" FontSize="12" />
+                    </Button>
+                </Grid>
+                <ItemsRepeater ItemsSource="{Binding Blocks}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate>
+                            <ContentControl Content="{Binding}"
+                                            ContentTemplateSelector="{StaticResource BlockTemplateSelector}"
+                                            HorizontalContentAlignment="Stretch" />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Background="{ThemeResource MspAppBackgroundBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- ═══ Row 0 — Canonical timeline (reference #messages surface) ═══ -->
+            <ScrollViewer x:Name="TimelineScroll"
+                          Grid.Row="0"
+                          Padding="0,12,0,12"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalContentAlignment="Center">
+                <StackPanel x:Name="TimelineHost"
+                            MaxWidth="720"
+                            HorizontalAlignment="Center"
+                            Spacing="12">
+                    <ItemsRepeater x:Name="TimelineRepeater" Margin="12,0">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="12" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <ContentControl Content="{Binding}"
+                                                ContentTemplateSelector="{StaticResource MessageTemplateSelector}"
+                                                HorizontalContentAlignment="Stretch" />
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Empty state -->
+            <Border x:Name="EmptyState"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Padding="40,0">
+                <StackPanel Spacing="10" HorizontalAlignment="Center">
+                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" FontSize="28"
+                              Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                              HorizontalAlignment="Center" />
+                    <TextBlock Text="开始一段对话"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="把文档或问题交给 ReadOS，它会帮你阅读、检索与整理。"
+                               FontSize="11"
+                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <!-- ═══ Row 1 — Composer ═══ -->
+            <Border Grid.Row="1"
+                    Margin="14,0,14,14"
+                    Padding="10"
+                    Style="{StaticResource ReadOSComposerPanelStyle}">
+                <Grid RowSpacing="{StaticResource SpacingSm}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="36" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                <Border Style="{StaticResource ReadOSChipStyle}"
+                                        Visibility="{Binding HasPendingAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding PendingAttachmentSummary}"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding PendingAttachments}"
+                                              Visibility="{Binding HasPendingAttachments, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="7,4"
+                                                    CornerRadius="{StaticResource RadiusMd}"
+                                                    Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                    BorderThickness="1">
+                                                <Grid ColumnSpacing="{StaticResource SpacingXs}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               FontWeight="SemiBold"
+                                                               MaxWidth="180"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Detail}"
+                                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               MaxWidth="120"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center" />
+                                                    <Button Grid.Column="2"
+                                                            Width="20" Height="20" MinHeight="20"
+                                                            Padding="0"
+                                                            Style="{StaticResource ReadOSIconButtonStyle}"
+                                                            ToolTipService.ToolTip="移除此附件"
+                                                            Command="{Binding DataContext.RemovePendingAttachmentCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}">
+                                                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="9" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <ItemsControl ItemsSource="{Binding QueuedComposerPrompts}"
+                                              Visibility="{Binding HasQueuedComposerPrompts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Height="28" Padding="8,0"
+                                                    Background="{ThemeResource ReadOSSubtleBrush}"
+                                                    BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                                    ToolTipService.ToolTip="恢复此队列项"
+                                                    Command="{Binding DataContext.RestoreQueuedComposerPromptCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8FD;"
+                                                              FontSize="{StaticResource IconSizeSm}"
+                                                              Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                                    <TextBlock Text="{Binding Title}"
+                                                               Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                               FontSize="{StaticResource FontSizeXs}"
+                                                               FontWeight="SemiBold"
+                                                               MaxWidth="160"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}"
+                                            ToolTipService.ToolTip="{Binding ApprovalModeDetail}">
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="50"
+                                                  IsChecked="{Binding IsPolicyApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="policy"
+                                                  Content="策略" />
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="64"
+                                                  IsChecked="{Binding IsConfirmAllApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="confirm-all"
+                                                  Content="每次确认" />
+                                    <ToggleButton Style="{StaticResource ReadOSSegmentButtonStyle}"
+                                                  MinWidth="64"
+                                                  IsChecked="{Binding IsAllowWorkspaceApprovalModeSelected, Mode=OneWay}"
+                                                  Command="{Binding SelectApprovalModeCommand}"
+                                                  CommandParameter="allow-workspace"
+                                                  Content="允许写入" />
+                                </StackPanel>
+                                <Border Style="{StaticResource ReadOSChipStyle}">
+                                    <TextBlock Text="{Binding RuntimeStatusLabel}"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                </Border>
+                                <Button Height="28" Padding="8,0"
+                                        Background="{ThemeResource ReadOSAccentMutedBrush}"
+                                        BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                        ToolTipService.ToolTip="打开待审批 MSP 命令"
+                                        Command="{Binding OpenApprovalsFlyoutCommand}"
+                                        Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7BA;"
+                                                  FontSize="{StaticResource IconSizeSm}"
+                                                  Foreground="{ThemeResource ReadOSAccentBrush}" />
+                                        <TextBlock Text="{Binding PendingApprovalLabel}"
+                                                   Foreground="{ThemeResource ReadOSAccentBrush}"
+                                                   FontSize="{StaticResource FontSizeXs}"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <Button Grid.Column="1"
+                                Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="清空附件"
+                                Command="{Binding ClearAttachmentsCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE74D;"
+                                      FontSize="{StaticResource IconSizeSm}" />
+                        </Button>
+                    </Grid>
+
+                    <TextBox Grid.Row="1"
+                             MinHeight="76" MaxHeight="160"
+                             AcceptsReturn="True"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             TextWrapping="Wrap"
+                             PlaceholderText="让 ReadOS 执行阅读、证据或 MSP 任务..."
+                             Text="{Binding ComposerDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Grid Grid.Row="2" ColumnSpacing="{StaticResource SpacingSm}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
+                            <Button Width="32" Height="32" Padding="0"
+                                    Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="附加当前页或全文"
+                                    Command="{Binding AttachCurrentPageCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A5;"
+                                          FontSize="{StaticResource IconSizeSm}" />
+                            </Button>
+                            <Button Width="32" Height="32" Padding="0"
+                                    Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="框选证据"
+                                    Command="{Binding StartRegionSelectionCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEF20;"
+                                          FontSize="{StaticResource IconSizeSm}" />
+                            </Button>
+                            <TextBox Width="120" Height="32"
+                                     PlaceholderText="1-3, 8"
+                                     Text="{Binding PageRangeDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Height="32" Padding="10,0"
+                                    Style="{StaticResource ReadOSGhostButtonStyle}"
+                                    Command="{Binding AttachRangeCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A5;"
+                                              FontSize="{StaticResource IconSizeSm}" />
+                                    <TextBlock Text="范围" />
+                                </StackPanel>
+                            </Button>
+                            <Button Width="32" Height="32" Padding="0"
+                                    Style="{StaticResource ReadOSIconButtonStyle}"
+                                    ToolTipService.ToolTip="显示 Runtime Drawer"
+                                    Command="{Binding ToggleRunDrawerCommand}">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE756;"
+                                          FontSize="{StaticResource IconSizeSm}" />
+                            </Button>
+                            <Button Height="32" Padding="10,0"
+                                    Style="{StaticResource ReadOSGhostButtonStyle}"
+                                    ToolTipService.ToolTip="用当前输入精炼选中的产物"
+                                    Command="{Binding PrepareComposerArtifactRefinementWorkflowCommand}"
+                                    Visibility="{Binding HasComposerArtifactRefinementTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE70F;"
+                                              FontSize="{StaticResource IconSizeSm}" />
+                                    <TextBlock Text="精炼" />
+                                </StackPanel>
+                            </Button>
+                            <Button Height="32" Padding="10,0"
+                                    Style="{StaticResource ReadOSGhostButtonStyle}"
+                                    ToolTipService.ToolTip="将当前草稿和证据加入队列"
+                                    Command="{Binding QueueComposerDraftCommand}"
+                                    Visibility="{Binding IsAnyMspRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXs}">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8FD;"
+                                              FontSize="{StaticResource IconSizeSm}" />
+                                    <TextBlock Text="队列" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Height="32" MinWidth="84" Padding="12,0"
+                                Style="{StaticResource ReadOSPrimaryButtonStyle}"
+                                ToolTipService.ToolTip="{Binding ComposerPrimaryToolTip}"
+                                Command="{Binding ComposerPrimaryCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
+                                <TextBlock Text="{Binding SendButtonLabel}" FontWeight="SemiBold" />
+                                <FontIcon FontFamily="Segoe Fluent Icons"
+                                          Glyph="{Binding ComposerPrimaryGlyph}"
+                                          FontSize="{StaticResource IconSizeSm}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

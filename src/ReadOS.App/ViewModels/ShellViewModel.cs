@@ -54,6 +54,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ReadOsConversationService conversationService;
     private readonly ReadOsMspSessionViewService mspSessionViewService;
     private readonly ReadOsTimelineService timelineService;
+    private readonly ReadOsChatUiProjectionService chatUiProjectionService;
     private readonly ReadOsTimelineActionService timelineActionService;
     private readonly ReadOsActiveDocumentContextService activeDocumentContextService;
     private readonly ReadOsDocumentCollectionRefreshService documentCollectionRefreshService;
@@ -73,6 +74,17 @@ public sealed partial class ShellViewModel : ObservableObject
     private bool suppressNavigationSelection;
     private bool suppressThumbnailSelection;
     private bool isArtifactPreviewActive;
+
+    private long _pageLoadGeneration;
+    private CancellationTokenSource? _pageCts;
+    private long _presenterLoadGeneration;
+    private CancellationTokenSource? _presenterCts;
+    private long _thumbnailGeneration;
+    private CancellationTokenSource? _thumbCts;
+    private long _outlineGeneration;
+    private CancellationTokenSource? _outlineCts;
+    private long _searchGeneration;
+    private CancellationTokenSource? _searchCts;
 
     public ShellViewModel(
         IWorkspaceStore workspaceStore,
@@ -103,6 +115,12 @@ public sealed partial class ShellViewModel : ObservableObject
         conversationService = new ReadOsConversationService();
         mspSessionViewService = new ReadOsMspSessionViewService();
         timelineService = new ReadOsTimelineService();
+        chatUiProjectionService = new ReadOsChatUiProjectionService();
+        ChatTimeline = new ChatTimelineViewModel();
+        ChatUiHostBridge = new ReadOsChatUiHostBridge(
+            this.clipboardService,
+            fileDialogService);
+        ChatUiHostBridge.MessageCopyRequested += OnChatUiMessageCopyRequested;
         timelineActionService = new ReadOsTimelineActionService();
         activeDocumentContextService = new ReadOsActiveDocumentContextService();
         documentCollectionRefreshService = new ReadOsDocumentCollectionRefreshService(conversationService);
@@ -203,6 +221,13 @@ public sealed partial class ShellViewModel : ObservableObject
     public ObservableCollection<PreparedMspCommand> PreparedMspCommands { get; } = new();
 
     public ObservableCollection<ThreadTimelineItem> TimelineItems { get; } = new();
+
+    public ChatTimelineViewModel ChatTimeline { get; }
+
+    // Canonical MSP Chat UI host bridge. Forwarded by the XAML timeline view
+    // when its ScrollViewer becomes available; exposes copy/open actions the
+    // renderer can call back into. Mirrors Hosts/Windows/src/msp-chat-ui-webview2-host.ts.
+    public ReadOsChatUiHostBridge ChatUiHostBridge { get; }
 
     [ObservableProperty]
     public partial AppStrings Strings { get; set; } = LocalizationCatalog.GetStrings("zh-CN");
@@ -332,6 +357,9 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial bool IsRunDrawerPinned { get; set; }
 
     [ObservableProperty]
+    public partial bool IsCompactLayout { get; set; }
+
+    [ObservableProperty]
     public partial double SidebarWidth { get; set; } = 280;
 
     [ObservableProperty]
@@ -345,6 +373,15 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial double RunDrawerHeight { get; set; } = 240;
+
+    public string RunDrawerPinGlyph => IsRunDrawerPinned ? "\uE841" : "\uE718";
+
+    // ── Conversation / overlay flyout state (pure-conversation shell) ──
+    [ObservableProperty]
+    public partial bool IsHistoryFlyoutOpen { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsApprovalsFlyoutOpen { get; set; }
 
     [ObservableProperty]
     public partial double PresenterDrawerWidth { get; set; } = 148;
@@ -1323,11 +1360,21 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         IsBusy = true;
+        var gen = ++_outlineGeneration;
+        _outlineCts?.Cancel();
+        _outlineCts?.Dispose();
+        _outlineCts = new CancellationTokenSource();
+        var token = _outlineCts.Token;
         try
         {
             var path = workspaceStore.GetAbsolutePath(SelectedDocument);
             var maxPage = Math.Min(SelectedDocument.PageCount, 12);
-            var text = await pdfService.ExtractPageTextAsync(path, 1, maxPage);
+            var text = await pdfService.ExtractPageTextAsync(path, 1, maxPage, token);
+            if (gen != _outlineGeneration)
+            {
+                return;
+            }
+
             var result = outlineEditingService.GenerateOutline(
                 workspace is not null,
                 SelectedDocument,
@@ -1335,8 +1382,17 @@ public sealed partial class ShellViewModel : ObservableObject
                 text);
             await ApplyOutlineEditResultAsync(result);
         }
+        catch (OperationCanceledException)
+        {
+            // 过期或被取消的请求：丢弃结果，不写状态。
+        }
         catch (Exception ex)
         {
+            if (gen != _outlineGeneration)
+            {
+                return;
+            }
+
             StatusMessage = $"目录生成失败：{ex.Message}";
         }
         finally
@@ -1408,9 +1464,19 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         IsBusy = true;
+        var gen = ++_searchGeneration;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
         try
         {
-            var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(search.Document), search.Query);
+            var hits = await pdfService.SearchAsync(workspaceStore.GetAbsolutePath(search.Document), search.Query, token);
+            if (gen != _searchGeneration)
+            {
+                return;
+            }
+
             var result = documentSearchService.ProjectResults(hits);
             foreach (var hit in result.Hits)
             {
@@ -1419,8 +1485,17 @@ public sealed partial class ShellViewModel : ObservableObject
 
             StatusMessage = result.StatusMessage;
         }
+        catch (OperationCanceledException)
+        {
+            // 过期或被取消的请求：丢弃结果，不写状态。
+        }
         catch (Exception ex)
         {
+            if (gen != _searchGeneration)
+            {
+                return;
+            }
+
             StatusMessage = $"搜索失败：{ex.Message}";
         }
         finally
@@ -1737,6 +1812,7 @@ public sealed partial class ShellViewModel : ObservableObject
         var pin = readerLayoutService.ToggleRunDrawerPin(IsRunDrawerPinned, IsRunDrawerOpen);
         IsRunDrawerPinned = pin.IsRunDrawerPinned;
         IsRunDrawerOpen = pin.IsRunDrawerOpen;
+        _ = CommitRunDrawerLayoutAsync();
     }
 
     [RelayCommand]
@@ -1764,6 +1840,44 @@ public sealed partial class ShellViewModel : ObservableObject
         IsInspectorVisible = true;
         IsRunDrawerOpen = true;
         StatusMessage = navigation.StatusMessage;
+    }
+
+    // ── Pure-conversation shell overlays (re-home deferred MSP chrome) ──
+
+    [RelayCommand]
+    private void OpenHistoryFlyout()
+    {
+        IsHistoryFlyoutOpen = true;
+    }
+
+    [RelayCommand]
+    private void OpenApprovalsFlyout()
+    {
+        IsApprovalsFlyoutOpen = !IsApprovalsFlyoutOpen;
+    }
+
+    [RelayCommand]
+    private void SelectConversation(ChatConversation? conversation)
+    {
+        if (conversation is not null)
+        {
+            SelectedConversation = conversation;
+            IsHistoryFlyoutOpen = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseOverlays()
+    {
+        IsHistoryFlyoutOpen = false;
+        IsApprovalsFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private void OpenProviderSettings()
+    {
+        SelectSettingsCategory("Provider");
+        OpenSettings();
     }
 
     [RelayCommand]
@@ -2151,16 +2265,36 @@ public sealed partial class ShellViewModel : ObservableObject
 
         if (preparation.ShouldRenderPdfPage && preparation.Document is not null)
         {
+            var gen = ++_pageLoadGeneration;
+            _pageCts?.Cancel();
+            _pageCts?.Dispose();
+            _pageCts = new CancellationTokenSource();
+            var token = _pageCts.Token;
             try
             {
                 CurrentPageImage = await pdfService.RenderPageAsync(
                     workspaceStore.GetAbsolutePath(preparation.Document),
                     preparation.PageNumber,
-                    ReaderImageWidth);
+                    ReaderImageWidth,
+                    token);
+                if (gen != _pageLoadGeneration)
+                {
+                    return;
+                }
+
                 CurrentPageLabelDraft = preparation.Document.CurrentPageLabel;
+            }
+            catch (OperationCanceledException)
+            {
+                // 过期或被取消的请求：丢弃结果，不写状态。
             }
             catch (Exception ex)
             {
+                if (gen != _pageLoadGeneration)
+                {
+                    return;
+                }
+
                 CurrentPageImage = null;
                 StatusMessage = $"页面渲染失败：{ex.Message}";
             }
@@ -2175,15 +2309,35 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private async Task LoadPresenterTextAsync(LibraryItem document)
     {
+        var gen = ++_presenterLoadGeneration;
+        _presenterCts?.Cancel();
+        _presenterCts?.Dispose();
+        _presenterCts = new CancellationTokenSource();
+        var token = _presenterCts.Token;
         try
         {
             var path = workspaceStore.GetAbsolutePath(document);
-            PresenterTextContent = File.Exists(path)
-                ? await File.ReadAllTextAsync(path)
+            var text = File.Exists(path)
+                ? await File.ReadAllTextAsync(path, token)
                 : string.Empty;
+            if (gen != _presenterLoadGeneration)
+            {
+                return;
+            }
+
+            PresenterTextContent = text;
+        }
+        catch (OperationCanceledException)
+        {
+            // 过期或被取消的请求：丢弃结果，不写状态。
         }
         catch (Exception ex)
         {
+            if (gen != _presenterLoadGeneration)
+            {
+                return;
+            }
+
             PresenterTextContent = string.Empty;
             StatusMessage = $"文本加载失败：{ex.Message}";
         }
@@ -2202,12 +2356,23 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
+        var gen = ++_thumbnailGeneration;
+        _thumbCts?.Cancel();
+        _thumbCts?.Dispose();
+        _thumbCts = new CancellationTokenSource();
+        var token = _thumbCts.Token;
         try
         {
             var thumbnails = await pdfService.RenderThumbnailsAsync(
                 workspaceStore.GetAbsolutePath(preparation.Document),
                 preparation.PageCount,
-                preparation.MaxPages);
+                preparation.MaxPages,
+                token);
+            if (gen != _thumbnailGeneration)
+            {
+                return;
+            }
+
             var projection = thumbnailLoadPreparationService.Project(
                 preparation.Document,
                 thumbnails,
@@ -2223,8 +2388,17 @@ public sealed partial class ShellViewModel : ObservableObject
             SelectedThumbnail = projection.SelectedThumbnail;
             suppressThumbnailSelection = false;
         }
+        catch (OperationCanceledException)
+        {
+            // 过期或被取消的请求：丢弃结果，不写状态。
+        }
         catch (Exception ex)
         {
+            if (gen != _thumbnailGeneration)
+            {
+                return;
+            }
+
             StatusMessage = $"缩略图加载失败：{ex.Message}";
         }
     }
@@ -2493,6 +2667,44 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             TimelineItems.Add(item);
         }
+
+        var canonical = chatUiProjectionService.BuildTimeline(ChatMessages, MspTranscript, Artifacts);
+        ChatTimeline.ApplyTimeline(canonical);
+    }
+
+    // Host bridge callback: copy the markdown text of the requested message id.
+    // The renderer calls bridge.CopyMessage(messageId) when the user clicks the
+    // "copy" action. We resolve the message from the canonical timeline and
+    // write its concatenated markdown/tool text to the clipboard.
+    private void OnChatUiMessageCopyRequested(object? sender, string messageId)
+    {
+        var timeline = ChatTimeline.Current;
+        if (timeline is null) return;
+
+        var message = timeline.Messages.FirstOrDefault(m => m.Id == messageId);
+        if (message is null) return;
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var block in message.Blocks)
+        {
+            if (block is Models.ChatUi.ChatUiMarkdownBlock md)
+            {
+                if (sb.Length > 0) sb.AppendLine();
+                sb.Append(md.Text);
+            }
+            else if (block is Models.ChatUi.ChatUiToolCallBlock tc)
+            {
+                if (sb.Length > 0) sb.AppendLine();
+                sb.Append($"[{tc.ToolName}] {tc.Title}");
+                if (!string.IsNullOrEmpty(tc.OutputText)) sb.Append(tc.OutputText);
+            }
+        }
+
+        if (sb.Length > 0)
+        {
+            _ = clipboardService.SetTextAsync(sb.ToString());
+            StatusMessage = "已复制消息内容";
+        }
     }
 
     private void UpdateSelectedNavigationEntry()
@@ -2593,7 +2805,9 @@ public sealed partial class ShellViewModel : ObservableObject
             AttachmentDefaultPrompt = AttachmentDefaultPrompt,
             RegionExplainPrompt = RegionExplainPrompt,
             ChapterExplainPrompt = ChapterExplainPrompt,
-            MinorUEndpoint = MinorUEndpoint
+            MinorUEndpoint = MinorUEndpoint,
+            RunDrawerHeight = RunDrawerHeight,
+            IsRunDrawerPinned = IsRunDrawerPinned
         };
     }
 
@@ -2612,6 +2826,9 @@ public sealed partial class ShellViewModel : ObservableObject
         ChapterExplainPrompt = settings.ChapterExplainPrompt;
         MinorUEndpoint = settings.MinorUEndpoint;
 
+        RunDrawerHeight = settings.RunDrawerHeight;
+        IsRunDrawerPinned = settings.IsRunDrawerPinned;
+
         SelectedLanguageOption = LanguageOptions.FirstOrDefault(item => item.Code == settings.LanguageCode) ?? LanguageOptions.First();
         Strings = LocalizationCatalog.GetStrings(SelectedLanguageOption.Code);
         OnPropertyChanged(nameof(ActiveModelLabel));
@@ -2623,6 +2840,34 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             await workspaceStore.SaveAsync(workspace);
         }
+    }
+
+    /// <summary>
+    /// Persists the current Run Drawer layout (height + pin) after an interactive
+    /// resize or pin toggle. Called on drag-completed and on pin change.
+    /// </summary>
+    public async Task CommitRunDrawerLayoutAsync()
+    {
+        if (workspace is null)
+        {
+            return;
+        }
+
+        workspace.Settings.RunDrawerHeight = RunDrawerHeight;
+        workspace.Settings.IsRunDrawerPinned = IsRunDrawerPinned;
+        await SaveWorkspaceAsync();
+    }
+
+    public void OpenMspTranscriptDetail(MspTranscriptEntry entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        SelectedMspTranscriptEntry = entry;
+        SelectedInspectorTab = InspectorTab.Run;
+        IsInspectorVisible = true;
     }
 
     private void NotifyActiveContext()

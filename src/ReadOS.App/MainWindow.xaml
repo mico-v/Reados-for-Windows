@@ -9,33 +9,44 @@
     mc:Ignorable="d"
     Title="ReadOS">
 
-    <Grid x:Name="RootShell" Background="{ThemeResource ReadOSCanvasBrush}">
+    <!--
+        Pure conversation shell — rebuilt to reproduce the MSP Chat UI reference
+        (MSP/Implementations/UI/MSPChatUI) effect: the conversation is the hero.
+        The legacy 3-column workbench (sidebar + inspector + bottom runtime drawer)
+        and its splitter/resize navigation have been torn down. MSP workbench chrome
+        (import / run / approval) is removed from the shell for now and will be
+        re-homed later as overlays.
+    -->
+
+    <Grid x:Name="RootShell" Background="{ThemeResource MspAppBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="46" />
+            <RowDefinition Height="48" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- ═══════════════════════════════════════════════════════════════
-             Row 0 — Codex-native global toolbar
-             Global actions, active thread, runtime state, and transient status.
+             Row 0 — Minimal top bar
+             Brand · new thread · theme · settings · model/status chip.
              ═══════════════════════════════════════════════════════════════ -->
         <Border Grid.Row="0"
-                Style="{StaticResource ReadOSTopBarStyle}">
-            <Grid Padding="10,0">
+                Background="{ThemeResource MspAppBackgroundBrush}"
+                BorderBrush="{ThemeResource MspDividerBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid Padding="12,0" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: brand + compact global actions -->
+                <!-- Left: brand + new thread -->
                 <StackPanel Grid.Column="0"
                             Orientation="Horizontal"
-                            Spacing="4"
+                            Spacing="6"
                             VerticalAlignment="Center">
                     <Border Width="28" Height="28"
-                            CornerRadius="{StaticResource RadiusLg}"
-                            Background="{ThemeResource ReadOSBrandBrush}">
+                            CornerRadius="{StaticResource MspBubbleRadius}"
+                            Background="{ThemeResource MspAssistantAccentBrush}">
                         <TextBlock Text="R"
                                    Foreground="{ThemeResource ReadOSBrandTextBrush}"
                                    FontSize="12" FontWeight="SemiBold"
@@ -43,21 +54,6 @@
                                    VerticalAlignment="Center" />
                     </Border>
 
-                    <!-- Visual separator -->
-                    <Border Width="1" Height="18"
-                            Background="{ThemeResource ReadOSBorderBrush}"
-                            Margin="6,0,4,0" />
-
-                    <!-- Import -->
-                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
-                            ToolTipService.ToolTip="导入资料"
-                            Command="{Binding ImportMaterialCommand}">
-                        <FontIcon FontFamily="Segoe Fluent Icons"
-                                  Glyph="&#xE8E5;"
-                                  FontSize="13" />
-                    </Button>
-
-                    <!-- New thread -->
                     <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="新建线程"
                             Command="{Binding NewConversationCommand}">
@@ -66,7 +62,64 @@
                                   FontSize="13" />
                     </Button>
 
-                    <!-- Theme toggle -->
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                            ToolTipService.ToolTip="对话历史"
+                            Command="{Binding OpenHistoryFlyoutCommand}">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE81C;"
+                                  FontSize="13" />
+                    </Button>
+                </StackPanel>
+
+                <!-- Center: drag region -->
+                <Grid Grid.Column="1"
+                      x:Name="TitleBarDragRegion"
+                      Background="Transparent" />
+
+                <!-- Right: theme · settings · status chip -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="4"
+                            VerticalAlignment="Center">
+                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
+                            ToolTipService.ToolTip="待审批 MSP 命令"
+                            Command="{Binding OpenApprovalsFlyoutCommand}"
+                            Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="&#xE7E7;"
+                                      FontSize="13" />
+                            <Border Background="{ThemeResource MspAssistantAccentBrush}"
+                                    MinWidth="16" Height="16" CornerRadius="8"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Margin="6,-4,0,0"
+                                    Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding PendingApprovalCount}"
+                                           Foreground="{ThemeResource ReadOSBrandTextBrush}"
+                                           FontSize="9" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </Button>
+
+                    <Button Background="Transparent" Padding="0" BorderThickness="0"
+                            ToolTipService.ToolTip="模型与提供方"
+                            Command="{Binding OpenProviderSettingsCommand}">
+                        <Border Style="{StaticResource ReadOSChipStyle}"
+                                Padding="8,4"
+                                VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Width="6" Height="6"
+                                         Fill="{ThemeResource MspAssistantAccentBrush}"
+                                         VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding ActiveModelLabel}"
+                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                    </Button>
+
                     <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding ThemeToggleLabel}"
                             Command="{Binding ToggleThemeCommand}">
@@ -75,7 +128,6 @@
                                   FontSize="13" />
                     </Button>
 
-                    <!-- Settings -->
                     <Button Style="{StaticResource ReadOSIconButtonStyle}"
                             ToolTipService.ToolTip="设置"
                             Command="{Binding NavigateSettingsCommand}">
@@ -83,280 +135,244 @@
                                   Glyph="&#xE713;"
                                   FontSize="13" />
                     </Button>
-
-                    <!-- Run drawer -->
-                    <Button Style="{StaticResource ReadOSIconButtonStyle}"
-                            ToolTipService.ToolTip="运行抽屉"
-                            Command="{Binding ToggleRunDrawerCommand}">
-                        <FontIcon FontFamily="Segoe Fluent Icons"
-                                  Glyph="&#xE756;"
-                                  FontSize="13" />
-                    </Button>
                 </StackPanel>
-
-                <!-- Drag region: active thread + runtime context -->
-                <Grid Grid.Column="1"
-                      x:Name="TitleBarDragRegion"
-                      Background="Transparent">
-                    <Grid ColumnSpacing="10"
-                          Margin="12,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border Style="{StaticResource ReadOSChipStyle}"
-                                Padding="6,3"
-                                VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="5">
-                                <Ellipse Width="5" Height="5"
-                                         Fill="{ThemeResource ReadOSSuccessBrush}"
-                                         VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding ActiveModelLabel}"
-                                           Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                           FontSize="11"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding ActiveTitle}"
-                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" />
-                        <Border Grid.Column="2"
-                                Style="{StaticResource ReadOSChipStyle}"
-                                Padding="6,3"
-                                VerticalAlignment="Center">
-                            <TextBlock Text="{Binding RuntimeStatusLabel}"
-                                       Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                       FontSize="11"
-                                       TextTrimming="CharacterEllipsis" />
-                        </Border>
-                        <TextBlock Grid.Column="3"
-                                   Text="{Binding StatusMessage}"
-                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                   FontSize="{StaticResource FontSizeXs}"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" />
-                        <Button Grid.Column="3"
-                                Height="28"
-                                Padding="8,0"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Background="{ThemeResource ReadOSAccentMutedBrush}"
-                                BorderBrush="{ThemeResource ReadOSBorderBrush}"
-                                ToolTipService.ToolTip="打开待审批 MSP 命令"
-                                Command="{Binding OpenPendingApprovalCommand}"
-                                Visibility="{Binding HasPendingApprovals, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                          Glyph="&#xE7BA;"
-                                          FontSize="11"
-                                          Foreground="{ThemeResource ReadOSAccentBrush}" />
-                                <TextBlock Text="{Binding PendingApprovalLabel}"
-                                           Foreground="{ThemeResource ReadOSAccentBrush}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-                </Grid>
             </Grid>
         </Border>
 
         <!-- ═══════════════════════════════════════════════════════════════
-             Row 1 — Codex-native workspace
-             Left rail/context | Thread workspace | Review dock
+             Row 1 — Conversation hero (canonical MSP Chat UI timeline v1)
              ═══════════════════════════════════════════════════════════════ -->
-        <Grid Grid.Row="1"
-              Visibility="{Binding IsWorkspaceRoute, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="324" />
-                <ColumnDefinition x:Name="SidebarSplitterColumn" Width="6" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition x:Name="InspectorSplitterColumn" Width="6" />
-                <ColumnDefinition x:Name="InspectorColumn" Width="440" />
-            </Grid.ColumnDefinitions>
+        <views:ChatTimelineView x:Name="CanonicalChatSurface"
+                                Grid.Row="1" />
 
-            <!-- ── Sidebar ──────────────────────────────────────────────── -->
-            <views:WorkspaceSidebarView Grid.Column="0" />
-
-            <!-- Sidebar resize splitter -->
-            <Grid Grid.Column="1" Background="Transparent"
-                  ToolTipService.ToolTip="拖动调整侧栏宽度">
-                <Rectangle Width="1"
-                           Fill="{ThemeResource ReadOSBorderBrush}"
-                           HorizontalAlignment="Center" />
-                <primitives:Thumb Width="16"
-                                  HorizontalAlignment="Stretch"
-                                  Background="Transparent"
-                                  DragDelta="SidebarSplitter_DragDelta" />
-            </Grid>
-
-            <!-- ── Chat thread ──────────────────────────────────────────── -->
-            <views:ChatSurfaceView x:Name="ChatSurface"
-                                   Grid.Column="2"
-                                   Margin="0" />
-
-            <!-- Review dock resize splitter -->
-            <Grid Grid.Column="3"
-                  x:Name="InspectorSplitterGrid"
-                  Background="Transparent"
-                  ToolTipService.ToolTip="拖动调整 Review Dock 宽度">
-                <Rectangle Width="1"
-                           Fill="{ThemeResource ReadOSBorderBrush}"
-                           HorizontalAlignment="Center" />
-                <primitives:Thumb Width="16"
-                                  HorizontalAlignment="Stretch"
-                                  Background="Transparent"
-                                  DragDelta="InspectorSplitter_DragDelta" />
-            </Grid>
-
-            <!-- ── Unified inspector ── -->
-            <views:InspectorView Grid.Column="4"
-                                 x:Name="InspectorSurface"
-                                 Visibility="{Binding IsInspectorVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-        </Grid>
-
-        <!-- ── Settings route (replaces workspace when active) ──────────── -->
+        <!-- ── Settings overlay (replaces conversation while active) ──────── -->
         <views:SettingsView Grid.Row="1"
                             Visibility="{Binding IsSettingsRoute, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             Row 2 — Bottom runtime drawer
-             ═══════════════════════════════════════════════════════════════ -->
-        <Border Grid.Row="2"
-                Height="{Binding RunDrawerHeight}"
-                Style="{StaticResource ReadOSBottomDrawerStyle}"
-                Visibility="{Binding IsRunDrawerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="40" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+        <!-- ── Runtime Drawer (re-homed MSP run surface; resizable + pinnable) ── -->
+        <Grid Grid.Row="2"
+              Height="{Binding RunDrawerHeight}"
+              Visibility="{Binding IsRunDrawerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="6" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-                <Border Grid.Row="0"
-                        Style="{StaticResource ReadOSPaneToolbarStyle}">
-                    <Grid ColumnSpacing="8">
+            <!-- vertical resize grip -->
+            <Border x:Name="RunDrawerResizeGrip"
+                    Grid.Row="0"
+                    Background="Transparent"
+                    ToolTipService.ToolTip="拖动调整高度"
+                    PointerPressed="RunDrawerResizeGrip_PointerPressed"
+                    PointerMoved="RunDrawerResizeGrip_PointerMoved"
+                    PointerReleased="RunDrawerResizeGrip_PointerReleased"
+                    PointerExited="RunDrawerResizeGrip_PointerReleased" />
+
+            <Border Grid.Row="1"
+                    Background="{ThemeResource MspAppBackgroundBrush}"
+                    BorderBrush="{ThemeResource MspDividerBrush}"
+                    BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="40" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- header -->
+                    <Grid Grid.Row="0" Padding="12,0" ColumnSpacing="8"
+                          BorderBrush="{ThemeResource MspDividerBrush}" BorderThickness="0,0,0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="运行"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="固定抽屉"
+                                Command="{Binding PinRunDrawerCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="{Binding RunDrawerPinGlyph}"
+                                      FontSize="13" />
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="关闭"
+                                Command="{Binding ToggleRunDrawerCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="13" />
+                        </Button>
+                    </Grid>
+
+                    <!-- content: simplified MSP transcript -->
+                    <ListView Grid.Row="1"
+                              ItemsSource="{Binding MspTranscript}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="True"
+                              ItemClick="RunDrawerTranscript_ItemClick"
+                              Padding="8">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="8,6" Margin="0,2"
+                                        CornerRadius="{StaticResource MspBubbleRadius}"
+                                        Background="{ThemeResource ReadOSSubtleBrush}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding CommandText}" FontSize="12"
+                                                   Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding StatusLabel}" FontSize="11"
+                                                   Foreground="{ThemeResource ReadOSTextTertiaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ── Conversation history flyout (left edge) ──────────────────── -->
+        <Grid Grid.RowSpan="3"
+              Visibility="{Binding IsHistoryFlyoutOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    Background="#40000000" BorderThickness="0"
+                    Command="{Binding CloseOverlaysCommand}" />
+            <Border HorizontalAlignment="Left" Width="320"
+                    Background="{ThemeResource MspAppBackgroundBrush}"
+                    BorderBrush="{ThemeResource MspDividerBrush}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="48" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Padding="12,0" ColumnSpacing="8"
+                          BorderBrush="{ThemeResource MspDividerBrush}" BorderThickness="0,0,0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="对话"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="新建线程"
+                                Command="{Binding NewConversationCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="13" />
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="关闭"
+                                Command="{Binding CloseOverlaysCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="13" />
+                        </Button>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" Padding="8">
+                        <StackPanel Spacing="6">
+                            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Padding="10,8" Background="Transparent" BorderThickness="0"
+                                    Command="{Binding ImportMaterialCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8B6;" FontSize="13"
+                                              Foreground="{ThemeResource MspAssistantAccentBrush}" />
+                                    <TextBlock Text="导入资料"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Button>
+                            <ItemsControl ItemsSource="{Binding Conversations}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Padding="10,8" Margin="0,2" Background="Transparent" BorderThickness="0"
+                                                Command="{Binding DataContext.SelectConversationCommand, ElementName=RootShell}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock Text="{Binding Title}" FontSize="13"
+                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ── Pending approvals flyout (right edge) ────────────────────── -->
+        <Grid Grid.RowSpan="3"
+              Visibility="{Binding IsApprovalsFlyoutOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    Background="#40000000" BorderThickness="0"
+                    Command="{Binding CloseOverlaysCommand}" />
+            <Border HorizontalAlignment="Right" Width="380"
+                    Background="{ThemeResource MspAppBackgroundBrush}"
+                    BorderBrush="{ThemeResource MspDividerBrush}" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="48" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Padding="12,0" ColumnSpacing="8"
+                          BorderBrush="{ThemeResource MspDividerBrush}" BorderThickness="0,0,0,1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8"
-                                    VerticalAlignment="Center">
-                            <FontIcon FontFamily="Segoe Fluent Icons"
-                                      Glyph="&#xE756;"
-                                      FontSize="13"
-                                      Foreground="{ThemeResource ReadOSAccentBrush}" />
-                            <TextBlock Text="Runtime"
-                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding MspActivitySummary}"
-                                       Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
-                                       FontSize="12"
-                                       TextTrimming="CharacterEllipsis"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal"
-                                    Spacing="4"
-                                    VerticalAlignment="Center">
-                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
-                                    ToolTipService.ToolTip="停止当前命令"
-                                    Command="{Binding CancelActiveMspCommandCommand}">
-                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                          Glyph="&#xE711;"
-                                          FontSize="12" />
-                            </Button>
-                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
-                                    ToolTipService.ToolTip="固定运行抽屉"
-                                    Command="{Binding PinRunDrawerCommand}">
-                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                          Glyph="&#xE840;"
-                                          FontSize="12" />
-                            </Button>
-                            <Button Style="{StaticResource ReadOSIconButtonStyle}"
-                                    ToolTipService.ToolTip="关闭运行抽屉"
-                                    Command="{Binding ToggleRunDrawerCommand}">
-                                <FontIcon FontFamily="Segoe Fluent Icons"
-                                          Glyph="&#xE711;"
-                                          FontSize="12" />
-                            </Button>
-                        </StackPanel>
+                        <TextBlock Text="待审批 MSP 命令"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Style="{StaticResource ReadOSIconButtonStyle}"
+                                ToolTipService.ToolTip="关闭"
+                                Command="{Binding CloseOverlaysCommand}">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="13" />
+                        </Button>
                     </Grid>
-                </Border>
-
-                <ListView Grid.Row="1"
-                          ItemsSource="{Binding MspTranscript}"
-                          Background="Transparent"
-                          BorderThickness="0"
-                          Padding="8"
-                          SelectionMode="None">
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="0,0,0,8"
-                                    Padding="10"
-                                    Style="{StaticResource ReadOSCardStyle}">
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="4">
-                                        <StackPanel Orientation="Horizontal"
-                                                    Spacing="8">
-                                            <TextBlock Text="{Binding StatusLabel}"
-                                                       Foreground="{ThemeResource ReadOSAccentBrush}"
-                                                       FontWeight="SemiBold"
-                                                       FontSize="12" />
-                                            <TextBlock Text="{Binding CommandText}"
-                                                       Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
-                                                       FontFamily="Consolas"
-                                                       FontSize="12"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                        <TextBlock Text="{Binding OutputPreview}"
-                                                   Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
-                                                   FontFamily="Consolas"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   MaxLines="3" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal"
-                                                Spacing="4"
-                                                VerticalAlignment="Center">
-                                        <Button Height="28" Padding="8,0"
-                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=RootShell}"
-                                                CommandParameter="{Binding}"
-                                                Content="批准" />
-                                        <Button Height="28" Padding="8,0"
-                                                Visibility="{Binding IsApprovalRequired, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                Command="{Binding DataContext.DenyMspCommandCommand, ElementName=RootShell}"
-                                                CommandParameter="{Binding}"
-                                                Content="拒绝" />
-                                        <Button Height="28" Padding="8,0"
-                                                Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                Command="{Binding DataContext.CancelMspCommandCommand, ElementName=RootShell}"
-                                                CommandParameter="{Binding}"
-                                                Content="取消" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-            </Grid>
-        </Border>
-
+                    <ScrollViewer Grid.Row="1" Padding="12">
+                        <StackPanel Spacing="10">
+                            <ItemsControl ItemsSource="{Binding MspTranscript}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="10" CornerRadius="{StaticResource MspBubbleRadius}"
+                                                Background="{ThemeResource ReadOSSubtleBrush}"
+                                                BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="{Binding CommandText}" FontSize="12"
+                                                           Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="11"
+                                                           Foreground="{ThemeResource ReadOSTextTertiaryBrush}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                                                    <Button Height="28" Padding="10,0"
+                                                            Style="{StaticResource ReadOSGhostButtonStyle}"
+                                                            Command="{Binding DataContext.ApproveMspCommandCommand, ElementName=RootShell}"
+                                                            CommandParameter="{Binding}">
+                                                        <TextBlock Text="通过" FontSize="11" />
+                                                    </Button>
+                                                    <Button Height="28" Padding="10,0"
+                                                            Style="{StaticResource ReadOSGhostButtonStyle}"
+                                                            Command="{Binding DataContext.DenyMspCommandCommand, ElementName=RootShell}"
+                                                            CommandParameter="{Binding}">
+                                                        <TextBlock Text="拒绝" FontSize="11" />
+                                                    </Button>
+                                                    <Button Height="28" Padding="10,0"
+                                                            Style="{StaticResource ReadOSIconButtonStyle}"
+                                                            ToolTipService.ToolTip="取消"
+                                                            Command="{Binding DataContext.CancelMspCommandCommand, ElementName=RootShell}"
+                                                            CommandParameter="{Binding}">
+                                                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" FontSize="11" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

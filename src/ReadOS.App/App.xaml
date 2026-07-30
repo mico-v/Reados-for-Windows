@@ -10,129 +10,157 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- ═══════════════════════════════════════════════════════════
-                 Theme dictionaries (keep original order — before direct resources)
+                 Theme dictionaries — recolored to the MSP WEBUI Default
+                 renderer manifest (renderer.manifest.json "style" tokens).
+                 Light = manifest.style, Dark = manifest.style.themeOverrides.dark.
                  ═══════════════════════════════════════════════════════════ -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#FAFAFA" />
-                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#F7F7F8" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#F4F4F5" />
-                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#F7F7F8" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#F0F1F3" />
+                    <!-- MSP surface tokens -->
+                    <SolidColorBrush x:Key="MspAppBackgroundBrush" Color="#f4f1ea" />
+                    <SolidColorBrush x:Key="MspUserBubbleBackgroundBrush" Color="#000000" Opacity="0.055" />
+                    <SolidColorBrush x:Key="MspUserBubbleBorderBrush" Color="#172233" Opacity="0.08" />
+                    <SolidColorBrush x:Key="MspAssistantAccentBrush" Color="#1b67a8" />
+                    <SolidColorBrush x:Key="MspUserAccentBrush" Color="#666666" />
+                    <SolidColorBrush x:Key="MspChipBackgroundBrush" Color="#142132" Opacity="0.06" />
+                    <SolidColorBrush x:Key="MspCodeBackgroundBrush" Color="#122031" Opacity="0.07" />
+                    <SolidColorBrush x:Key="MspCodeBackgroundSoftBrush" Color="#122031" Opacity="0.06" />
+                    <SolidColorBrush x:Key="MspBlockquoteBorderBrush" Color="#125491" Opacity="0.24" />
+                    <SolidColorBrush x:Key="MspDividerBrush" Color="#141c26" Opacity="0.16" />
+
+                    <!-- ReadOS role brushes mapped onto the MSP light palette -->
+                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#f4f1ea" />
+                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#f8f8f9" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#f8f8f9" />
+                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#f8f8f9" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#122031" Opacity="0.06" />
                     <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ReadOSElevatedBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#E4E4E7" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#C9CBD1" />
-                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#ECEDEF" />
-                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#EDEEF1" />
-                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#E7F1FF" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#172233" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#141c26" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#172233" Opacity="0.06" />
+                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#142132" Opacity="0.06" />
+                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#1b67a8" Opacity="0.10" />
                     <SolidColorBrush x:Key="ReadOSButtonBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#F0F1F3" />
-                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#E5E7EB" />
-                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#DADDE3" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#57606A" />
-                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#6E7781" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#142132" Opacity="0.06" />
+                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#142132" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#172233" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#172233" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#172233" Opacity="0.68" />
+                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#172233" Opacity="0.45" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#172233" />
                     <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#0285FF" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#1b67a8" />
                     <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#E5F3FF" />
-                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#0076E5" />
-                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#0067C8" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#1b67a8" Opacity="0.10" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#15599a" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#114c84" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#15803D" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#B45309" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#DC2626" />
-                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#D6DBE3" />
-                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#9CA3AF" />
+                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#e2e6ea" />
+                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#172233" Opacity="0.30" />
 
                     <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#F0F1F3" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E5E7EB" />
-                    <SolidColorBrush x:Key="ButtonForeground" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#DADDE3" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#C9CBD1" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#B8BBC4" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#142132" Opacity="0.06" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#142132" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#172233" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#172233" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#172233" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#172233" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#141c26" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#141c26" Opacity="0.20" />
                     <SolidColorBrush x:Key="ToggleButtonBackground" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#F0F1F3" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#E5E7EB" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#30343A" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#142132" Opacity="0.06" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#142132" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#172233" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#2c3645" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#111318" />
-                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#57606A" />
-                    <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#1F2328" />
-                    <SolidColorBrush x:Key="ToggleButtonForegroundPressed" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#172233" Opacity="0.68" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#172233" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundPressed" Color="#172233" />
                     <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#DADDE3" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#C9CBD1" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#1F2328" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#172233" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#141c26" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#172233" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#111111" />
-                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#171717" />
-                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#1F1F1F" />
-                    <SolidColorBrush x:Key="ReadOSElevatedBrush" Color="#242424" />
-                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#303030" />
-                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#414141" />
-                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#102B42" />
-                    <SolidColorBrush x:Key="ReadOSButtonBrush" Color="#242424" />
-                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#303030" />
-                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#383838" />
-                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#3A3A3A" />
-                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#F4F4F5" />
-                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#C7C7C7" />
-                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#A1A1AA" />
-                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#F4F4F5" />
-                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#111111" />
-                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#4DA3FF" />
+                    <!-- MSP surface tokens -->
+                    <SolidColorBrush x:Key="MspAppBackgroundBrush" Color="#0f141b" />
+                    <SolidColorBrush x:Key="MspUserBubbleBackgroundBrush" Color="#FFFFFF" Opacity="0.10" />
+                    <SolidColorBrush x:Key="MspUserBubbleBorderBrush" Color="#FFFFFF" Opacity="0.14" />
+                    <SolidColorBrush x:Key="MspAssistantAccentBrush" Color="#8abdf2" />
+                    <SolidColorBrush x:Key="MspUserAccentBrush" Color="#b8c0cc" />
+                    <SolidColorBrush x:Key="MspChipBackgroundBrush" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="MspCodeBackgroundBrush" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="MspCodeBackgroundSoftBrush" Color="#FFFFFF" Opacity="0.07" />
+                    <SolidColorBrush x:Key="MspBlockquoteBorderBrush" Color="#8abdf2" Opacity="0.30" />
+                    <SolidColorBrush x:Key="MspDividerBrush" Color="#FFFFFF" Opacity="0.16" />
+
+                    <!-- ReadOS role brushes mapped onto the MSP dark palette -->
+                    <SolidColorBrush x:Key="ReadOSCanvasBrush" Color="#0f141b" />
+                    <SolidColorBrush x:Key="ReadOSChromeBrush" Color="#141a22" />
+                    <SolidColorBrush x:Key="ReadOSSidebarBrush" Color="#141a22" />
+                    <SolidColorBrush x:Key="ReadOSPanelBrush" Color="#141a22" />
+                    <SolidColorBrush x:Key="ReadOSSubtleBrush" Color="#FFFFFF" Opacity="0.07" />
+                    <SolidColorBrush x:Key="ReadOSRaisedBrush" Color="#1b2129" />
+                    <SolidColorBrush x:Key="ReadOSElevatedBrush" Color="#1b2129" />
+                    <SolidColorBrush x:Key="ReadOSBorderBrush" Color="#FFFFFF" Opacity="0.12" />
+                    <SolidColorBrush x:Key="ReadOSStrongBorderBrush" Color="#FFFFFF" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ReadOSHairlineBrush" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ReadOSListHoverBrush" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ReadOSListSelectedBrush" Color="#8abdf2" Opacity="0.14" />
+                    <SolidColorBrush x:Key="ReadOSButtonBrush" Color="#1b2129" />
+                    <SolidColorBrush x:Key="ReadOSButtonHoverBrush" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ReadOSButtonPressedBrush" Color="#FFFFFF" Opacity="0.14" />
+                    <SolidColorBrush x:Key="ReadOSButtonBorderBrush" Color="#FFFFFF" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ReadOSTextPrimaryBrush" Color="#e6edf5" />
+                    <SolidColorBrush x:Key="ReadOSTextSecondaryBrush" Color="#e6edf5" Opacity="0.68" />
+                    <SolidColorBrush x:Key="ReadOSTextTertiaryBrush" Color="#e6edf5" Opacity="0.45" />
+                    <SolidColorBrush x:Key="ReadOSBrandBrush" Color="#e6edf5" />
+                    <SolidColorBrush x:Key="ReadOSBrandTextBrush" Color="#0f141b" />
+                    <SolidColorBrush x:Key="ReadOSAccentBrush" Color="#8abdf2" />
                     <SolidColorBrush x:Key="ReadOSAccentTextBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#0F2A43" />
-                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#69B4FF" />
-                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#2F91F2" />
+                    <SolidColorBrush x:Key="ReadOSAccentMutedBrush" Color="#8abdf2" Opacity="0.14" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonHoverBrush" Color="#a6cdf5" />
+                    <SolidColorBrush x:Key="ReadOSPrimaryButtonPressedBrush" Color="#6fa8e0" />
                     <SolidColorBrush x:Key="ReadOSSuccessBrush" Color="#4ADE80" />
                     <SolidColorBrush x:Key="ReadOSWarningBrush" Color="#FBBF24" />
                     <SolidColorBrush x:Key="ReadOSDangerBrush" Color="#F87171" />
-                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#252B34" />
-                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#6B7280" />
+                    <SolidColorBrush x:Key="ReadOSPdfPageHostBrush" Color="#252b34" />
+                    <SolidColorBrush x:Key="ReadOSSplitterHoverBrush" Color="#FFFFFF" Opacity="0.30" />
 
-                    <SolidColorBrush x:Key="ButtonBackground" Color="#242424" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#303030" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#383838" />
-                    <SolidColorBrush x:Key="ButtonForeground" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#1b2129" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#FFFFFF" Opacity="0.14" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#e6edf5" />
                     <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#3A3A3A" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#525252" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#5F5F5F" />
-                    <SolidColorBrush x:Key="ToggleButtonBackground" Color="#242424" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#303030" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#383838" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#FFFFFF" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FFFFFF" Opacity="0.28" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#FFFFFF" Opacity="0.34" />
+                    <SolidColorBrush x:Key="ToggleButtonBackground" Color="#1b2129" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#FFFFFF" Opacity="0.08" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#FFFFFF" Opacity="0.14" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#e6edf5" />
                     <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#DADDE3" />
-                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#C7C7C7" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#dadde3" />
+                    <SolidColorBrush x:Key="ToggleButtonForeground" Color="#e6edf5" Opacity="0.68" />
                     <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ToggleButtonForegroundPressed" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#111111" />
-                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#111111" />
-                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#111111" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#3A3A3A" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#525252" />
-                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#0f141b" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#0f141b" />
+                    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="#0f141b" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="#FFFFFF" Opacity="0.16" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#FFFFFF" Opacity="0.28" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#e6edf5" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
             <!-- ═══════════════════════════════════════════════════════════
-                 Spacing / sizing tokens
+                 Spacing / sizing tokens (theme-independent)
                  ═══════════════════════════════════════════════════════════ -->
             <x:Double x:Key="SpacingXxs">4</x:Double>
             <x:Double x:Key="SpacingXs">6</x:Double>
@@ -159,10 +187,33 @@
             <x:Double x:Key="FontSizeXs">11</x:Double>
             <x:Double x:Key="FontSizeSm">12</x:Double>
             <x:Double x:Key="FontSizeMd">14</x:Double>
-            <x:Double x:Key="FontSizeLg">16</x:Double>
+            <x:Double x:Key="FontSizeLg">15.5</x:Double>
             <x:Double x:Key="FontSizeXl">18</x:Double>
 
+            <!-- ═══════════════════════════════════════════════════════════
+                 MSP WEBUI Default renderer tokens (renderer.manifest.json)
+                 Theme-independent geometry / typography.
+                 ═══════════════════════════════════════════════════════════ -->
+            <CornerRadius x:Key="MspBubbleRadius">22</CornerRadius>
+            <Thickness x:Key="MspBubblePadding">16,12</Thickness>
+            <x:Double x:Key="MspMessageGap">12</x:Double>
+            <x:Double x:Key="MspPagePaddingX">12</x:Double>
+            <x:Double x:Key="MspPagePaddingY">18</x:Double>
+            <x:Double x:Key="MspPagePaddingTop">56.5</x:Double>
+            <x:Double x:Key="MspPagePaddingBottom">18</x:Double>
+            <x:Double x:Key="MspBodyFontSize">15.5</x:Double>
+            <x:Double x:Key="MspRoleFontSize">12</x:Double>
+            <x:Double x:Key="MspMetaFontSize">11</x:Double>
+            <x:Double x:Key="MspSupportFontSize">14</x:Double>
+            <x:Double x:Key="MspContentMaxWidth">640</x:Double>
+            <x:Double x:Key="MspBubbleMaxWidth">720</x:Double>
+            <x:Double x:Key="MspUserBubbleCornerRadius">22</x:Double>
+            <x:Double x:Key="MspAssistantBubbleCornerRadius">22</x:Double>
+            <x:Double x:Key="MspGeneratedImageCornerRadius">22</x:Double>
+
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <converters:StringToVisibilityConverter x:Key="StringToVisibility" />
+            <converters:NullableDoubleConverter x:Key="NullableDouble" />
 
             <!-- Codex-inspired shell styles: quiet surfaces, hairline borders, compact actions. -->
             <Style x:Key="ReadOSBaseButtonStyle" TargetType="Button">
@@ -361,7 +412,7 @@
             <Style x:Key="ReadOSChipStyle" TargetType="Border">
                 <Setter Property="Padding" Value="7,4" />
                 <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
-                <Setter Property="Background" Value="{ThemeResource ReadOSSubtleBrush}" />
+                <Setter Property="Background" Value="{ThemeResource MspChipBackgroundBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ReadOSBorderBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
             </Style>

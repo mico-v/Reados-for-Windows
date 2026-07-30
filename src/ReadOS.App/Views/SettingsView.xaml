@@ -14,46 +14,46 @@
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0" Background="{ThemeResource ReadOSSidebarBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="0,0,1,0">
-            <Grid Padding="16" RowSpacing="16">
+            <Grid Padding="16" RowSpacing="{StaticResource SpacingLg}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <StackPanel Spacing="4">
+                <StackPanel Spacing="{StaticResource SpacingXxs}">
                     <TextBlock Text="设置" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="22" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="{StaticResource FontSizeSm}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <StackPanel Grid.Row="1" Spacing="8">
+                <StackPanel Grid.Row="1" Spacing="{StaticResource SpacingSm}">
                     <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="General">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;" FontSize="13" />
                             <TextBlock Text="通用" />
                         </StackPanel>
                     </Button>
                     <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Provider">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" FontSize="13" />
                             <TextBlock Text="模型服务" />
                         </StackPanel>
                     </Button>
                     <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Prompts">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE70F;" FontSize="13" />
                             <TextBlock Text="提示词" />
                         </StackPanel>
                     </Button>
                     <Button Height="38" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Workspace">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8B7;" FontSize="13" />
                             <TextBlock Text="工作区" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
-                <Border Grid.Row="2" Padding="10" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                <Border Grid.Row="2" Padding="10" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                     <StackPanel Spacing="5">
-                        <TextBlock Text="MSP Runtime" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" FontSize="12" />
-                        <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="11" TextWrapping="WrapWholeWords" />
+                        <TextBlock Text="MSP Runtime" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontWeight="SemiBold" FontSize="{StaticResource FontSizeSm}" />
+                        <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="{StaticResource FontSizeXs}" TextWrapping="WrapWholeWords" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -69,17 +69,17 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid ColumnSpacing="12">
+                <Grid ColumnSpacing="{StaticResource SpacingMd}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="{StaticResource SpacingXxs}">
                         <TextBlock Text="配置中心" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="24" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding StatusMessage}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="{StaticResource FontSizeSm}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <Button Grid.Column="1" Height="36" Padding="12,0" Command="{Binding NavigateHomeCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingSm}">
                             <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72B;" FontSize="13" />
                             <TextBlock Text="返回工作台" />
                         </StackPanel>
@@ -89,7 +89,7 @@
                 <ScrollViewer Grid.Row="1">
                     <Grid MaxWidth="760" HorizontalAlignment="Left">
                         <StackPanel Spacing="18" Visibility="{Binding IsGeneralSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="14">
                                     <TextBlock Text="界面" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <ComboBox Header="语言"
@@ -101,7 +101,7 @@
                                     <ToggleSwitch Header="使用离线回答" IsOn="{Binding UseOfflineResponses, Mode=TwoWay}" />
                                 </StackPanel>
                             </Border>
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="文档解析" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <TextBox Header="MinorU 地址" Width="560" Text="{Binding MinorUEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -110,7 +110,7 @@
                         </StackPanel>
 
                         <StackPanel Spacing="18" Visibility="{Binding IsProviderSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="14">
                                     <TextBlock Text="模型服务" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <TextBox Header="服务商名称" Width="420" Text="{Binding ProviderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -122,7 +122,7 @@
                         </StackPanel>
 
                         <StackPanel Spacing="18" Visibility="{Binding IsPromptSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="14">
                                     <TextBlock Text="任务提示词" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <TextBox Header="附件默认提示词" Width="680" Text="{Binding AttachmentDefaultPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="82" TextWrapping="Wrap" />
@@ -133,14 +133,14 @@
                         </StackPanel>
 
                         <StackPanel Spacing="18" Visibility="{Binding IsWorkspaceSettingsSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
-                                <StackPanel Spacing="8">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
+                                <StackPanel Spacing="{StaticResource SpacingSm}">
                                     <TextBlock Text="当前工作区" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding ActiveSubtitle}" Foreground="{ThemeResource ReadOSTextSecondaryBrush}" TextWrapping="WrapWholeWords" />
-                                    <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="12" TextWrapping="WrapWholeWords" />
+                                    <TextBlock Text="{Binding ActiveModelLabel}" Foreground="{ThemeResource ReadOSTextTertiaryBrush}" FontSize="{StaticResource FontSizeSm}" TextWrapping="WrapWholeWords" />
                                 </StackPanel>
                             </Border>
-                            <Border Padding="14" CornerRadius="8" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
+                            <Border Padding="14" CornerRadius="{StaticResource RadiusLg}" Background="{ThemeResource ReadOSRaisedBrush}" BorderBrush="{ThemeResource ReadOSBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="导入 / 导出" Foreground="{ThemeResource ReadOSTextPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                                     <StackPanel Orientation="Horizontal" Spacing="10">

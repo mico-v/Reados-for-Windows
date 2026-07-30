@@ -19,11 +19,43 @@ public sealed class LayoutService
     // ── minimum widths that prevent collapsing below usable size ─────────────
     public const double SidebarMin = 200;
     public const double SidebarDefault = 280;
+    public const double SidebarMax = 400;
     public const double InspectorMin = 280;
     public const double InspectorDefault = 420;
+    public const double InspectorMax = 600;
 
     private double rememberedSidebarWidth = SidebarDefault;
     private double rememberedInspectorWidth = InspectorDefault;
+
+    /// <summary>
+    /// Gets the user's preferred sidebar width independently of the width that
+    /// the current responsive breakpoint can display.
+    /// </summary>
+    public double RememberedSidebarWidth => rememberedSidebarWidth;
+
+    /// <summary>
+    /// Gets the user's preferred inspector width independently of the width that
+    /// the current responsive breakpoint can display.
+    /// </summary>
+    public double RememberedInspectorWidth => rememberedInspectorWidth;
+
+    public double RememberSidebarWidth(double width)
+    {
+        rememberedSidebarWidth = Clamp(width, SidebarMin, SidebarMax);
+        return rememberedSidebarWidth;
+    }
+
+    public double RememberInspectorWidth(double width)
+    {
+        rememberedInspectorWidth = Clamp(width, InspectorMin, InspectorMax);
+        return rememberedInspectorWidth;
+    }
+
+    public void RememberPaneWidths(double sidebarWidth, double inspectorWidth)
+    {
+        RememberSidebarWidth(sidebarWidth);
+        RememberInspectorWidth(inspectorWidth);
+    }
 
     /// <summary>
     /// Call on window SizeChanged and whenever a visibility toggle or drag completes.
@@ -36,10 +68,10 @@ public sealed class LayoutService
         double? dragInspectorWidth = null)
     {
         if (dragSidebarWidth.HasValue)
-            rememberedSidebarWidth = Clamp(dragSidebarWidth.Value, SidebarMin, 400);
+            RememberSidebarWidth(dragSidebarWidth.Value);
 
         if (dragInspectorWidth.HasValue)
-            rememberedInspectorWidth = Clamp(dragInspectorWidth.Value, InspectorMin, 600);
+            RememberInspectorWidth(dragInspectorWidth.Value);
 
         var breakpoint = ResolveBreakpoint(windowWidth);
 

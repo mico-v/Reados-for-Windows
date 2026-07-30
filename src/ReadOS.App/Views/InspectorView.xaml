@@ -48,7 +48,7 @@
                         Command="{Binding ToggleInspectorCommand}">
                     <FontIcon FontFamily="Segoe Fluent Icons"
                               Glyph="&#xE76C;"
-                              FontSize="12" />
+                              FontSize="{StaticResource FontSizeSm}" />
                 </Button>
             </Grid>
 
@@ -198,7 +198,7 @@
                                           MaxHeight="180">
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid Padding="4,4" ColumnSpacing="6">
+                                            <Grid Padding="4,4" ColumnSpacing="{StaticResource SpacingXs}">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
@@ -225,10 +225,10 @@
                                             ToolTipService.ToolTip="生成章节讲解工作流命令"
                                             Command="{Binding PrepareExplainSectionWorkflowCommand}">
                                         <StackPanel Orientation="Horizontal"
-                                                    Spacing="6">
+                                                    Spacing="{StaticResource SpacingXs}">
                                             <FontIcon FontFamily="Segoe Fluent Icons"
                                                       Glyph="&#xE8F1;"
-                                                      FontSize="12" />
+                                                      FontSize="{StaticResource FontSizeSm}" />
                                             <TextBlock Text="讲解章节" />
                                         </StackPanel>
                                     </Button>
@@ -238,10 +238,10 @@
                                             ToolTipService.ToolTip="生成结构化证据抽取工作流命令"
                                             Command="{Binding PrepareExtractEvidenceWorkflowCommand}">
                                         <StackPanel Orientation="Horizontal"
-                                                    Spacing="6">
+                                                    Spacing="{StaticResource SpacingXs}">
                                             <FontIcon FontFamily="Segoe Fluent Icons"
                                                       Glyph="&#xE8A5;"
-                                                      FontSize="12" />
+                                                      FontSize="{StaticResource FontSizeSm}" />
                                             <TextBlock Text="抽取证据" />
                                         </StackPanel>
                                     </Button>
@@ -389,9 +389,10 @@
                                         PointerReleased="RegionCanvas_PointerReleased">
                                     <Rectangle x:Name="RegionRectangle"
                                                Visibility="Collapsed"
-                                               Stroke="#FF3B30"
+                                               Stroke="{ThemeResource ReadOSDangerBrush}"
                                                StrokeThickness="3"
-                                               Fill="#33FF3B30" />
+                                               Fill="{ThemeResource ReadOSDangerBrush}"
+                                               Opacity="0.2" />
                                 </Canvas>
                             </Grid>
 
@@ -448,7 +449,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <StackPanel Spacing="4">
+                                                <StackPanel Spacing="{StaticResource SpacingXxs}">
                                                     <Grid ColumnSpacing="{StaticResource SpacingSm}">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*" />
@@ -480,7 +481,7 @@
                                                         CommandParameter="{Binding}">
                                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                                               Glyph="&#xE72C;"
-                                                              FontSize="12" />
+                                                              FontSize="{StaticResource FontSizeSm}" />
                                                 </Button>
                                             </Grid>
                                         </Border>
@@ -521,6 +522,126 @@
                                            FontSize="{StaticResource FontSizeXs}"
                                            TextWrapping="Wrap"
                                            MaxLines="8" />
+
+                                <!-- Full supervision detail for the selected command -->
+                                <StackPanel Spacing="{StaticResource SpacingXxs}"
+                                            Visibility="{Binding SelectedMspTranscriptEntry.Stdout, Converter={StaticResource StringToVisibility}}">
+                                    <TextBlock Text="stdout"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               FontWeight="SemiBold" />
+                                    <TextBox IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             Text="{Binding SelectedMspTranscriptEntry.Stdout, Mode=OneWay}"
+                                             FontFamily="Consolas"
+                                             FontSize="{StaticResource FontSizeXs}"
+                                             MaxHeight="160"
+                                             Padding="8"
+                                             BorderThickness="1"
+                                             BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                             Background="{ThemeResource ReadOSSubtleBrush}"
+                                             Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="{StaticResource SpacingXxs}"
+                                            Visibility="{Binding SelectedMspTranscriptEntry.Stderr, Converter={StaticResource StringToVisibility}}">
+                                    <TextBlock Text="stderr"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               FontWeight="SemiBold" />
+                                    <TextBox IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             Text="{Binding SelectedMspTranscriptEntry.Stderr, Mode=OneWay}"
+                                             FontFamily="Consolas"
+                                             FontSize="{StaticResource FontSizeXs}"
+                                             MaxHeight="160"
+                                             Padding="8"
+                                             BorderThickness="1"
+                                             BorderBrush="{ThemeResource ReadOSBorderBrush}"
+                                             Background="{ThemeResource ReadOSSubtleBrush}"
+                                             Foreground="{ThemeResource ReadOSTextSecondaryBrush}" />
+                                </StackPanel>
+
+                                <TextBlock Visibility="{Binding SelectedMspTranscriptEntry.DiagnosticsSummary, Converter={StaticResource StringToVisibility}}"
+                                           Text="{Binding SelectedMspTranscriptEntry.DiagnosticsSummary, Mode=OneWay}"
+                                           Foreground="{ThemeResource ReadOSDangerBrush}"
+                                           FontFamily="Consolas"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+
+                                <TextBlock Visibility="{Binding SelectedMspTranscriptEntry.RecoveryHint, Converter={StaticResource StringToVisibility}}"
+                                           Text="{Binding SelectedMspTranscriptEntry.RecoveryHint, Mode=OneWay}"
+                                           Foreground="{ThemeResource ReadOSWarningBrush}"
+                                           FontSize="{StaticResource FontSizeXs}"
+                                           TextWrapping="Wrap" />
+
+                                <Grid Visibility="{Binding SelectedMspTranscriptEntry.HasEffects, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                      ColumnSpacing="{StaticResource SpacingXxs}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="effects:"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SelectedMspTranscriptEntry.Effects, Mode=OneWay}"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+
+                                <Grid Visibility="{Binding SelectedMspTranscriptEntry.PolicyPreview, Converter={StaticResource StringToVisibility}}"
+                                      ColumnSpacing="{StaticResource SpacingXxs}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="policy:"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SelectedMspTranscriptEntry.PolicyPreview, Mode=OneWay}"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               FontFamily="Consolas"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+
+                                <Grid Visibility="{Binding SelectedMspTranscriptEntry.ArtifactsSummary, Converter={StaticResource StringToVisibility}}"
+                                      ColumnSpacing="{StaticResource SpacingXxs}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="artifacts:"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SelectedMspTranscriptEntry.ArtifactsSummary, Mode=OneWay}"
+                                               Foreground="{ThemeResource ReadOSTextSecondaryBrush}"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="{StaticResource SpacingSm}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SelectedMspTranscriptEntry.ExitCodeLabel, Mode=OneWay}"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontFamily="Consolas"
+                                               FontSize="{StaticResource FontSizeXs}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SelectedMspTranscriptEntry.TimingLabel, Mode=OneWay}"
+                                               Foreground="{ThemeResource ReadOSTextTertiaryBrush}"
+                                               FontFamily="Consolas"
+                                               FontSize="{StaticResource FontSizeXs}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -548,7 +669,7 @@
                                         <Border Margin="4,0,0,0"
                                                 Padding="10"
                                                 Style="{StaticResource ReadOSCardStyle}">
-                                            <StackPanel Spacing="6">
+                                            <StackPanel Spacing="{StaticResource SpacingXs}">
                                                 <Grid ColumnSpacing="{StaticResource SpacingSm}">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
@@ -636,7 +757,7 @@
 
                     <StackPanel Grid.Row="1"
                                 Margin="0,8,0,8"
-                                Spacing="8">
+                                Spacing="{StaticResource SpacingSm}">
                         <Grid ColumnSpacing="{StaticResource SpacingSm}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -665,7 +786,7 @@
                                         Command="{Binding OpenSelectedArtifactPreviewCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE8A7;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                 </Button>
                                 <Button Width="32"
                                         Height="32"
@@ -676,7 +797,7 @@
                                         Command="{Binding CopySelectedArtifactContentCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE8C8;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                 </Button>
                                 <Button Width="32"
                                         Height="32"
@@ -687,7 +808,7 @@
                                         Command="{Binding ExportSelectedArtifactCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE896;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                 </Button>
                                 <Button Width="32"
                                         Height="32"
@@ -698,7 +819,7 @@
                                         Command="{Binding AttachSelectedArtifactCommand}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE710;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -711,10 +832,10 @@
                                     Command="{Binding PrepareReviewEvidenceWorkflowCommand}"
                                     Visibility="{Binding HasSelectedEvidenceArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal"
-                                            Spacing="6">
+                                            Spacing="{StaticResource SpacingXs}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE8D4;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                     <TextBlock Text="复核" />
                                 </StackPanel>
                             </Button>
@@ -724,10 +845,10 @@
                                     Command="{Binding PrepareSynthesizeEvidenceWorkflowCommand}"
                                     Visibility="{Binding HasSelectedEvidenceArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal"
-                                            Spacing="6">
+                                            Spacing="{StaticResource SpacingXs}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE9D5;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                     <TextBlock Text="综合" />
                                 </StackPanel>
                             </Button>
@@ -736,10 +857,10 @@
                                     ToolTipService.ToolTip="生成产物精炼工作流命令"
                                     Command="{Binding PrepareRefineArtifactWorkflowCommand}">
                                 <StackPanel Orientation="Horizontal"
-                                            Spacing="6">
+                                            Spacing="{StaticResource SpacingXs}">
                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                               Glyph="&#xE70F;"
-                                              FontSize="12" />
+                                              FontSize="{StaticResource FontSizeSm}" />
                                     <TextBlock Text="精炼" />
                                 </StackPanel>
                             </Button>
@@ -748,7 +869,7 @@
 
                     <StackPanel Grid.Row="2"
                                 Margin="0,0,0,8"
-                                Spacing="6"
+                                Spacing="{StaticResource SpacingXs}"
                                 Visibility="{Binding HasSelectedArtifactLineage, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <TextBlock Text="Source lineage"
                                    Foreground="{ThemeResource ReadOSTextPrimaryBrush}"
@@ -815,7 +936,7 @@
                                                         Visibility="{Binding CanOpenArtifact, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <FontIcon FontFamily="Segoe Fluent Icons"
                                                               Glyph="&#xE8E5;"
-                                                              FontSize="12" />
+                                                              FontSize="{StaticResource FontSizeSm}" />
                                                 </Button>
                                             </Grid>
                                         </Border>
@@ -913,10 +1034,10 @@
                                         Command="{Binding PrepareReviewFailuresWorkflowCommand}"
                                         Visibility="{Binding HasSelectedFailureReviewTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <StackPanel Orientation="Horizontal"
-                                                Spacing="6">
+                                                Spacing="{StaticResource SpacingXs}">
                                         <FontIcon FontFamily="Segoe Fluent Icons"
                                                   Glyph="&#xE9D9;"
-                                                  FontSize="12" />
+                                                  FontSize="{StaticResource FontSizeSm}" />
                                         <TextBlock Text="生成复查" />
                                     </StackPanel>
                                 </Button>
@@ -947,7 +1068,7 @@
                                         <Border Margin="4,0,0,0"
                                                 Padding="10"
                                                 Style="{StaticResource ReadOSCardStyle}">
-                                            <StackPanel Spacing="6">
+                                            <StackPanel Spacing="{StaticResource SpacingXs}">
                                                 <Grid ColumnSpacing="{StaticResource SpacingSm}">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />

@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ReadOS.App.Models;
@@ -15,14 +16,34 @@ public sealed class WorkspaceStore : IWorkspaceStore
     };
 
     private readonly IPdfDocumentService pdfService;
+    private readonly IProviderCredentialStore providerCredentialStore;
+    private readonly SemaphoreSlim credentialGate = new(1, 1);
     private readonly string statePath;
+    private string persistedProviderScope = string.Empty;
+    private string persistedProviderApiKey = string.Empty;
+    private bool hasPersistedCredentialSnapshot;
 
-    public WorkspaceStore(IPdfDocumentService pdfService)
+    public WorkspaceStore(
+        IPdfDocumentService pdfService,
+        IProviderCredentialStore providerCredentialStore)
+        : this(
+            pdfService,
+            providerCredentialStore,
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ReadOS"))
     {
-        this.pdfService = pdfService;
-        WorkspaceRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ReadOS");
+    }
+
+    internal WorkspaceStore(
+        IPdfDocumentService pdfService,
+        IProviderCredentialStore providerCredentialStore,
+        string workspaceRoot)
+    {
+        this.pdfService = pdfService ?? throw new ArgumentNullException(nameof(pdfService));
+        this.providerCredentialStore = providerCredentialStore ?? throw new ArgumentNullException(nameof(providerCredentialStore));
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        WorkspaceRoot = Path.GetFullPath(workspaceRoot);
         LibraryRoot = Path.Combine(WorkspaceRoot, "Library");
         statePath = Path.Combine(WorkspaceRoot, StateFileName);
     }
@@ -39,29 +60,63 @@ public sealed class WorkspaceStore : IWorkspaceStore
         if (!File.Exists(statePath))
         {
             var initial = CreateInitialState();
-            await SaveAsync(initial, cancellationToken);
+            await HydrateProviderCredentialAsync(initial.Settings, default, cancellationToken);
+            await WriteStateAsync(initial, cancellationToken);
             return initial;
         }
 
-        await using var stream = File.OpenRead(statePath);
-        var state = await JsonSerializer.DeserializeAsync<WorkspaceState>(stream, JsonOptions, cancellationToken);
+        var serializedState = await File.ReadAllBytesAsync(statePath, cancellationToken);
+        WorkspaceState? state;
+        LegacyProviderApiKey legacyProviderApiKey;
+        try
+        {
+            legacyProviderApiKey = ReadLegacyProviderApiKey(serializedState);
+            state = JsonSerializer.Deserialize<WorkspaceState>(serializedState, JsonOptions);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(serializedState);
+        }
+
         state ??= CreateInitialState();
         EnsureStateShape(state);
+        await HydrateProviderCredentialAsync(state.Settings, legacyProviderApiKey, cancellationToken);
+        if (legacyProviderApiKey.WasPresent)
+        {
+            await WriteStateAsync(state, cancellationToken);
+        }
+
         return state;
     }
 
     public async Task SaveAsync(WorkspaceState state, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(state);
+        await PersistProviderCredentialAsync(state.Settings, cancellationToken);
+        await WriteStateAsync(state, cancellationToken);
+    }
+
+    private async Task WriteStateAsync(WorkspaceState state, CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(WorkspaceRoot);
         Directory.CreateDirectory(LibraryRoot);
         var tempPath = statePath + ".tmp";
-        await using (var stream = File.Create(tempPath))
+        try
         {
-            await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
-        }
+            await using (var stream = File.Create(tempPath))
+            {
+                await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
+            }
 
-        File.Copy(tempPath, statePath, overwrite: true);
-        File.Delete(tempPath);
+            File.Move(tempPath, statePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
     }
 
     public async Task<ProjectItem> CreateProjectAsync(WorkspaceState state, string name, CancellationToken cancellationToken = default)
@@ -294,6 +349,85 @@ public sealed class WorkspaceStore : IWorkspaceStore
         }
     }
 
+    private async Task HydrateProviderCredentialAsync(
+        WorkspaceSettings settings,
+        LegacyProviderApiKey legacyProviderApiKey,
+        CancellationToken cancellationToken)
+    {
+        var providerScope = settings.ProviderBaseUrl?.Trim() ?? string.Empty;
+        string? migratedApiKey = null;
+        if (legacyProviderApiKey.WasPresent && !string.IsNullOrWhiteSpace(legacyProviderApiKey.Value))
+        {
+            migratedApiKey = legacyProviderApiKey.Value.Trim();
+            await providerCredentialStore.SetApiKeyAsync(providerScope, migratedApiKey, cancellationToken);
+        }
+
+        var apiKey = await providerCredentialStore.GetApiKeyAsync(providerScope, cancellationToken) ?? migratedApiKey ?? string.Empty;
+        settings.ProviderApiKey = apiKey;
+        persistedProviderScope = providerScope;
+        persistedProviderApiKey = apiKey;
+        hasPersistedCredentialSnapshot = true;
+    }
+
+    private async Task PersistProviderCredentialAsync(
+        WorkspaceSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var providerScope = settings.ProviderBaseUrl?.Trim() ?? string.Empty;
+        var apiKey = settings.ProviderApiKey?.Trim() ?? string.Empty;
+
+        await credentialGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (hasPersistedCredentialSnapshot &&
+                string.Equals(persistedProviderScope, providerScope, StringComparison.Ordinal) &&
+                string.Equals(persistedProviderApiKey, apiKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            await providerCredentialStore.SetApiKeyAsync(providerScope, apiKey, cancellationToken);
+            settings.ProviderApiKey = apiKey;
+            persistedProviderScope = providerScope;
+            persistedProviderApiKey = apiKey;
+            hasPersistedCredentialSnapshot = true;
+        }
+        finally
+        {
+            credentialGate.Release();
+        }
+    }
+
+    private static LegacyProviderApiKey ReadLegacyProviderApiKey(ReadOnlyMemory<byte> serializedState)
+    {
+        using var document = JsonDocument.Parse(serializedState);
+        if (!TryGetProperty(document.RootElement, "settings", out var settings) ||
+            settings.ValueKind != JsonValueKind.Object ||
+            !TryGetProperty(settings, "providerApiKey", out var apiKey))
+        {
+            return default;
+        }
+
+        return new LegacyProviderApiKey(
+            WasPresent: true,
+            Value: apiKey.ValueKind == JsonValueKind.String ? apiKey.GetString() : null);
+    }
+
+    private static bool TryGetProperty(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
     private string GetProjectDirectory(ProjectItem project)
     {
         return Path.Combine(LibraryRoot, SanitizeFileName(project.Id));
@@ -332,4 +466,6 @@ public sealed class WorkspaceStore : IWorkspaceStore
     {
         project.UpdatedAt = DateTimeOffset.Now;
     }
+
+    private readonly record struct LegacyProviderApiKey(bool WasPresent, string? Value);
 }

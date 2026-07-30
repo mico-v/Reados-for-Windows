@@ -21,14 +21,14 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
     <PackageReference Include="PdfPig" Version="0.1.15" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Page Include="MainWindow.xaml" />
     <Page Include="Controls\SplitPane.xaml" />
-    <Page Include="Views\ChatSurfaceView.xaml" />
+    <Page Include="Views\ChatTimelineView.xaml" />
     <Page Include="Views\InspectorView.xaml" />
-    <Page Include="Views\PresenterSurfaceView.xaml" />
     <Page Include="Views\SettingsView.xaml" />
     <Page Include="Views\WorkspaceSidebarView.xaml" />
   </ItemGroup>
