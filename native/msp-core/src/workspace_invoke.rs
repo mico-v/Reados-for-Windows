@@ -239,6 +239,8 @@ fn error_kind(error: &WorkspacePathError) -> WorkspaceInvokeErrorKind {
         WorkspacePathError::NotFound(_) => WorkspaceInvokeErrorKind::NotFound,
         WorkspacePathError::NotDirectory(_) => WorkspaceInvokeErrorKind::NotDirectory,
         WorkspacePathError::IsDirectory(_) => WorkspaceInvokeErrorKind::IsDirectory,
+        WorkspacePathError::DirectoryNotEmpty(_) => WorkspaceInvokeErrorKind::IsDirectory,
+        WorkspacePathError::AlreadyExists(_) => WorkspaceInvokeErrorKind::Io,
         WorkspacePathError::AccessDenied(_) => WorkspaceInvokeErrorKind::AccessDenied,
         WorkspacePathError::HiddenPath(_) => WorkspaceInvokeErrorKind::HiddenPath,
         WorkspacePathError::InvalidPath(_) => WorkspaceInvokeErrorKind::InvalidPath,

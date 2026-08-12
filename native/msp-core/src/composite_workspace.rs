@@ -1,7 +1,7 @@
-use crate::workspace_capabilities::WorkspaceReadCapabilities;
+use crate::workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 use crate::workspace_fs::{
     checked_directory_metadata_total, ReadOnlyWorkspaceFileSystem, WorkspaceDirectoryEntry,
-    WorkspaceFileInfo, WorkspaceFileType,
+    WorkspaceFileInfo, WorkspaceFileType, WritableWorkspaceFileSystem,
 };
 use crate::workspace_path::{VirtualPath, WorkspacePathError, WorkspacePathPolicy};
 use std::collections::{BTreeMap, BTreeSet};
@@ -404,11 +404,320 @@ impl ReadOnlyWorkspaceFileSystem for CompositeReadOnlyWorkspace {
     }
 }
 
+#[derive(Clone)]
+pub struct WritableWorkspaceMount {
+    path: VirtualPath,
+    file_system: Arc<dyn WritableWorkspaceFileSystem>,
+}
+
+impl WritableWorkspaceMount {
+    pub fn new(
+        path: impl AsRef<str>,
+        file_system: Arc<dyn WritableWorkspaceFileSystem>,
+    ) -> Result<Self, WorkspacePathError> {
+        let path = VirtualPath::resolve(path.as_ref(), "/")?;
+        if path == VirtualPath::root() {
+            return Err(WorkspacePathError::InvalidPath(path.into_string()));
+        }
+        Ok(Self { path, file_system })
+    }
+
+    pub fn path(&self) -> &VirtualPath {
+        &self.path
+    }
+
+    pub fn file_system(&self) -> &Arc<dyn WritableWorkspaceFileSystem> {
+        &self.file_system
+    }
+}
+
+/// A writable WorkspaceFS whose namespace composes the same mounts as the
+/// read-only composite. Every write is routed through a mount, gated by that
+/// backend's write capabilities, and errors are rebased without leaking
+/// backend text. Synthetic mount directories are not writable; exact mount
+/// points are unsupported.
+pub struct CompositeWritableWorkspace {
+    policy: WorkspacePathPolicy,
+    base_file_system: Arc<dyn WritableWorkspaceFileSystem>,
+    mounts: Vec<WritableWorkspaceMount>,
+    read_only: CompositeReadOnlyWorkspace,
+}
+
+impl CompositeWritableWorkspace {
+    pub fn new(
+        base_file_system: Arc<dyn WritableWorkspaceFileSystem>,
+        mounts: Vec<WritableWorkspaceMount>,
+    ) -> Result<Self, WorkspacePathError> {
+        Self::with_policy(base_file_system, mounts, WorkspacePathPolicy::default())
+    }
+
+    pub fn with_policy(
+        base_file_system: Arc<dyn WritableWorkspaceFileSystem>,
+        mounts: Vec<WritableWorkspaceMount>,
+        policy: WorkspacePathPolicy,
+    ) -> Result<Self, WorkspacePathError> {
+        let read_base: Arc<dyn ReadOnlyWorkspaceFileSystem> = base_file_system.clone();
+        let read_mounts = mounts
+            .iter()
+            .map(|mount| {
+                let file_system: Arc<dyn ReadOnlyWorkspaceFileSystem> = mount.file_system.clone();
+                WorkspaceMount::new(mount.path.as_str(), file_system)
+            })
+            .collect::<Result<Vec<_>, WorkspacePathError>>()?;
+        let read_only =
+            CompositeReadOnlyWorkspace::with_policy(read_base, read_mounts, policy.clone())?;
+        let mut write_mounts = mounts;
+        write_mounts.sort_by(|left, right| {
+            component_count(&right.path)
+                .cmp(&component_count(&left.path))
+                .then_with(|| left.path.cmp(&right.path))
+        });
+        Ok(Self {
+            policy,
+            base_file_system,
+            mounts: write_mounts,
+            read_only,
+        })
+    }
+
+    pub fn mounts(&self) -> &[WritableWorkspaceMount] {
+        &self.mounts
+    }
+
+    fn route_write(
+        &self,
+        virtual_path: &VirtualPath,
+        operation: &'static str,
+    ) -> Result<WriteRoute, WorkspacePathError> {
+        let virtual_path = self.policy.authorize(virtual_path.clone())?;
+        let mut route = self.write_route_without_validation(&virtual_path)?;
+        match route.file_system.resolve(route.backend_path.as_str(), "/") {
+            Ok(resolved) if resolved == route.backend_path => {
+                route.backend_path = resolved;
+                Ok(route)
+            }
+            Ok(_) => Err(backend_contract_error(&route.virtual_path, operation)),
+            Err(error) => Err(rebase_backend_error(&route, error, operation)),
+        }
+    }
+
+    fn write_route_without_validation(
+        &self,
+        virtual_path: &VirtualPath,
+    ) -> Result<WriteRoute, WorkspacePathError> {
+        if let Some(mount) = self
+            .mounts
+            .iter()
+            .find(|mount| is_same_or_descendant(virtual_path, &mount.path))
+        {
+            let backend_path = backend_path(virtual_path, &mount.path)?;
+            return Ok(WriteRoute {
+                file_system: Arc::clone(&mount.file_system),
+                virtual_path: virtual_path.clone(),
+                backend_path,
+                mount_path: Some(mount.path.clone()),
+            });
+        }
+        Ok(WriteRoute {
+            file_system: Arc::clone(&self.base_file_system),
+            virtual_path: virtual_path.clone(),
+            backend_path: virtual_path.clone(),
+            mount_path: None,
+        })
+    }
+
+    fn require_write_capability(
+        route: &WriteRoute,
+        capability: WorkspaceWriteCapabilities,
+    ) -> Result<(), WorkspacePathError> {
+        if route
+            .file_system
+            .write_capabilities_at(&route.backend_path)
+            .contains(capability)
+        {
+            Ok(())
+        } else {
+            Err(WorkspacePathError::Unsupported(
+                route.virtual_path.to_string(),
+            ))
+        }
+    }
+
+    fn reject_mount_target(&self, path: &VirtualPath) -> Result<(), WorkspacePathError> {
+        if self.read_only.is_synthetic_mount_directory(path) {
+            Err(WorkspacePathError::IsDirectory(path.to_string()))
+        } else if self.read_only.is_exact_mount(path) {
+            Err(WorkspacePathError::Unsupported(path.to_string()))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl ReadOnlyWorkspaceFileSystem for CompositeWritableWorkspace {
+    fn policy(&self) -> &WorkspacePathPolicy {
+        &self.policy
+    }
+
+    fn capabilities_at(&self, path: &VirtualPath) -> WorkspaceReadCapabilities {
+        self.read_only.capabilities_at(path)
+    }
+
+    fn resolve(
+        &self,
+        path: &str,
+        current_directory: &str,
+    ) -> Result<VirtualPath, WorkspacePathError> {
+        self.read_only.resolve(path, current_directory)
+    }
+
+    fn stat(&self, path: &VirtualPath) -> Result<WorkspaceFileInfo, WorkspacePathError> {
+        self.read_only.stat(path)
+    }
+
+    fn list_directory(
+        &self,
+        path: &VirtualPath,
+    ) -> Result<Vec<WorkspaceDirectoryEntry>, WorkspacePathError> {
+        self.read_only.list_directory(path)
+    }
+
+    fn read_file_range(
+        &self,
+        path: &VirtualPath,
+        offset: u64,
+        length: usize,
+    ) -> Result<Vec<u8>, WorkspacePathError> {
+        self.read_only.read_file_range(path, offset, length)
+    }
+}
+
+impl WritableWorkspaceFileSystem for CompositeWritableWorkspace {
+    fn write_capabilities_at(&self, path: &VirtualPath) -> WorkspaceWriteCapabilities {
+        if self.policy.is_hidden(path) {
+            return WorkspaceWriteCapabilities::NONE;
+        }
+        let Ok(route) = self.write_route_without_validation(path) else {
+            return WorkspaceWriteCapabilities::NONE;
+        };
+        let capabilities = route.file_system.write_capabilities_at(&route.backend_path);
+        if self.read_only.is_synthetic_mount_directory(path) || self.read_only.is_exact_mount(path)
+        {
+            WorkspaceWriteCapabilities::NONE
+        } else {
+            capabilities
+        }
+    }
+
+    fn create_file(
+        &self,
+        path: &VirtualPath,
+        overwrite: bool,
+        create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError> {
+        let route = self.route_write(path, "create")?;
+        self.reject_mount_target(&route.virtual_path)?;
+        Self::require_write_capability(&route, WorkspaceWriteCapabilities::CREATE_FILE)?;
+        route
+            .file_system
+            .create_file(&route.backend_path, overwrite, create_parent_directories)
+            .map_err(|error| rebase_backend_error(&route, error, "create"))
+    }
+
+    fn write_file_range(
+        &self,
+        path: &VirtualPath,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<u64, WorkspacePathError> {
+        let route = self.route_write(path, "write")?;
+        self.reject_mount_target(&route.virtual_path)?;
+        Self::require_write_capability(&route, WorkspaceWriteCapabilities::WRITE_FILE_RANGE)?;
+        route
+            .file_system
+            .write_file_range(&route.backend_path, offset, data)
+            .map_err(|error| rebase_backend_error(&route, error, "write"))
+    }
+
+    fn rename(
+        &self,
+        source: &VirtualPath,
+        destination: &VirtualPath,
+        overwrite: bool,
+        create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError> {
+        let source_route = self.route_write(source, "rename")?;
+        self.reject_mount_target(&source_route.virtual_path)?;
+        let destination_route = self.route_write(destination, "rename")?;
+        self.reject_mount_target(&destination_route.virtual_path)?;
+        Self::require_write_capability(&source_route, WorkspaceWriteCapabilities::RENAME)?;
+        if !std::ptr::eq(
+            Arc::as_ptr(&source_route.file_system),
+            Arc::as_ptr(&destination_route.file_system),
+        ) {
+            return Err(WorkspacePathError::Unsupported(
+                source_route.virtual_path.to_string(),
+            ));
+        }
+        source_route
+            .file_system
+            .rename(
+                &source_route.backend_path,
+                &destination_route.backend_path,
+                overwrite,
+                create_parent_directories,
+            )
+            .map_err(|error| rebase_backend_error(&source_route, error, "rename"))
+    }
+
+    fn delete(&self, path: &VirtualPath, recursive: bool) -> Result<(), WorkspacePathError> {
+        let route = self.route_write(path, "delete")?;
+        self.reject_mount_target(&route.virtual_path)?;
+        Self::require_write_capability(&route, WorkspaceWriteCapabilities::DELETE)?;
+        route
+            .file_system
+            .delete(&route.backend_path, recursive)
+            .map_err(|error| rebase_backend_error(&route, error, "delete"))
+    }
+}
+
 struct WorkspaceRoute {
     file_system: Arc<dyn ReadOnlyWorkspaceFileSystem>,
     virtual_path: VirtualPath,
     backend_path: VirtualPath,
     mount_path: Option<VirtualPath>,
+}
+
+struct WriteRoute {
+    file_system: Arc<dyn WritableWorkspaceFileSystem>,
+    virtual_path: VirtualPath,
+    backend_path: VirtualPath,
+    mount_path: Option<VirtualPath>,
+}
+
+trait RouteLike {
+    fn virtual_path(&self) -> &VirtualPath;
+    fn mount_path(&self) -> Option<&VirtualPath>;
+}
+
+impl RouteLike for WorkspaceRoute {
+    fn virtual_path(&self) -> &VirtualPath {
+        &self.virtual_path
+    }
+
+    fn mount_path(&self) -> Option<&VirtualPath> {
+        self.mount_path.as_ref()
+    }
+}
+
+impl RouteLike for WriteRoute {
+    fn virtual_path(&self) -> &VirtualPath {
+        &self.virtual_path
+    }
+
+    fn mount_path(&self) -> Option<&VirtualPath> {
+        self.mount_path.as_ref()
+    }
 }
 
 fn component_count(path: &VirtualPath) -> usize {
@@ -500,15 +809,15 @@ fn validate_and_rebase_info(
     Ok(info)
 }
 
-fn rebase_backend_error(
-    route: &WorkspaceRoute,
+fn rebase_backend_error<R: RouteLike>(
+    route: &R,
     error: WorkspacePathError,
     operation: &'static str,
 ) -> WorkspacePathError {
     let rebase = |path: String| {
         canonical_virtual_path(&path)
             .and_then(|path| rebase_backend_path(route, &path))
-            .unwrap_or_else(|| route.virtual_path.clone())
+            .unwrap_or_else(|| route.virtual_path().clone())
             .into_string()
     };
     match error {
@@ -518,6 +827,10 @@ fn rebase_backend_error(
         WorkspacePathError::NotFound(path) => WorkspacePathError::NotFound(rebase(path)),
         WorkspacePathError::NotDirectory(path) => WorkspacePathError::NotDirectory(rebase(path)),
         WorkspacePathError::IsDirectory(path) => WorkspacePathError::IsDirectory(rebase(path)),
+        WorkspacePathError::DirectoryNotEmpty(path) => {
+            WorkspacePathError::DirectoryNotEmpty(rebase(path))
+        }
+        WorkspacePathError::AlreadyExists(path) => WorkspacePathError::AlreadyExists(rebase(path)),
         WorkspacePathError::LimitExceeded(path) => WorkspacePathError::LimitExceeded(rebase(path)),
         WorkspacePathError::Unsupported(path) => WorkspacePathError::Unsupported(rebase(path)),
         WorkspacePathError::Canceled(path) => WorkspacePathError::Canceled(rebase(path)),
@@ -528,8 +841,8 @@ fn rebase_backend_error(
     }
 }
 
-fn rebase_backend_path(route: &WorkspaceRoute, backend_path: &VirtualPath) -> Option<VirtualPath> {
-    let Some(mount_path) = &route.mount_path else {
+fn rebase_backend_path<R: RouteLike>(route: &R, backend_path: &VirtualPath) -> Option<VirtualPath> {
+    let Some(mount_path) = route.mount_path() else {
         return Some(backend_path.clone());
     };
     if backend_path == &VirtualPath::root() {
@@ -586,12 +899,17 @@ mod tests {
     struct TestWorkspace {
         policy: WorkspacePathPolicy,
         capabilities: WorkspaceReadCapabilities,
+        write_capabilities: WorkspaceWriteCapabilities,
         directories: BTreeSet<VirtualPath>,
         files: BTreeMap<VirtualPath, Vec<u8>>,
         listing_overrides: BTreeMap<VirtualPath, Vec<WorkspaceDirectoryEntry>>,
         stat_errors: BTreeMap<VirtualPath, WorkspacePathError>,
         resolve_calls: Mutex<Vec<String>>,
         range_read_calls: AtomicUsize,
+        create_calls: AtomicUsize,
+        write_range_calls: Mutex<Vec<(String, u64, usize)>>,
+        rename_calls: Mutex<Vec<(String, String)>>,
+        delete_calls: Mutex<Vec<(String, bool)>>,
     }
 
     impl TestWorkspace {
@@ -618,17 +936,27 @@ mod tests {
             Self {
                 policy,
                 capabilities: WorkspaceReadCapabilities::ALL,
+                write_capabilities: WorkspaceWriteCapabilities::ALL,
                 directories,
                 files,
                 listing_overrides: BTreeMap::new(),
                 stat_errors: BTreeMap::new(),
                 resolve_calls: Mutex::new(Vec::new()),
                 range_read_calls: AtomicUsize::new(0),
+                create_calls: AtomicUsize::new(0),
+                write_range_calls: Mutex::new(Vec::new()),
+                rename_calls: Mutex::new(Vec::new()),
+                delete_calls: Mutex::new(Vec::new()),
             }
         }
 
         fn with_capabilities(mut self, capabilities: WorkspaceReadCapabilities) -> Self {
             self.capabilities = capabilities;
+            self
+        }
+
+        fn with_write_capabilities(mut self, capabilities: WorkspaceWriteCapabilities) -> Self {
+            self.write_capabilities = capabilities;
             self
         }
 
@@ -751,6 +1079,86 @@ mod tests {
                 .map_err(|_| WorkspacePathError::LimitExceeded(path.to_string()))?;
             let end = start.saturating_add(length).min(data.len());
             Ok(data[start..end].to_vec())
+        }
+    }
+
+    impl WritableWorkspaceFileSystem for TestWorkspace {
+        fn write_capabilities_at(&self, _path: &VirtualPath) -> WorkspaceWriteCapabilities {
+            self.write_capabilities
+        }
+
+        fn create_file(
+            &self,
+            path: &VirtualPath,
+            overwrite: bool,
+            _create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            self.create_calls.fetch_add(1, Ordering::SeqCst);
+            self.policy.authorize(path.clone())?;
+            if self.directories.contains(path) {
+                return Err(WorkspacePathError::IsDirectory(path.to_string()));
+            }
+            if self.files.contains_key(path) && !overwrite {
+                return Err(WorkspacePathError::AlreadyExists(path.to_string()));
+            }
+            Ok(())
+        }
+
+        fn write_file_range(
+            &self,
+            path: &VirtualPath,
+            offset: u64,
+            data: &[u8],
+        ) -> Result<u64, WorkspacePathError> {
+            self.write_range_calls
+                .lock()
+                .unwrap()
+                .push((path.to_string(), offset, data.len()));
+            self.policy.authorize(path.clone())?;
+            if self.directories.contains(path) {
+                return Err(WorkspacePathError::IsDirectory(path.to_string()));
+            }
+            if !self.files.contains_key(path) {
+                return Err(WorkspacePathError::NotFound(path.to_string()));
+            }
+            Ok(data.len() as u64)
+        }
+
+        fn rename(
+            &self,
+            source: &VirtualPath,
+            destination: &VirtualPath,
+            overwrite: bool,
+            _create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            self.rename_calls
+                .lock()
+                .unwrap()
+                .push((source.to_string(), destination.to_string()));
+            self.policy.authorize(source.clone())?;
+            self.policy.authorize(destination.clone())?;
+            if !self.files.contains_key(source) && !self.directories.contains(source) {
+                return Err(WorkspacePathError::NotFound(source.to_string()));
+            }
+            if (self.files.contains_key(destination) || self.directories.contains(destination))
+                && !overwrite
+            {
+                return Err(WorkspacePathError::AlreadyExists(source.to_string()));
+            }
+            Ok(())
+        }
+
+        fn delete(&self, path: &VirtualPath, recursive: bool) -> Result<(), WorkspacePathError> {
+            self.delete_calls
+                .lock()
+                .unwrap()
+                .push((path.to_string(), recursive));
+            self.policy.authorize(path.clone())?;
+            if self.files.contains_key(path) || self.directories.contains(path) {
+                Ok(())
+            } else {
+                Err(WorkspacePathError::NotFound(path.to_string()))
+            }
         }
     }
 
@@ -1096,6 +1504,90 @@ mod tests {
             checked_directory_metadata_total(0, DIRECTORY_METADATA_LIMIT, 1, &root),
             Err(WorkspacePathError::LimitExceeded(path)) if path == "/"
         ));
+    }
+
+    #[test]
+    fn writable_composite_routes_writes_and_gates_capabilities() {
+        let base = Arc::new(TestWorkspace::new(&[("/base.txt", b"base")]));
+        let media = Arc::new(TestWorkspace::new(&[("/clip.txt", b"clip")]));
+        let limited = Arc::new(
+            TestWorkspace::new(&[]).with_write_capabilities(WorkspaceWriteCapabilities::NONE),
+        );
+        let workspace = CompositeWritableWorkspace::new(
+            base.clone(),
+            vec![
+                WritableWorkspaceMount::new("/media", media.clone()).unwrap(),
+                WritableWorkspaceMount::new("/limited", limited.clone()).unwrap(),
+            ],
+        )
+        .unwrap();
+
+        let media_file = workspace.resolve("/media/new.bin", "/").unwrap();
+        workspace.create_file(&media_file, false, false).unwrap();
+        assert_eq!(media.create_calls.load(Ordering::SeqCst), 1);
+
+        let base_file = workspace.resolve("/base2.bin", "/").unwrap();
+        workspace.create_file(&base_file, false, false).unwrap();
+        assert_eq!(base.create_calls.load(Ordering::SeqCst), 1);
+
+        let clip = workspace.resolve("/media/clip.txt", "/").unwrap();
+        workspace.write_file_range(&clip, 0, b"xy").unwrap();
+        assert_eq!(media.write_range_calls.lock().unwrap().len(), 1);
+
+        let limited_file = workspace.resolve("/limited/new.bin", "/").unwrap();
+        assert!(matches!(
+            workspace.create_file(&limited_file, false, false),
+            Err(WorkspacePathError::Unsupported(path)) if path == "/limited/new.bin"
+        ));
+        assert_eq!(limited.create_calls.load(Ordering::SeqCst), 0);
+
+        let exact = workspace.resolve("/media", "/").unwrap();
+        assert!(matches!(
+            workspace.create_file(&exact, false, false),
+            Err(WorkspacePathError::Unsupported(path)) if path == "/media"
+        ));
+
+        let nested = CompositeWritableWorkspace::new(
+            Arc::new(TestWorkspace::new(&[])),
+            vec![
+                WritableWorkspaceMount::new("/a/nested", Arc::new(TestWorkspace::new(&[])))
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+        let synthetic = nested.resolve("/a", "/").unwrap();
+        assert!(matches!(
+            nested.create_file(&synthetic, false, false),
+            Err(WorkspacePathError::IsDirectory(path)) if path == "/a"
+        ));
+        assert!(!nested
+            .write_capabilities_at(&synthetic)
+            .contains(WorkspaceWriteCapabilities::CREATE_FILE));
+    }
+
+    #[test]
+    fn writable_composite_rebases_errors_and_guards_cross_mount_rename() {
+        let base = Arc::new(TestWorkspace::new(&[("/a.txt", b"a")]));
+        let media = Arc::new(TestWorkspace::new(&[]));
+        let workspace = CompositeWritableWorkspace::new(
+            base.clone(),
+            vec![WritableWorkspaceMount::new("/media", media.clone()).unwrap()],
+        )
+        .unwrap();
+
+        let missing = workspace.resolve("/media/missing.bin", "/").unwrap();
+        assert!(matches!(
+            workspace.delete(&missing, false),
+            Err(WorkspacePathError::NotFound(path)) if path == "/media/missing.bin"
+        ));
+
+        let in_base = workspace.resolve("/a.txt", "/").unwrap();
+        let in_mount = workspace.resolve("/media/b.txt", "/").unwrap();
+        assert!(matches!(
+            workspace.rename(&in_base, &in_mount, false, false),
+            Err(WorkspacePathError::Unsupported(path)) if path == "/a.txt"
+        ));
+        assert_eq!(media.rename_calls.lock().unwrap().len(), 0);
     }
 
     fn parent_path(path: &VirtualPath) -> VirtualPath {

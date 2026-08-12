@@ -76,6 +76,8 @@ pub enum WorkspacePathError {
     NotFound(String),
     NotDirectory(String),
     IsDirectory(String),
+    DirectoryNotEmpty(String),
+    AlreadyExists(String),
     LimitExceeded(String),
     Unsupported(String),
     Canceled(String),
@@ -91,6 +93,8 @@ impl WorkspacePathError {
             | Self::NotFound(path)
             | Self::NotDirectory(path)
             | Self::IsDirectory(path)
+            | Self::DirectoryNotEmpty(path)
+            | Self::AlreadyExists(path)
             | Self::LimitExceeded(path)
             | Self::Unsupported(path)
             | Self::Canceled(path)
@@ -110,6 +114,10 @@ impl fmt::Display for WorkspacePathError {
                 write!(formatter, "workspace path is not a directory: {path}")
             }
             Self::IsDirectory(path) => write!(formatter, "workspace path is a directory: {path}"),
+            Self::DirectoryNotEmpty(path) => {
+                write!(formatter, "workspace directory is not empty: {path}")
+            }
+            Self::AlreadyExists(path) => write!(formatter, "workspace path already exists: {path}"),
             Self::LimitExceeded(path) => {
                 write!(formatter, "workspace result limit exceeded: {path}")
             }

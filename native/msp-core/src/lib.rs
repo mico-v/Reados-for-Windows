@@ -12,7 +12,10 @@ mod workspace_fs;
 mod workspace_invoke;
 mod workspace_path;
 
-pub use composite_workspace::{CompositeReadOnlyWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount};
+pub use composite_workspace::{
+    CompositeReadOnlyWorkspace, CompositeWritableWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount,
+    WritableWorkspaceMount,
+};
 pub use contract::{
     MspAuditRecord, MspCommandRequest, MspCommandResult, MspDiagnostic, MspDiagnosticSeverity,
     MspPolicyDecision, MspPolicyDecisionKind, MspPolicyRequest, MspShellParseRequest,
@@ -29,10 +32,10 @@ pub use shell::{
 pub use workspace_callback::{
     CallbackReadOnlyWorkspace, MspWorkspaceHostV1, MspWorkspaceRequestV1,
 };
-pub use workspace_capabilities::WorkspaceReadCapabilities;
+pub use workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 pub use workspace_fs::{
-    ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WorkspaceDirectoryEntry,
-    WorkspaceFileInfo, WorkspaceFileType,
+    ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WindowsLocalWritableWorkspace,
+    WorkspaceDirectoryEntry, WorkspaceFileInfo, WorkspaceFileType, WritableWorkspaceFileSystem,
 };
 pub use workspace_path::{
     normalize as normalize_workspace_path, VirtualPath, WorkspacePathError, WorkspacePathPolicy,

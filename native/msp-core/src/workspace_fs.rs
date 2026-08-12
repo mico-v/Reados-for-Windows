@@ -1,8 +1,9 @@
-use crate::workspace_capabilities::WorkspaceReadCapabilities;
+use crate::workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 use crate::workspace_path::{VirtualPath, WorkspacePathError, WorkspacePathPolicy};
 
 pub(crate) const DIRECTORY_ENTRY_LIMIT: usize = 65_536;
 pub(crate) const DIRECTORY_METADATA_LIMIT: usize = 8 * 1024 * 1024;
+pub(crate) const WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceFileType {
@@ -62,6 +63,44 @@ pub trait ReadOnlyWorkspaceFileSystem: Send + Sync {
     ) -> Result<Vec<u8>, WorkspacePathError>;
 }
 
+/// Backend-neutral writable surface layered on the read-only WorkspaceFS.
+///
+/// Every write is a low-level physical primitive on an already-verified handle
+/// path. Implementations must never follow a reparse point on write and must
+/// never leak host paths into results or errors.
+pub trait WritableWorkspaceFileSystem: ReadOnlyWorkspaceFileSystem {
+    fn write_capabilities_at(&self, _path: &VirtualPath) -> WorkspaceWriteCapabilities {
+        WorkspaceWriteCapabilities::ALL
+    }
+
+    fn create_file(
+        &self,
+        path: &VirtualPath,
+        overwrite: bool,
+        create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError>;
+
+    /// Writes `data` at `offset` and returns the number of bytes written.
+    fn write_file_range(
+        &self,
+        path: &VirtualPath,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<u64, WorkspacePathError>;
+
+    fn rename(
+        &self,
+        source: &VirtualPath,
+        destination: &VirtualPath,
+        overwrite: bool,
+        create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError>;
+
+    /// Low-level physical delete primitive used only by trash/empty.
+    /// `recursive` stays `false` in this slice.
+    fn delete(&self, path: &VirtualPath, recursive: bool) -> Result<(), WorkspacePathError>;
+}
+
 pub(crate) fn checked_directory_metadata_total(
     entry_count: usize,
     current_bytes: usize,
@@ -84,7 +123,7 @@ mod windows {
     use std::collections::BTreeSet;
     use std::ffi::{c_void, OsStr};
     use std::fs::File;
-    use std::mem::{size_of, zeroed};
+    use std::mem::{offset_of, size_of, zeroed};
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::fs::FileExt;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
@@ -95,25 +134,40 @@ mod windows {
 
     const INVALID_HANDLE_VALUE: Handle = -1_isize as Handle;
     const FILE_LIST_DIRECTORY: u32 = 0x0000_0001;
+    const FILE_ADD_FILE: u32 = 0x0000_0002;
+    const FILE_ADD_SUBDIRECTORY: u32 = 0x0000_0004;
     const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
+    const DELETE: u32 = 0x0001_0000;
     const GENERIC_READ: u32 = 0x8000_0000;
+    const GENERIC_WRITE: u32 = 0x4000_0000;
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_SHARE_WRITE: u32 = 0x0000_0002;
     const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+    const CREATE_NEW: u32 = 1;
     const OPEN_EXISTING: u32 = 3;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x0000_0010;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
     const FILE_ID_BOTH_DIRECTORY_INFO: i32 = 10;
     const FILE_ID_BOTH_DIRECTORY_RESTART_INFO: i32 = 11;
+    const FILE_RENAME_INFO_CLASS: i32 = 3;
+    const FILE_DISPOSITION_INFO_CLASS: i32 = 4;
+    const PARENT_WRITE_ACCESS: u32 = FILE_LIST_DIRECTORY | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY;
     const ERROR_FILE_NOT_FOUND: u32 = 2;
     const ERROR_PATH_NOT_FOUND: u32 = 3;
     const ERROR_ACCESS_DENIED: u32 = 5;
     const ERROR_NO_MORE_FILES: u32 = 18;
+    const ERROR_SHARING_VIOLATION: u32 = 32;
+    const ERROR_LOCK_VIOLATION: u32 = 33;
+    const ERROR_FILE_EXISTS: u32 = 80;
     const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
     const ERROR_INVALID_NAME: u32 = 123;
+    const ERROR_DIR_NOT_EMPTY: u32 = 145;
+    const ERROR_ALREADY_EXISTS: u32 = 183;
     const ERROR_MORE_DATA: u32 = 234;
     const ERROR_DIRECTORY: u32 = 267;
+    const ERROR_NOT_SAME_DEVICE: u32 = 17;
     const DRIVE_FIXED: u32 = 3;
     const DIRECTORY_BUFFER_INITIAL_SIZE: usize = 64 * 1024;
     const DIRECTORY_BUFFER_MAX_SIZE: usize = 4 * 1024 * 1024;
@@ -159,6 +213,16 @@ mod windows {
         file_id: i64,
     }
 
+    /// Matches the Win32 `FILE_RENAME_INFO` header layout: the UTF-16 file name
+    /// is carried immediately after this header (at `size_of::<Self>()`).
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct FileRenameInfoHeader {
+        replace_if_exists: u8,
+        root_directory: Handle,
+        file_name_length: u32,
+    }
+
     #[link(name = "kernel32")]
     extern "system" {
         fn CreateFileW(
@@ -170,6 +234,8 @@ mod windows {
             flags_and_attributes: u32,
             template_file: Handle,
         ) -> Handle;
+        fn CreateDirectoryW(lp_path_name: *const u16, lp_security_attributes: *const c_void)
+            -> i32;
         fn GetFileInformationByHandle(
             file: Handle,
             information: *mut ByHandleFileInformation,
@@ -178,6 +244,12 @@ mod windows {
             file: Handle,
             information_class: i32,
             information: *mut c_void,
+            buffer_size: u32,
+        ) -> i32;
+        fn SetFileInformationByHandle(
+            file: Handle,
+            file_information_class: i32,
+            file_information: *mut c_void,
             buffer_size: u32,
         ) -> i32;
         fn GetFinalPathNameByHandleW(
@@ -420,6 +492,432 @@ mod windows {
                 })?;
             bytes.truncate(count);
             Ok(bytes)
+        }
+    }
+
+    /// Writable Windows host-backed WorkspaceFS.
+    ///
+    /// Wraps the read-only backend and reuses its root handle, containment
+    /// helpers, and final-path verification. Every write opens with
+    /// `FILE_FLAG_OPEN_REPARSE_POINT` so a reparse point is never followed,
+    /// verifies the final handle path against the retained root handle, and
+    /// re-verifies containment after the mutation.
+    pub struct WindowsLocalWritableWorkspace {
+        read: WindowsLocalReadOnlyWorkspace,
+    }
+
+    impl WindowsLocalWritableWorkspace {
+        pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspacePathError> {
+            Ok(Self {
+                read: WindowsLocalReadOnlyWorkspace::open(root)?,
+            })
+        }
+
+        pub fn with_policy(
+            root: impl AsRef<Path>,
+            policy: WorkspacePathPolicy,
+        ) -> Result<Self, WorkspacePathError> {
+            Ok(Self {
+                read: WindowsLocalReadOnlyWorkspace::with_policy(root, policy)?,
+            })
+        }
+
+        fn authorize_write_path(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<VirtualPath, WorkspacePathError> {
+            self.read.resolve(path.as_str(), "/")
+        }
+
+        /// Opens a target for mutation and verifies the open-then-verify
+        /// contract: containment against the root handle, hidden-component
+        /// reapplication, and reparse rejection.
+        fn open_for_write(
+            &self,
+            path: &VirtualPath,
+            desired_access: u32,
+            creation_disposition: u32,
+            operation: &str,
+        ) -> Result<File, WorkspacePathError> {
+            let file = open_handle_with_disposition(
+                &self.read.target_source(path),
+                desired_access | FILE_READ_ATTRIBUTES,
+                creation_disposition,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                path.as_str(),
+                operation,
+            )?;
+            self.verify_write_handle(path, &file, operation)?;
+            Ok(file)
+        }
+
+        /// The open-then-verify / mutate-then-verify core check: the final
+        /// handle path stays inside the root, its relative components re-pass
+        /// the host-name and hidden policy, and the object is not a reparse
+        /// point.
+        fn verify_write_handle(
+            &self,
+            path: &VirtualPath,
+            file: &File,
+            operation: &str,
+        ) -> Result<(), WorkspacePathError> {
+            let root_final = final_path_for_handle(&self.read.root_handle, "/", operation)?;
+            let target_final = final_path_for_handle(file, path.as_str(), operation)?;
+            if !is_same_or_child_path(&root_final, &target_final) {
+                return Err(WorkspacePathError::AccessDenied(path.to_string()));
+            }
+            self.read
+                .authorize_final_relative_components(path, &root_final, &target_final)?;
+            let information = information_for_handle(file, path.as_str(), operation)?;
+            if information.file_attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(WorkspacePathError::AccessDenied(path.to_string()));
+            }
+            Ok(())
+        }
+
+        fn require_directory(
+            &self,
+            handle: &File,
+            path: &VirtualPath,
+            operation: &str,
+        ) -> Result<(), WorkspacePathError> {
+            let information = information_for_handle(handle, path.as_str(), operation)?;
+            if information.file_attributes & FILE_ATTRIBUTE_DIRECTORY == 0 {
+                Err(WorkspacePathError::NotDirectory(path.to_string()))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn open_parent_for_create(
+            &self,
+            parent: &VirtualPath,
+            create_parent_directories: bool,
+            operation: &str,
+        ) -> Result<File, WorkspacePathError> {
+            match self.open_for_write(parent, PARENT_WRITE_ACCESS, OPEN_EXISTING, operation) {
+                Ok(handle) => {
+                    self.require_directory(&handle, parent, operation)?;
+                    Ok(handle)
+                }
+                Err(WorkspacePathError::NotFound(_)) if create_parent_directories => {
+                    self.create_intermediate_directories(parent, operation)?;
+                    let handle =
+                        self.open_for_write(parent, PARENT_WRITE_ACCESS, OPEN_EXISTING, operation)?;
+                    self.require_directory(&handle, parent, operation)?;
+                    Ok(handle)
+                }
+                Err(error) => Err(error),
+            }
+        }
+
+        /// Creates every missing directory component under the root, verifying
+        /// each created handle before proceeding. A verification failure marks
+        /// the orphan delete-on-close so nothing escapes.
+        fn create_intermediate_directories(
+            &self,
+            path: &VirtualPath,
+            operation: &str,
+        ) -> Result<(), WorkspacePathError> {
+            let mut current = VirtualPath::root();
+            for component in path.components() {
+                current =
+                    current
+                        .join_component(component)
+                        .map_err(|_| WorkspacePathError::Io {
+                            path: path.to_string(),
+                            operation: operation.to_string(),
+                        })?;
+                match self.open_for_write(&current, PARENT_WRITE_ACCESS, OPEN_EXISTING, operation) {
+                    Ok(handle) => {
+                        self.require_directory(&handle, &current, operation)?;
+                    }
+                    Err(WorkspacePathError::NotFound(_)) => {
+                        let created_path = extended_path_units(&self.read.target_source(&current));
+                        if unsafe { CreateDirectoryW(created_path.as_ptr(), ptr::null()) } == 0 {
+                            return Err(map_windows_error(
+                                unsafe { GetLastError() },
+                                current.as_str(),
+                                operation,
+                            ));
+                        }
+                        let handle = open_handle_with_disposition(
+                            &self.read.target_source(&current),
+                            PARENT_WRITE_ACCESS | DELETE,
+                            OPEN_EXISTING,
+                            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                            current.as_str(),
+                            operation,
+                        )?;
+                        if let Err(error) = self.verify_write_handle(&current, &handle, operation) {
+                            let _ = set_delete_on_close(&handle);
+                            return Err(error);
+                        }
+                        self.require_directory(&handle, &current, operation)?;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl ReadOnlyWorkspaceFileSystem for WindowsLocalWritableWorkspace {
+        fn policy(&self) -> &WorkspacePathPolicy {
+            self.read.policy()
+        }
+
+        fn capabilities_at(&self, path: &VirtualPath) -> WorkspaceReadCapabilities {
+            self.read.capabilities_at(path)
+        }
+
+        fn resolve(
+            &self,
+            path: &str,
+            current_directory: &str,
+        ) -> Result<VirtualPath, WorkspacePathError> {
+            self.read.resolve(path, current_directory)
+        }
+
+        fn stat(&self, path: &VirtualPath) -> Result<WorkspaceFileInfo, WorkspacePathError> {
+            self.read.stat(path)
+        }
+
+        fn list_directory(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Vec<WorkspaceDirectoryEntry>, WorkspacePathError> {
+            self.read.list_directory(path)
+        }
+
+        fn read_file_range(
+            &self,
+            path: &VirtualPath,
+            offset: u64,
+            length: usize,
+        ) -> Result<Vec<u8>, WorkspacePathError> {
+            self.read.read_file_range(path, offset, length)
+        }
+    }
+
+    impl WritableWorkspaceFileSystem for WindowsLocalWritableWorkspace {
+        fn create_file(
+            &self,
+            path: &VirtualPath,
+            overwrite: bool,
+            create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            let path = self.authorize_write_path(path)?;
+            if path == VirtualPath::root() {
+                return Err(WorkspacePathError::IsDirectory(path.to_string()));
+            }
+            let parent = parent_virtual_path(&path)
+                .ok_or_else(|| WorkspacePathError::InvalidPath(path.to_string()))?;
+            let _parent_handle = self
+                .open_parent_for_create(&parent, create_parent_directories, "create")
+                .map_err(|error| remap_to_requested_path(&path, error))?;
+
+            if overwrite {
+                match self.open_for_write(&path, DELETE | GENERIC_WRITE, OPEN_EXISTING, "create") {
+                    Ok(file) => {
+                        let information = information_for_handle(&file, path.as_str(), "create")?;
+                        if information.file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                            return Err(WorkspacePathError::IsDirectory(path.to_string()));
+                        }
+                        file.set_len(0).map_err(|_| WorkspacePathError::Io {
+                            path: path.to_string(),
+                            operation: "create".to_string(),
+                        })?;
+                        self.verify_write_handle(&path, &file, "create")?;
+                        return Ok(());
+                    }
+                    Err(WorkspacePathError::NotFound(_)) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+
+            let file = open_handle_with_disposition(
+                &self.read.target_source(&path),
+                DELETE | GENERIC_WRITE,
+                CREATE_NEW,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                path.as_str(),
+                "create",
+            )?;
+            if let Err(error) = self.verify_write_handle(&path, &file, "create") {
+                let _ = set_delete_on_close(&file);
+                return Err(error);
+            }
+            Ok(())
+        }
+
+        fn write_file_range(
+            &self,
+            path: &VirtualPath,
+            offset: u64,
+            data: &[u8],
+        ) -> Result<u64, WorkspacePathError> {
+            let path = self.authorize_write_path(path)?;
+            let length: u64 = u64::try_from(data.len())
+                .map_err(|_| WorkspacePathError::LimitExceeded(path.to_string()))?;
+            if length > WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES {
+                return Err(WorkspacePathError::LimitExceeded(path.to_string()));
+            }
+            offset
+                .checked_add(length)
+                .ok_or_else(|| WorkspacePathError::LimitExceeded(path.to_string()))?;
+            let file = self.open_for_write(&path, GENERIC_WRITE, OPEN_EXISTING, "write")?;
+            let information = information_for_handle(&file, path.as_str(), "write")?;
+            if information.file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                return Err(WorkspacePathError::IsDirectory(path.to_string()));
+            }
+            let mut written: usize = 0;
+            let mut position = offset;
+            while written < data.len() {
+                let count = file.seek_write(&data[written..], position).map_err(|_| {
+                    WorkspacePathError::Io {
+                        path: path.to_string(),
+                        operation: "write".to_string(),
+                    }
+                })?;
+                if count == 0 {
+                    return Err(WorkspacePathError::Io {
+                        path: path.to_string(),
+                        operation: "write".to_string(),
+                    });
+                }
+                written += count;
+                position = position
+                    .checked_add(count as u64)
+                    .ok_or_else(|| WorkspacePathError::LimitExceeded(path.to_string()))?;
+            }
+            self.verify_write_handle(&path, &file, "write")?;
+            Ok(written as u64)
+        }
+
+        fn rename(
+            &self,
+            source: &VirtualPath,
+            destination: &VirtualPath,
+            overwrite: bool,
+            create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            let source = self.authorize_write_path(source)?;
+            let destination = self.authorize_write_path(destination)?;
+            if source == VirtualPath::root() || destination == VirtualPath::root() {
+                return Err(WorkspacePathError::InvalidPath(source.to_string()));
+            }
+            let destination_parent = parent_virtual_path(&destination)
+                .ok_or_else(|| WorkspacePathError::InvalidPath(destination.to_string()))?;
+            let destination_name = destination
+                .file_name()
+                .ok_or_else(|| WorkspacePathError::InvalidPath(destination.to_string()))?;
+
+            let source_handle = self.open_for_write(&source, DELETE, OPEN_EXISTING, "rename")?;
+            let destination_parent_handle = self
+                .open_parent_for_create(&destination_parent, create_parent_directories, "rename")
+                .map_err(|error| remap_to_requested_path(&destination, error))?;
+
+            let replace_if_exists: u8 = if overwrite { 1 } else { 0 };
+            // The destination is never a caller-supplied free-form path: it is
+            // the OS-returned final path of the already-verified destination
+            // parent handle joined with the validated component name. A
+            // verified parent handle plus a relative name is the intent of
+            // FILE_RENAME_INFO.RootDirectory; that field is rejected with
+            // ERROR_INVALID_PARAMETER by the OS on this build, so the path is
+            // materialized from the verified handle instead.
+            let mut destination_path =
+                final_path_for_handle(&destination_parent_handle, destination.as_str(), "rename")?;
+            destination_path.push(b'\\' as u16);
+            destination_path.extend(OsStr::new(destination_name).encode_wide());
+            destination_path.push(0);
+            let file_name_bytes: u32 =
+                u32::try_from(destination_path.len() * 2).map_err(|_| WorkspacePathError::Io {
+                    path: source.to_string(),
+                    operation: "rename".to_string(),
+                })?;
+            // The Win32 FILE_RENAME_INFO header is a fixed prefix followed by
+            // the UTF-16 name (null-terminated). The header struct has trailing
+            // alignment padding on 64-bit, so compute the name offset from the
+            // last header field.
+            let file_name_offset =
+                offset_of!(FileRenameInfoHeader, file_name_length) + size_of::<u32>();
+            let mut buffer = vec![0_u8; file_name_offset + destination_path.len() * 2];
+            let succeeded = unsafe {
+                let header = buffer.as_mut_ptr().cast::<FileRenameInfoHeader>();
+                (*header).replace_if_exists = replace_if_exists;
+                (*header).root_directory = ptr::null_mut();
+                (*header).file_name_length = file_name_bytes;
+                ptr::copy_nonoverlapping(
+                    destination_path.as_ptr(),
+                    buffer.as_mut_ptr().add(file_name_offset).cast::<u16>(),
+                    destination_path.len(),
+                );
+                SetFileInformationByHandle(
+                    raw_handle(&source_handle),
+                    FILE_RENAME_INFO_CLASS,
+                    buffer.as_mut_ptr().cast(),
+                    buffer.len().try_into().unwrap_or(u32::MAX),
+                )
+            };
+            if succeeded == 0 {
+                let error = unsafe { GetLastError() };
+                // ReplaceIfExists never replaces directories; when the target is
+                // a directory the OS reports ACCESS_DENIED. Surface the more
+                // specific non-empty-directory condition when it applies.
+                if error == ERROR_ACCESS_DENIED {
+                    if let Ok(probe) = self.open_for_write(
+                        &destination,
+                        FILE_READ_ATTRIBUTES,
+                        OPEN_EXISTING,
+                        "rename",
+                    ) {
+                        if let Ok(information) =
+                            information_for_handle(&probe, destination.as_str(), "rename")
+                        {
+                            if information.file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                                return Err(WorkspacePathError::DirectoryNotEmpty(
+                                    destination.to_string(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                return Err(map_windows_error(error, source.as_str(), "rename"));
+            }
+            self.verify_write_handle(&source, &source_handle, "rename")?;
+            Ok(())
+        }
+
+        fn delete(&self, path: &VirtualPath, recursive: bool) -> Result<(), WorkspacePathError> {
+            if recursive {
+                return Err(WorkspacePathError::Unsupported(path.to_string()));
+            }
+            let path = self.authorize_write_path(path)?;
+            if path == VirtualPath::root() {
+                return Err(WorkspacePathError::IsDirectory(path.to_string()));
+            }
+            let file = self.open_for_write(&path, DELETE, OPEN_EXISTING, "delete")?;
+            let information = information_for_handle(&file, path.as_str(), "delete")?;
+            let is_directory = information.file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+            set_delete_on_close(&file)
+                .map_err(|error| map_windows_error(error, path.as_str(), "delete"))?;
+            self.verify_write_handle(&path, &file, "delete")?;
+            drop(file);
+            // FileDispositionInfo deletes on last close. Probe the outcome so a
+            // non-empty directory (deletion fails silently at close) is reported
+            // eagerly instead of claiming success.
+            match self.open_for_write(&path, FILE_READ_ATTRIBUTES, OPEN_EXISTING, "delete") {
+                Ok(_) => {
+                    if is_directory {
+                        Err(WorkspacePathError::DirectoryNotEmpty(path.to_string()))
+                    } else {
+                        Err(WorkspacePathError::AccessDenied(path.to_string()))
+                    }
+                }
+                Err(WorkspacePathError::NotFound(_)) => Ok(()),
+                Err(error) => Err(error),
+            }
         }
     }
 
@@ -669,6 +1167,24 @@ mod windows {
         virtual_path: &str,
         operation: &str,
     ) -> Result<File, WorkspacePathError> {
+        open_handle_with_disposition(
+            path,
+            desired_access,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            virtual_path,
+            operation,
+        )
+    }
+
+    fn open_handle_with_disposition(
+        path: &Path,
+        desired_access: u32,
+        creation_disposition: u32,
+        flags_and_attributes: u32,
+        virtual_path: &str,
+        operation: &str,
+    ) -> Result<File, WorkspacePathError> {
         let path = extended_path_units(path);
         let handle = unsafe {
             CreateFileW(
@@ -676,8 +1192,8 @@ mod windows {
                 desired_access,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 ptr::null(),
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS,
+                creation_disposition,
+                flags_and_attributes,
                 ptr::null_mut(),
             )
         };
@@ -689,6 +1205,65 @@ mod windows {
             ));
         }
         Ok(unsafe { File::from_raw_handle(handle as RawHandle) })
+    }
+
+    /// Marks `file` for delete-on-close. Returns the raw Win32 error so callers
+    /// can map it to a `WorkspacePathError`.
+    fn set_delete_on_close(file: &File) -> Result<(), u32> {
+        let delete_file: u8 = 1;
+        let succeeded = unsafe {
+            SetFileInformationByHandle(
+                raw_handle(file),
+                FILE_DISPOSITION_INFO_CLASS,
+                (&delete_file as *const u8).cast_mut().cast(),
+                size_of::<u8>() as u32,
+            )
+        };
+        if succeeded == 0 {
+            Err(unsafe { GetLastError() })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn parent_virtual_path(path: &VirtualPath) -> Option<VirtualPath> {
+        if path == &VirtualPath::root() {
+            return None;
+        }
+        let components = path.components().collect::<Vec<_>>();
+        if components.len() <= 1 {
+            return Some(VirtualPath::root());
+        }
+        VirtualPath::resolve(
+            &format!("/{}", components[..components.len() - 1].join("/")),
+            "/",
+        )
+        .ok()
+    }
+
+    /// Write errors that originate from an intermediate open (a parent
+    /// directory or an intermediate component) are reported against the
+    /// requested path so the caller sees the operation's own target, matching
+    /// the read path's error convention.
+    fn remap_to_requested_path(
+        requested: &VirtualPath,
+        error: WorkspacePathError,
+    ) -> WorkspacePathError {
+        let path = requested.to_string();
+        match error {
+            WorkspacePathError::AccessDenied(_) => WorkspacePathError::AccessDenied(path),
+            WorkspacePathError::HiddenPath(_) => WorkspacePathError::HiddenPath(path),
+            WorkspacePathError::InvalidPath(_) => WorkspacePathError::InvalidPath(path),
+            WorkspacePathError::NotFound(_) => WorkspacePathError::NotFound(path),
+            WorkspacePathError::NotDirectory(_) => WorkspacePathError::NotDirectory(path),
+            WorkspacePathError::IsDirectory(_) => WorkspacePathError::IsDirectory(path),
+            WorkspacePathError::DirectoryNotEmpty(_) => WorkspacePathError::DirectoryNotEmpty(path),
+            WorkspacePathError::AlreadyExists(_) => WorkspacePathError::AlreadyExists(path),
+            WorkspacePathError::LimitExceeded(_) => WorkspacePathError::LimitExceeded(path),
+            WorkspacePathError::Unsupported(_) => WorkspacePathError::Unsupported(path),
+            WorkspacePathError::Canceled(_) => WorkspacePathError::Canceled(path),
+            WorkspacePathError::Io { operation, .. } => WorkspacePathError::Io { path, operation },
+        }
     }
 
     fn extended_path_units(path: &Path) -> Vec<u16> {
@@ -845,6 +1420,14 @@ mod windows {
             ERROR_ACCESS_DENIED => WorkspacePathError::AccessDenied(virtual_path),
             ERROR_INVALID_NAME => WorkspacePathError::InvalidPath(virtual_path),
             ERROR_DIRECTORY => WorkspacePathError::NotDirectory(virtual_path),
+            ERROR_ALREADY_EXISTS | ERROR_FILE_EXISTS => {
+                WorkspacePathError::AlreadyExists(virtual_path)
+            }
+            ERROR_DIR_NOT_EMPTY => WorkspacePathError::DirectoryNotEmpty(virtual_path),
+            ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION => {
+                WorkspacePathError::AccessDenied(virtual_path)
+            }
+            ERROR_NOT_SAME_DEVICE => WorkspacePathError::Unsupported(virtual_path),
             _ => WorkspacePathError::Io {
                 path: virtual_path,
                 operation: operation.to_string(),
@@ -1021,17 +1604,360 @@ mod windows {
                 Err(WorkspacePathError::LimitExceeded(path)) if path == "/"
             ));
         }
+
+        #[test]
+        fn create_new_exists_and_overwrite_truncate() {
+            let root = TemporaryDirectory::new("workspace-write-create");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let new_file = workspace.resolve("/new.txt", "/").unwrap();
+
+            workspace.create_file(&new_file, false, false).unwrap();
+            let info = workspace.stat(&new_file).unwrap();
+            assert_eq!(info.file_type, WorkspaceFileType::RegularFile);
+            assert_eq!(info.size, Some(0));
+
+            assert!(matches!(
+                workspace.create_file(&new_file, false, false),
+                Err(WorkspacePathError::AlreadyExists(path)) if path == "/new.txt"
+            ));
+
+            workspace.write_file_range(&new_file, 0, b"hello").unwrap();
+            assert_eq!(
+                workspace.read_file_range(&new_file, 0, 32).unwrap(),
+                b"hello"
+            );
+            workspace.create_file(&new_file, true, false).unwrap();
+            assert_eq!(workspace.stat(&new_file).unwrap().size, Some(0));
+            assert!(workspace
+                .read_file_range(&new_file, 0, 32)
+                .unwrap()
+                .is_empty());
+        }
+
+        #[test]
+        fn create_file_handles_missing_parents() {
+            let root = TemporaryDirectory::new("workspace-write-parents");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let deep = workspace.resolve("/a/b/c.txt", "/").unwrap();
+
+            assert!(matches!(
+                workspace.create_file(&deep, false, false),
+                Err(WorkspacePathError::NotFound(path)) if path == "/a/b/c.txt"
+            ));
+            workspace.create_file(&deep, false, true).unwrap();
+            assert_eq!(
+                workspace
+                    .stat(&workspace.resolve("/a/b", "/").unwrap())
+                    .unwrap()
+                    .file_type,
+                WorkspaceFileType::Directory
+            );
+            assert_eq!(
+                workspace.stat(&deep).unwrap().file_type,
+                WorkspaceFileType::RegularFile
+            );
+        }
+
+        #[test]
+        fn write_file_range_offsets_limits_and_partial_counts() {
+            let root = TemporaryDirectory::new("workspace-write-range");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let file = workspace.resolve("/blob.bin", "/").unwrap();
+            workspace.create_file(&file, false, false).unwrap();
+
+            assert_eq!(workspace.write_file_range(&file, 0, b"hello").unwrap(), 5);
+            assert_eq!(workspace.write_file_range(&file, 5, b"world").unwrap(), 5);
+            assert_eq!(
+                workspace.read_file_range(&file, 0, 32).unwrap(),
+                b"helloworld"
+            );
+            assert_eq!(workspace.write_file_range(&file, 2, b"XY").unwrap(), 2);
+            assert_eq!(
+                workspace.read_file_range(&file, 0, 32).unwrap(),
+                b"heXYoworld"
+            );
+
+            let big = vec![0_u8; (1024 * 1024) as usize + 1];
+            assert!(matches!(
+                workspace.write_file_range(&file, 0, &big),
+                Err(WorkspacePathError::LimitExceeded(path)) if path == "/blob.bin"
+            ));
+            assert!(matches!(
+                workspace.write_file_range(&file, u64::MAX, b"x"),
+                Err(WorkspacePathError::LimitExceeded(path)) if path == "/blob.bin"
+            ));
+            assert!(matches!(workspace.write_file_range(&file, 50, b""), Ok(0)));
+        }
+
+        #[test]
+        fn rename_within_and_across_directories() {
+            let root = TemporaryDirectory::new("workspace-write-rename");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let src = workspace.resolve("/src.txt", "/").unwrap();
+            workspace.create_file(&src, false, false).unwrap();
+            workspace.write_file_range(&src, 0, b"data").unwrap();
+
+            let same_dir = workspace.resolve("/renamed.txt", "/").unwrap();
+            workspace.rename(&src, &same_dir, false, false).unwrap();
+            assert!(matches!(
+                workspace.stat(&src),
+                Err(WorkspacePathError::NotFound(_))
+            ));
+            assert_eq!(
+                workspace.read_file_range(&same_dir, 0, 32).unwrap(),
+                b"data"
+            );
+
+            let across = workspace.resolve("/dst/moved.txt", "/").unwrap();
+            workspace.rename(&same_dir, &across, false, true).unwrap();
+            assert_eq!(workspace.read_file_range(&across, 0, 32).unwrap(), b"data");
+        }
+
+        #[test]
+        fn rename_collision_and_replace() {
+            let root = TemporaryDirectory::new("workspace-write-rename-collide");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let first = workspace.resolve("/first.txt", "/").unwrap();
+            let second = workspace.resolve("/second.txt", "/").unwrap();
+            workspace.create_file(&first, false, false).unwrap();
+            workspace.create_file(&second, false, false).unwrap();
+            workspace.write_file_range(&first, 0, b"one").unwrap();
+            workspace.write_file_range(&second, 0, b"two").unwrap();
+
+            assert!(matches!(
+                workspace.rename(&first, &second, false, false),
+                Err(WorkspacePathError::AlreadyExists(path)) if path == "/first.txt"
+            ));
+            workspace.rename(&first, &second, true, false).unwrap();
+            assert!(matches!(
+                workspace.stat(&first),
+                Err(WorkspacePathError::NotFound(_))
+            ));
+            assert_eq!(workspace.read_file_range(&second, 0, 32).unwrap(), b"one");
+        }
+
+        #[test]
+        fn rename_onto_non_empty_directory() {
+            let root = TemporaryDirectory::new("workspace-write-rename-dir");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let dir = workspace.resolve("/source", "/").unwrap();
+            let occupied = workspace.resolve("/occupied", "/").unwrap();
+            workspace
+                .create_file(
+                    &workspace.resolve("/source/x.txt", "/").unwrap(),
+                    false,
+                    true,
+                )
+                .unwrap();
+            workspace
+                .create_file(
+                    &workspace.resolve("/occupied/keep.txt", "/").unwrap(),
+                    false,
+                    true,
+                )
+                .unwrap();
+
+            let error = workspace.rename(&dir, &occupied, true, false).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    WorkspacePathError::DirectoryNotEmpty(ref path) if path == "/occupied"
+                ),
+                "expected DirectoryNotEmpty, got: {error:?}"
+            );
+            assert_eq!(
+                workspace
+                    .stat(&workspace.resolve("/occupied/keep.txt", "/").unwrap())
+                    .unwrap()
+                    .file_type,
+                WorkspaceFileType::RegularFile
+            );
+        }
+
+        #[test]
+        fn delete_file_empty_dir_non_empty_dir_and_missing() {
+            let root = TemporaryDirectory::new("workspace-write-delete");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+
+            let file = workspace.resolve("/del.txt", "/").unwrap();
+            workspace.create_file(&file, false, false).unwrap();
+            workspace.delete(&file, false).unwrap();
+            assert!(matches!(
+                workspace.stat(&file),
+                Err(WorkspacePathError::NotFound(_))
+            ));
+
+            let placeholder = workspace.resolve("/empty/placeholder", "/").unwrap();
+            workspace.create_file(&placeholder, false, true).unwrap();
+            workspace.delete(&placeholder, false).unwrap();
+            let empty = workspace.resolve("/empty", "/").unwrap();
+            workspace.delete(&empty, false).unwrap();
+            assert!(matches!(
+                workspace.stat(&empty),
+                Err(WorkspacePathError::NotFound(_))
+            ));
+
+            let non_empty = workspace.resolve("/nonempty", "/").unwrap();
+            let keep = workspace.resolve("/nonempty/keep.txt", "/").unwrap();
+            workspace.create_file(&keep, false, true).unwrap();
+            assert!(matches!(
+                workspace.delete(&non_empty, false),
+                Err(WorkspacePathError::DirectoryNotEmpty(path)) if path == "/nonempty"
+            ));
+            assert_eq!(
+                workspace.stat(&non_empty).unwrap().file_type,
+                WorkspaceFileType::Directory
+            );
+
+            let missing = workspace.resolve("/missing.txt", "/").unwrap();
+            assert!(matches!(
+                workspace.delete(&missing, false),
+                Err(WorkspacePathError::NotFound(path)) if path == "/missing.txt"
+            ));
+            assert!(matches!(
+                workspace.delete(&missing, true),
+                Err(WorkspacePathError::Unsupported(path)) if path == "/missing.txt"
+            ));
+        }
+
+        #[test]
+        fn write_ops_reject_drive_ads_device_and_hidden_paths() {
+            let root = TemporaryDirectory::new("workspace-write-path-policy");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+
+            for raw in [
+                "C:/Windows/System32",
+                "/a.txt:stream",
+                "/NUL",
+                "/docs/a?.txt",
+            ] {
+                let path = VirtualPath::resolve(raw, "/").unwrap();
+                assert!(
+                    matches!(
+                        workspace.create_file(&path, false, false),
+                        Err(WorkspacePathError::InvalidPath(_))
+                    ),
+                    "{raw}"
+                );
+            }
+            // UNC syntax is rejected at the resolve boundary before a virtual
+            // path can be formed.
+            assert!(matches!(
+                workspace.resolve("//server/share/file.txt", "/"),
+                Err(WorkspacePathError::InvalidPath(_))
+            ));
+
+            let hidden = VirtualPath::resolve("/.MSP/audit.json", "/").unwrap();
+            assert!(matches!(
+                workspace.create_file(&hidden, false, true),
+                Err(WorkspacePathError::HiddenPath(path)) if path == "/.MSP/audit.json"
+            ));
+        }
+
+        #[test]
+        fn write_ops_never_follow_reparse_aliases() {
+            use std::os::windows::fs::{symlink_dir, symlink_file};
+
+            let root = TemporaryDirectory::new("workspace-write-escape");
+            let outside = TemporaryDirectory::new("workspace-write-escape-outside");
+            fs::write(outside.0.join("secret.bin"), b"outside").unwrap();
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+
+            let link = root.0.join("escape.bin");
+            if symlink_file(outside.0.join("secret.bin"), &link).is_ok() {
+                let escape = workspace.resolve("/escape.bin", "/").unwrap();
+                assert!(matches!(
+                    workspace.write_file_range(&escape, 0, b"x"),
+                    Err(WorkspacePathError::AccessDenied(path)) if path == "/escape.bin"
+                ));
+                assert!(matches!(
+                    workspace.delete(&escape, false),
+                    Err(WorkspacePathError::AccessDenied(path)) if path == "/escape.bin"
+                ));
+            }
+
+            if symlink_dir(&outside.0, root.0.join("linked")).is_ok() {
+                let real = workspace.resolve("/real.txt", "/").unwrap();
+                workspace.create_file(&real, false, false).unwrap();
+                let inside = workspace.resolve("/linked/new.txt", "/").unwrap();
+                assert!(matches!(
+                    workspace.create_file(&inside, false, false),
+                    Err(WorkspacePathError::AccessDenied(path)) if path == "/linked/new.txt"
+                ));
+                assert!(matches!(
+                    workspace.rename(&real, &inside, false, false),
+                    Err(WorkspacePathError::AccessDenied(path)) if path == "/linked/new.txt"
+                ));
+            }
+        }
+
+        #[test]
+        fn write_reapplies_hidden_policy_on_final_handle_paths() {
+            use std::os::windows::fs::symlink_dir;
+
+            let root = TemporaryDirectory::new("workspace-write-hidden-alias");
+            let hidden = root.0.join(".MSP");
+            fs::create_dir(&hidden).unwrap();
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+
+            let direct = VirtualPath::resolve("/.MSP/audit.bin", "/").unwrap();
+            assert!(matches!(
+                workspace.create_file(&direct, false, true),
+                Err(WorkspacePathError::HiddenPath(path)) if path == "/.MSP/audit.bin"
+            ));
+
+            if symlink_dir(&hidden, root.0.join("visible-alias")).is_ok() {
+                let alias = workspace.resolve("/visible-alias/audit.bin", "/").unwrap();
+                assert!(matches!(
+                    workspace.create_file(&alias, false, false),
+                    Err(WorkspacePathError::AccessDenied(path)) if path == "/visible-alias/audit.bin"
+                ));
+            }
+        }
+
+        #[test]
+        fn write_errors_never_include_the_host_root() {
+            let root = TemporaryDirectory::new("workspace-write-errors");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let root_text = root.0.to_string_lossy().to_string();
+
+            let missing = workspace.resolve("/missing.bin", "/").unwrap();
+            for error in [
+                workspace.write_file_range(&missing, 0, b"x").unwrap_err(),
+                workspace.delete(&missing, false).unwrap_err(),
+            ] {
+                let text = error.to_string();
+                assert!(!text.contains(&root_text));
+                assert!(text.contains("/missing.bin"));
+            }
+
+            let orphan = workspace.resolve("/no/parent.bin", "/").unwrap();
+            let error = workspace.create_file(&orphan, false, false).unwrap_err();
+            let text = error.to_string();
+            assert!(!text.contains(&root_text));
+            assert!(text.contains("/no/parent.bin"));
+        }
     }
 }
 
 #[cfg(windows)]
-pub use windows::WindowsLocalReadOnlyWorkspace;
+pub use windows::{WindowsLocalReadOnlyWorkspace, WindowsLocalWritableWorkspace};
 
 #[cfg(not(windows))]
 pub struct WindowsLocalReadOnlyWorkspace;
 
 #[cfg(not(windows))]
 impl WindowsLocalReadOnlyWorkspace {
+    pub fn open(_root: impl AsRef<std::path::Path>) -> Result<Self, WorkspacePathError> {
+        Err(WorkspacePathError::Unsupported("/".to_string()))
+    }
+}
+
+#[cfg(not(windows))]
+pub struct WindowsLocalWritableWorkspace;
+
+#[cfg(not(windows))]
+impl WindowsLocalWritableWorkspace {
     pub fn open(_root: impl AsRef<std::path::Path>) -> Result<Self, WorkspacePathError> {
         Err(WorkspacePathError::Unsupported("/".to_string()))
     }
