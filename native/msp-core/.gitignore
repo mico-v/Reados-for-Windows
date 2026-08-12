@@ -1,0 +1,5 @@
+# The repository root ignores every `bin/` directory (for .NET build outputs).
+# This Rust crate keeps an in-crate Cargo `[[bin]]` source under `src/bin/`,
+# so re-include that path here.
+!src/bin/
+!src/bin/msp_pty_test_child.rs

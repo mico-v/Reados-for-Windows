@@ -5,6 +5,7 @@ mod composite_workspace;
 mod contract;
 mod output_sanitizer;
 mod pipeline;
+pub mod process;
 mod runtime;
 mod session;
 mod shell;

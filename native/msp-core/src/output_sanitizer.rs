@@ -14,8 +14,20 @@ struct ReplacementRule {
 /// Matching is ASCII-case-insensitive because Windows drive and ordinary path
 /// components are normally case-insensitive. No UTF-8 decoding is required for
 /// stdout/stderr, so unrelated binary bytes are preserved.
+///
+/// Two rule sets are built from the same host roots: one encoded as UTF-8 and
+/// one encoded as UTF-16LE. [`sanitize`](Self::sanitize) applies exactly one
+/// pass, selected by a byte-level heuristic on the input stream (an
+/// alternating `0x00` pattern at odd offsets indicates UTF-16LE text).
 #[derive(Debug, Clone, Default)]
 pub struct WindowsPathSanitizer {
+    utf8: RuleSet,
+    utf16le: RuleSet,
+    force_utf16le: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuleSet {
     rules: Vec<ReplacementRule>,
     maximum_needle_length: usize,
 }
@@ -26,51 +38,53 @@ impl WindowsPathSanitizer {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        Self::build(host_roots, false)
+    }
+
+    /// Builds the same variant set as [`new`](Self::new) but forces the
+    /// UTF-16LE pass regardless of the input heuristic. Useful for tests and
+    /// for callers that know a byte stream is UTF-16LE.
+    pub fn new_utf16le<I, S>(host_roots: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        Self::build(host_roots, true)
+    }
+
+    fn build<I, S>(host_roots: I, force_utf16le: bool) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
         let mut variants = BTreeSet::new();
         for root in host_roots {
             variants.extend(path_variants(root.as_ref()));
         }
-
-        let mut rules = Vec::new();
-        for variant in variants {
-            for file_url in file_url_variants(&variant) {
-                push_path_rules(&mut rules, &file_url, b"file:///", true);
-            }
-            push_path_rules(&mut rules, &variant, b"/", false);
-            if variant.contains('\\') {
-                let json_escaped = variant.replace('\\', r"\\");
-                push_json_path_rules(&mut rules, &json_escaped);
-            }
-        }
-        rules.sort_by(|left, right| {
-            right
-                .needle
-                .len()
-                .cmp(&left.needle.len())
-                .then_with(|| right.needle.cmp(&left.needle))
-        });
-        rules.dedup_by(|left, right| {
-            left.needle.eq_ignore_ascii_case(&right.needle)
-                && left.replacement == right.replacement
-                && left.requires_after_boundary == right.requires_after_boundary
-        });
-        let maximum_needle_length = rules
-            .iter()
-            .map(|rule| rule.needle.len())
-            .max()
-            .unwrap_or(0);
+        let utf8 = build_rule_set(&variants, to_utf8_bytes);
+        let utf16le = build_rule_set(&variants, to_utf16le_bytes);
         Self {
-            rules,
-            maximum_needle_length,
+            utf8,
+            utf16le,
+            force_utf16le,
+        }
+    }
+
+    fn ruleset_for(&self, data: &[u8]) -> &RuleSet {
+        if self.force_utf16le || looks_like_utf16le(data) {
+            &self.utf16le
+        } else {
+            &self.utf8
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
+        self.utf8.rules.is_empty() && self.utf16le.rules.is_empty()
     }
 
     pub fn sanitize(&self, data: &[u8]) -> Vec<u8> {
-        let mut streaming = StreamingWindowsPathSanitizer::new(self.clone());
+        let mut streaming =
+            StreamingWindowsPathSanitizer::from_ruleset(self.ruleset_for(data).clone());
         let mut output = streaming.append(data);
         output.extend(streaming.flush());
         output
@@ -143,9 +157,15 @@ impl WindowsPathSanitizer {
 /// Streaming wrapper that keeps at most one maximum-rule window pending, so a
 /// host root split at any byte boundary is never emitted before it can be
 /// recognized and replaced.
+///
+/// The wrapper is byte-generic: it operates on a single pre-built rule set
+/// (UTF-8 or UTF-16LE) and needs no knowledge of the encoding. The sibling and
+/// prefix boundary logic transfers to UTF-16LE because the byte before a
+/// UTF-16LE host path is the previous code unit's high byte (`0x00` for ASCII)
+/// which is not a path-continuation byte.
 #[derive(Debug, Clone)]
 pub struct StreamingWindowsPathSanitizer {
-    sanitizer: WindowsPathSanitizer,
+    ruleset: RuleSet,
     pending: Vec<u8>,
     cursor: usize,
     previous_input_byte: Option<u8>,
@@ -153,8 +173,12 @@ pub struct StreamingWindowsPathSanitizer {
 
 impl StreamingWindowsPathSanitizer {
     pub fn new(sanitizer: WindowsPathSanitizer) -> Self {
+        Self::from_ruleset(sanitizer.ruleset_for(&[]).clone())
+    }
+
+    fn from_ruleset(ruleset: RuleSet) -> Self {
         Self {
-            sanitizer,
+            ruleset,
             pending: Vec::new(),
             cursor: 0,
             previous_input_byte: None,
@@ -172,17 +196,17 @@ impl StreamingWindowsPathSanitizer {
     }
 
     fn process(&mut self, final_chunk: bool) -> Vec<u8> {
-        if self.sanitizer.maximum_needle_length == 0 {
+        if self.ruleset.maximum_needle_length == 0 {
             self.cursor = 0;
             return std::mem::take(&mut self.pending);
         }
         let mut output = Vec::new();
         while self.cursor < self.pending.len()
             && (final_chunk
-                || self.pending.len() - self.cursor > self.sanitizer.maximum_needle_length)
+                || self.pending.len() - self.cursor > self.ruleset.maximum_needle_length)
         {
             if let Some(rule) = self
-                .sanitizer
+                .ruleset
                 .rules
                 .iter()
                 .find(|rule| self.rule_matches(rule, final_chunk))
@@ -233,48 +257,104 @@ impl StreamingWindowsPathSanitizer {
     }
 }
 
+fn build_rule_set(variants: &BTreeSet<String>, encode: fn(&str) -> Vec<u8>) -> RuleSet {
+    let mut rules = Vec::new();
+    for variant in variants {
+        for file_url in file_url_variants(variant) {
+            push_path_rules(&mut rules, &file_url, "file:///", true, encode);
+        }
+        push_path_rules(&mut rules, variant, "/", false, encode);
+        if variant.contains('\\') {
+            let json_escaped = variant.replace('\\', r"\\");
+            push_json_path_rules(&mut rules, &json_escaped, encode);
+        }
+    }
+    rules.sort_by(|left, right| {
+        right
+            .needle
+            .len()
+            .cmp(&left.needle.len())
+            .then_with(|| right.needle.cmp(&left.needle))
+    });
+    rules.dedup_by(|left, right| {
+        left.needle.eq_ignore_ascii_case(&right.needle)
+            && left.replacement == right.replacement
+            && left.requires_after_boundary == right.requires_after_boundary
+    });
+    let maximum_needle_length = rules
+        .iter()
+        .map(|rule| rule.needle.len())
+        .max()
+        .unwrap_or(0);
+    RuleSet {
+        rules,
+        maximum_needle_length,
+    }
+}
+
+fn to_utf8_bytes(value: &str) -> Vec<u8> {
+    value.as_bytes().to_vec()
+}
+
+fn to_utf16le_bytes(value: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(value.len().saturating_mul(2));
+    for unit in value.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    bytes
+}
+
 fn push_path_rules(
     rules: &mut Vec<ReplacementRule>,
     value: &str,
-    replacement: &[u8],
+    replacement: &str,
     is_file_url: bool,
+    encode: fn(&str) -> Vec<u8>,
 ) {
     let trimmed = value.trim_end_matches(['/', '\\']);
     if trimmed.is_empty() {
         return;
     }
-    let child_replacement: &[u8] = if is_file_url { b"file:///" } else { b"/" };
-    for &separator in b"/\\" {
-        let mut needle = trimmed.as_bytes().to_vec();
-        needle.push(separator);
+    let child_replacement = if is_file_url { "file:///" } else { "/" };
+    let base = encode(trimmed);
+    let slash = encode("/");
+    let backslash = encode("\\");
+    for separator in [&slash, &backslash] {
+        let mut needle = base.clone();
+        needle.extend_from_slice(separator);
         rules.push(ReplacementRule {
             needle,
-            replacement: child_replacement.to_vec(),
+            replacement: encode(child_replacement),
             requires_after_boundary: false,
         });
     }
     rules.push(ReplacementRule {
-        needle: trimmed.as_bytes().to_vec(),
-        replacement: replacement.to_vec(),
+        needle: base,
+        replacement: encode(replacement),
         requires_after_boundary: true,
     });
 }
 
-fn push_json_path_rules(rules: &mut Vec<ReplacementRule>, value: &str) {
+fn push_json_path_rules(
+    rules: &mut Vec<ReplacementRule>,
+    value: &str,
+    encode: fn(&str) -> Vec<u8>,
+) {
     let trimmed = value.trim_end_matches('\\');
     if trimmed.is_empty() {
         return;
     }
-    let mut child = trimmed.as_bytes().to_vec();
-    child.extend_from_slice(br"\\");
+    let encoded = encode(trimmed);
+    let mut child = encoded.clone();
+    child.extend_from_slice(&encode("\\\\"));
     rules.push(ReplacementRule {
         needle: child,
-        replacement: b"/".to_vec(),
+        replacement: encode("/"),
         requires_after_boundary: false,
     });
     rules.push(ReplacementRule {
-        needle: trimmed.as_bytes().to_vec(),
-        replacement: b"/".to_vec(),
+        needle: encoded,
+        replacement: encode("/"),
         requires_after_boundary: true,
     });
 }
@@ -351,10 +431,37 @@ fn is_path_continuation_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
 }
 
+/// Selects the UTF-16LE pass when the stream shows an alternating `0x00`
+/// pattern (NUL at odd byte offsets, i.e. the high bytes of ASCII UTF-16LE
+/// code units), otherwise the UTF-8 pass. Exactly one pass is ever applied.
+fn looks_like_utf16le(data: &[u8]) -> bool {
+    let sample = &data[..data.len().min(1024)];
+    if sample.len() < 4 {
+        return false;
+    }
+    let odd_total = sample.len() / 2;
+    let even_total = sample.len() - odd_total;
+    if odd_total == 0 || even_total == 0 {
+        return false;
+    }
+    let odd_nuls = sample
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .filter(|&&byte| byte == 0)
+        .count();
+    let even_nuls = sample.iter().step_by(2).filter(|&&byte| byte == 0).count();
+    odd_nuls.saturating_mul(2) >= odd_total && even_nuls.saturating_mul(2) <= even_total
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::contract::{MspPolicyDecision, INTERNAL_CONTRACT_VERSION};
+
+    fn utf16le(value: &str) -> Vec<u8> {
+        to_utf16le_bytes(value)
+    }
 
     #[test]
     fn sanitizer_virtualizes_windows_variants_without_corrupting_binary_bytes() {
@@ -446,6 +553,124 @@ mod tests {
             .contains(&root.to_ascii_lowercase()));
         assert_eq!(result.contract_version, INTERNAL_CONTRACT_VERSION);
         assert_eq!(result.stderr_text(), "/secret\n");
+    }
+
+    #[test]
+    fn utf16le_sanitizer_covers_every_path_variant() {
+        let root = r"C:\Private Data\workspace";
+        let sanitizer = WindowsPathSanitizer::new_utf16le([root]);
+
+        let cases = [
+            (
+                format!("before {root}\\docs\\a.txt after"),
+                "before /docs\\a.txt after",
+            ),
+            (
+                format!("before \\\\?\\{root}\\docs\\a.txt after"),
+                "before /docs\\a.txt after",
+            ),
+            (
+                "before C:/Private Data/workspace/docs/a.txt after".to_string(),
+                "before /docs/a.txt after",
+            ),
+            (
+                "before file:///C:/Private Data/workspace/docs/a.txt after".to_string(),
+                "before file:///docs/a.txt after",
+            ),
+            (
+                "before file:///C:/Private%20Data/workspace/docs/a.txt after".to_string(),
+                "before file:///docs/a.txt after",
+            ),
+        ];
+        for (input, expected) in cases {
+            let sanitized = sanitizer.sanitize(&utf16le(&input));
+            assert_eq!(sanitized, utf16le(expected), "input {input:?}");
+        }
+    }
+
+    #[test]
+    fn utf16le_sanitizer_covers_unc_variants() {
+        let root = r"\\server\share\workspace";
+        let sanitizer = WindowsPathSanitizer::new_utf16le([root]);
+        let cases = [
+            (
+                format!("before {root}\\docs\\a.txt after"),
+                "before /docs\\a.txt after",
+            ),
+            (
+                "before \\\\?\\UNC\\server\\share\\workspace\\docs\\a.txt after".to_string(),
+                "before /docs\\a.txt after",
+            ),
+            (
+                "before file://server/share/workspace/docs/a.txt after".to_string(),
+                "before file:///docs/a.txt after",
+            ),
+        ];
+        for (input, expected) in cases {
+            let sanitized = sanitizer.sanitize(&utf16le(&input));
+            assert_eq!(sanitized, utf16le(expected), "input {input:?}");
+        }
+    }
+
+    #[test]
+    fn utf16le_streaming_sanitizer_handles_every_split_inside_host_root() {
+        let root = r"C:\Users\M\AppData\Local\ReadOS\workspace";
+        let sanitizer = WindowsPathSanitizer::new_utf16le([root]);
+        let input = utf16le(&format!("before {root}\\docs\\a.txt after"));
+        for split in 0..=input.len() {
+            let mut streaming = StreamingWindowsPathSanitizer::new(sanitizer.clone());
+            let mut output = streaming.append(&input[..split]);
+            output.extend(streaming.append(&input[split..]));
+            output.extend(streaming.flush());
+            assert_eq!(
+                output,
+                utf16le("before /docs\\a.txt after"),
+                "split {split}"
+            );
+        }
+    }
+
+    #[test]
+    fn utf16le_pass_respects_sibling_boundaries_across_chunks() {
+        let root = r"C:\private\workspace";
+        let sanitizer = WindowsPathSanitizer::new_utf16le([root]);
+        let input = utf16le(&format!("abc{root} {root}2 {root}\\ok"));
+        // In UTF-16LE the byte before a host path is the previous code unit's
+        // high byte (`0x00` for ASCII), which is not a continuation byte, so
+        // the `abc`-prefixed root is redacted; the `2`-suffixed sibling is
+        // protected because `2` is a continuation byte.
+        let expected = utf16le(&format!("abc/ {root}2 /ok"));
+        for split in 0..=input.len() {
+            let mut streaming = StreamingWindowsPathSanitizer::new(sanitizer.clone());
+            let mut output = streaming.append(&input[..split]);
+            output.extend(streaming.append(&input[split..]));
+            output.extend(streaming.flush());
+            assert_eq!(output, expected, "split {split}");
+        }
+    }
+
+    #[test]
+    fn utf16le_detection_runs_only_the_selected_pass() {
+        let root = r"C:\Private\ReadOS\Workspace";
+        let sanitizer = WindowsPathSanitizer::new([root]);
+
+        // UTF-8 input uses the UTF-8 pass and is never corrupted by the
+        // UTF-16LE rules.
+        let utf8 = format!("got {root}\\docs\\a.bin");
+        assert_eq!(sanitizer.sanitize(utf8.as_bytes()), b"got /docs\\a.bin");
+
+        // UTF-16LE-looking input selects the UTF-16LE pass.
+        let utf16 = utf16le(&format!("got {root}\\docs\\a.bin"));
+        assert_eq!(sanitizer.sanitize(&utf16), utf16le("got /docs\\a.bin"));
+
+        // Plain UTF-8 without any host path is byte-identical.
+        let plain = b"hello world\n";
+        assert_eq!(sanitizer.sanitize(plain), plain);
+
+        // The UTF-16LE pass applied to genuine UTF-8 bytes (no alternating NUL
+        // pattern) never matches a UTF-16LE host root and corrupts nothing.
+        let forced = WindowsPathSanitizer::new_utf16le([root]);
+        assert_eq!(forced.sanitize(utf8.as_bytes()), utf8.as_bytes());
     }
 
     fn contains_ascii_case_insensitive(haystack: &[u8], needle: &[u8]) -> bool {

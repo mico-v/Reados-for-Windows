@@ -9,6 +9,10 @@ description = "Portable core runtime boundary for Model Shell Proxy."
 name = "msp_core"
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "msp_pty_test_child"
+path = "src/bin/msp_pty_test_child.rs"
+
 [dependencies]
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
