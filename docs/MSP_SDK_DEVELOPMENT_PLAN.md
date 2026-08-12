@@ -57,7 +57,7 @@ native/
 MSP/                 nested local reference only; ignored and not packaged
 ```
 
-Verified on 2026-07-11: 66 Rust tests, 69 Core tests, 259 Hosting tests, and 300 App tests (628 managed total), plus native binary/FFI verification and a zero-warning/zero-error solution build. The Hosting count includes 3/3 real release-DLL operations. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+Verified on 2026-08-12: 77 Rust tests, 69 Core tests, 303 Hosting tests (including 3/3 real release-DLL operations), and 411 App tests (783 managed total under the full verifier), plus native binary/FFI verification and a zero-warning/zero-error solution build. The Hosting count includes 3/3 real release-DLL operations; the 3 native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 
 The latest completed full package gate is `package-windows.ps1 -StopExisting -Version 0.1.0-native-command-registry-verified`. It verifies publish, the seven-export static-CRT native binary, staged ABI v2/v1 FFI, package contents, direct packaged Rust `ls /` and binary `cat /workspace.json`, and product-host Rust proxy execution for `pwd`, `echo ''`, and `echo -n reados-native-proxy`. Packaged runtime evidence reports `LengthDelimitedV2` 2.0, 532 ZIP entries, `RawMSP`/PDB/`.git` counts of zero, all five `nativeCommands` exiting 0, an audit count of 1 for each proxy, cleanup with zero native-run residue, and ZIP creation at `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`.
 
@@ -267,7 +267,7 @@ Current limitations are explicit: the synchronous v1 FFI cannot interrupt work a
 - `msp_invoke_v2` and `msp_free_buffer_v2` use explicit pointer/`ulong` lengths. Embedded NUL requests are not truncated, and v1/v2 allocations and free exports never mix.
 - Hosting selects v1 only if all three v2 exports are absent. Any partial set, ABI size/version/contract/capability drift, malformed response, or oversized result fails closed. Every native-return path frees exactly once, and invoke/dispose use the same lock.
 - Parse/Execute/Normalize request caps are 128 KiB/1 MiB/1 MiB; response caps are 16 MiB/64 MiB/1 MiB. The Rust bounded writer stops before reserve/copy, closing the measured 54.5x Parse amplification denial-of-service path.
-- Runtime ABI information is exposed for package smoke. Rust/native verification, 259 Hosting tests, 3/3 real release-DLL operations, static CRT, the full solution verifier, staged v2/v1 FFI, and the no-skip ABI v2 packaged-process gate pass.
+- Runtime ABI information is exposed for package smoke. Rust/native verification, 303 Hosting tests, 3/3 real release-DLL operations, static CRT, the full solution verifier, staged v2/v1 FFI, and the no-skip ABI v2 packaged-process gate pass.
 
 ### Completed runtime gate: `native_command_core_registry_v1`
 
@@ -331,7 +331,7 @@ Every command added to MSP must have:
 
 ## Verification
 
-Run managed tests (verified baseline: 69 + 259 + 300 = 628):
+Run managed tests (verified baseline: 69 + 303 + 411 = 783):
 
 ```powershell
 dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
@@ -347,4 +347,4 @@ Run the full MSP verification path:
 
 The full script fails immediately on Rust format/test/clippy/release build, native binary/FFI smoke, restore, any of the three managed test projects, real release-DLL adapter tests, or solution build. `.github/workflows/windows-ci.yml` runs this verifier on Windows using the SDK pinned by `global.json`. The release package script must additionally prove that the raw `MSP/` reference repository is absent while required native binary, license, NOTICE, and provenance files are present.
 
-Current verified result on 2026-07-11: 66 Rust tests, native binary/FFI smoke, 69 Core tests, 259 Hosting tests, 300 App tests (628 managed total), and a zero-warning/zero-error solution build. The static-CRT release DLL exposes all seven required exports, has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, real-DLL ABI v2 Execute/Parse/Normalize passes 3/3, and the 12-case baseline/candidate ABI v1/v2 differential passes. The latest completed no-skip package gate is `0.1.0-native-command-registry-verified`, producing `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip` with staged/package smoke, `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five successful native commands, and three proxy audit counts of 1.
+Current verified result on 2026-08-12: 77 Rust tests, native binary/FFI smoke, 69 Core tests, 303 Hosting tests, 411 App tests (783 managed total under the full verifier), and a zero-warning/zero-error solution build. The static-CRT release DLL exposes all seven required exports, has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, real-DLL ABI v2 Execute/Parse/Normalize passes 3/3, and the 12-case baseline/candidate ABI v1/v2 differential passes. The latest completed no-skip package gate is `0.1.0-native-command-registry-verified`, producing `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip` with staged/package smoke, `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five successful native commands, and three proxy audit counts of 1.

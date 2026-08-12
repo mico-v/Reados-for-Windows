@@ -4,7 +4,7 @@ Reference revision: `982baa54e9093e39f828d8827be6c75aed7502ff` from the local Ap
 
 This matrix tracks observable compatibility rather than source-code parity. The nested `MSP/` checkout is a read-only local review/drift input, not a ReadOS source directory, build dependency, Git payload, or package payload. The Rust implementation is clean-room unless a row explicitly names copied or derived material. The committed conformance snapshot and its license evidence live under `conformance/msp-upstream/` so clean ReadOS checkouts and CI do not depend on the nested reference repository.
 
-Verified baseline on 2026-07-11: Rust 66, Core 69, Hosting 259, App 300, managed total 628, native binary/FFI verification, 3/3 real release-DLL operations, a passing 12-case baseline/candidate ABI v1/v2 differential, and a zero-warning/zero-error solution build. The release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`. The latest completed no-skip package is `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`; staged/package smoke passes with `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five `nativeCommands` all exiting 0, and three proxy audit counts of 1.
+Verified baseline on 2026-08-12: Rust 77, Core 69, Hosting 303, App 411, managed total 783, native binary/FFI verification, 3/3 real release-DLL operations, a passing 12-case baseline/candidate ABI v1/v2 differential, and a zero-warning/zero-error solution build. The release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`. The latest completed no-skip package is `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`; staged/package smoke passes with `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five `nativeCommands` all exiting 0, and three proxy audit counts of 1.
 
 Status meanings:
 
@@ -55,7 +55,7 @@ The synchronous v1 ABI cannot preempt a native call already in flight; cancellat
 3. Only complete absence of all three v2 exports permits v1 fallback. A partial set, version/size/contract/capability drift, malformed output, or oversize result fails closed.
 4. Every native-return path frees exactly once, and invoke/dispose share the same lock. Runtime ABI information is available for package evidence.
 5. Parse/Execute/Normalize request caps are 128 KiB/1 MiB/1 MiB and response caps are 16 MiB/64 MiB/1 MiB. The bounded writer stops before reserve/copy and closes the measured 54.5x Parse amplification denial-of-service path.
-6. The ABI v2 package gate remains verified. The current full-verifier baseline is Rust 66, Core 69, Hosting 259, App 300, managed total 628, 3/3 real release-DLL operations, the static-CRT binary gate, and a zero-warning/zero-error solution build.
+6. The ABI v2 package gate remains verified. The current full-verifier baseline is Rust 77, Core 69, Hosting 303, App 411, managed total 783, 3/3 real release-DLL operations, the static-CRT binary gate, and a zero-warning/zero-error solution build.
 
 ## Completed vertical slice: `native_command_core_registry_v1`
 

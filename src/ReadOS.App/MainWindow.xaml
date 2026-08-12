@@ -10,12 +10,11 @@
     Title="ReadOS">
 
     <!--
-        Pure conversation shell — rebuilt to reproduce the MSP Chat UI reference
-        (MSP/Implementations/UI/MSPChatUI) effect: the conversation is the hero.
-        The legacy 3-column workbench (sidebar + inspector + bottom runtime drawer)
-        and its splitter/resize navigation have been torn down. MSP workbench chrome
-        (import / run / approval) is removed from the shell for now and will be
-        re-homed later as overlays.
+        MSP workbench shell: left workspace sidebar | active chat thread | unified
+        review dock, plus a collapsible bottom Runtime Drawer for command
+        supervision (resizable height, persisted height/pin state). The thread is
+        the primary work narrative; the inspector reacts to selected evidence,
+        commands, approvals, and artifacts.
     -->
 
     <Grid x:Name="RootShell" Background="{ThemeResource MspAppBackgroundBrush}">

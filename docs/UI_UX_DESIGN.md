@@ -55,7 +55,7 @@ Implemented files:
 
 - `src/ReadOS.App/MainWindow.xaml`: 3-column shell, title toolbar, splitters, and bottom Runtime Drawer.
 - `src/ReadOS.App/Views/WorkspaceSidebarView.xaml`: conversations/materials sidebar.
-- `src/ReadOS.App/Views/ChatSurfaceView.xaml`: thread header, transcript, composer.
+- `src/ReadOS.App/Views/ChatTimelineView.xaml`: thread header, transcript, composer.
 - `src/ReadOS.App/Views/InspectorView.xaml`: context, run, evidence, attachments, preview tabs.
 - `src/ReadOS.App/Services/LayoutService.cs`: responsive breakpoints, remembered pane widths, and compact/medium/wide pane calculation.
 - `src/ReadOS.App/ViewModels/ShellViewModel.cs`: MSP command execution, streaming status, approvals, audit transcript, artifacts/session rebuilding.
@@ -71,12 +71,7 @@ Implemented interaction baseline:
 - The Runtime Drawer provides persistent transcript rows, output previews, progress/status, approval/deny/cancel actions, and open/close/pin controls.
 - Compact mode preserves the user's non-compact pane widths and opens the sidebar or Review Dock in flyouts from the thread header.
 
-Remaining T94 gaps:
-
-- Runtime Drawer height and pin state are not durable, and the drawer still lacks selectable full stdout/stderr/diagnostic/effect/artifact detail.
-- Document/page/presenter/thumbnail async loads still need cancellation and latest-request-wins protection.
-- Deprecated `PresenterSurfaceView` and stale presenter-primary layout state still need removal after preview equivalence is verified.
-- Responsive and accessibility behavior needs final visual/manual acceptance across compact, medium, wide, light, dark, keyboard, and reduced-motion conditions.
+T94 status: the Runtime Drawer is resizable with persisted height and pin state, transcript rows select into full stdout/stderr/diagnostics/effects in the Run inspector, document/page/presenter/thumbnail loads use latest-request-wins cancellation, and the deprecated `PresenterSurfaceView` has been removed. The remaining item is final visual/manual acceptance of responsive and accessibility behavior across compact, medium, wide, light, dark, keyboard, and reduced-motion conditions.
 
 ## Codex-Native Architecture Decision
 
@@ -377,7 +372,7 @@ Primary files:
 
 - `src/ReadOS.App/Views/InspectorView.xaml`
 - `src/ReadOS.App/Views/WorkspaceSidebarView.xaml`
-- `src/ReadOS.App/Views/ChatSurfaceView.xaml`
+- `src/ReadOS.App/Views/ChatTimelineView.xaml`
 - `src/ReadOS.App/ViewModels/InspectorViewModel.cs`
 - `src/ReadOS.App/ViewModels/SidebarViewModel.cs`
 
@@ -395,7 +390,7 @@ Scope: typed UI projection for existing data.
 Primary files:
 
 - `src/ReadOS.App/ViewModels/ThreadViewModel.cs`
-- `src/ReadOS.App/Views/ChatSurfaceView.xaml`
+- `src/ReadOS.App/Views/ChatTimelineView.xaml`
 - `src/ReadOS.App/Models/WorkspaceModels.cs`
 
 ### Phase 3: Composer Control Center
@@ -413,7 +408,7 @@ Scope: improve task entry ergonomics.
 
 Primary files:
 
-- `src/ReadOS.App/Views/ChatSurfaceView.xaml`
+- `src/ReadOS.App/Views/ChatTimelineView.xaml`
 - `src/ReadOS.App/ViewModels/ThreadViewModel.cs`
 - `src/ReadOS.App/ViewModels/ShellViewModel.cs`
 
@@ -493,7 +488,7 @@ The information hierarchy, typed timeline, approval visibility, artifact/evidenc
 
 1. Finish Runtime Drawer resize, persisted height/pin state, command selection, and complete terminal details.
 2. Add cancellation and latest-request-wins to document, page, presenter, outline/search, and thumbnail loading.
-3. Prove compact/medium/wide accessibility and theme behavior with screenshots or a short recording, then remove deprecated `PresenterSurfaceView` and stale layout state.
+3. Prove compact/medium/wide accessibility and theme behavior with screenshots or a short recording; the deprecated `PresenterSurfaceView` has already been removed and the remaining stale presenter-primary VM state is tracked separately.
 4. Split large ViewModel/service code only where those hardening changes reveal stable feature boundaries.
 
 T93's restart-capable flagship integration suite covers approval, evidence extraction, synthesis, persistence, denial, lineage back to an imported PDF page, cancellation without partial output, invalid-page failure, and secret-safe provider failure/restart/retry. Visible WinUI interaction, real provider/network behavior, and the flagship workflow across a packaged-process restart are still required before the product-level workflow is complete.

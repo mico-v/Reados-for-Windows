@@ -8,13 +8,13 @@ Day-to-day execution is tracked in [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMEN
 
 ## Current Implementation Progress
 
-Verified baseline (2026-07-11):
+Verified baseline (2026-08-12):
 
 - `ReadOS.Msp.Tests`: 69 passed.
-- `ReadOS.Msp.Hosting.Tests`: 259 passed, including 3/3 real release-DLL adapter operations.
-- `ReadOS.App.Tests`: 300 passed.
-- Managed total: 628 passed.
-- Rust `native/msp-core`: 66 passed; native binary and FFI smoke verification passed. The candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+- `ReadOS.Msp.Hosting.Tests`: 303 passed (3/3 real release-DLL adapter operations; the 3 native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`).
+- `ReadOS.App.Tests`: 411 passed.
+- Managed total: 783 passed (under the full verifier).
+- Rust `native/msp-core`: 77 passed; native binary and FFI smoke verification passed. The candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 - `ReadOS.sln`: 0 warnings, 0 errors through the fail-fast verification path.
 
 Trustworthy-boundary work is complete for the current architecture: artifact/session/transcript path and identifier confinement, terminal audit evidence for parse/unknown/policy/exception/cancel paths, fail-fast verification and packaging scripts, pinned .NET SDK plus Windows CI, and DPAPI `CurrentUser` provider credentials outside workspace JSON and exports. This closes T92; it does not close the in-progress T93 product E2E, T94 Workbench hardening, or T95 upstream-aligned Windows core work.
@@ -166,7 +166,7 @@ Two WinUI 3 / .NET 10 XAML compiler issues were discovered and fixed during the 
 
 1. **WMC9999 internal crash** — Mixing `{StaticResource}` markup extensions with literal values inside `Thickness`-typed properties (e.g. `Padding="{StaticResource SpacingMd},0"`) crashes the XAML compiler. Fixed by using hardcoded values where a Thickness is needed.
 
-2. **Runtime XamlParseException** — Assigning a `{StaticResource x:Double}` to a `Thickness` property (e.g. `Padding="{StaticResource SpacingMd}"`) compiles but fails at runtime because WinUI 3 `Thickness` has no implicit conversion from `Double`. The compiler generates a direct property assignment without invoking the type converter. All such occurrences in `MainWindow.xaml`, `ChatSurfaceView.xaml`, and `InspectorView.xaml` were replaced with literal values.
+2. **Runtime XamlParseException** — Assigning a `{StaticResource x:Double}` to a `Thickness` property (e.g. `Padding="{StaticResource SpacingMd}"`) compiles but fails at runtime because WinUI 3 `Thickness` has no implicit conversion from `Double`. The compiler generates a direct property assignment without invoking the type converter. All such occurrences in `MainWindow.xaml`, `ChatTimelineView.xaml`, and `InspectorView.xaml` were replaced with literal values.
 
 The main gap is not another reader feature or another Hosting split. The remaining near-term product gaps are the T93 product-level workflow proof, T94 Workbench hardening, and T95 upstream-aligned Windows Rust core plus stable .NET adapter.
 
@@ -180,7 +180,7 @@ src/
     Controls/          SplitPane reusable control
     Models/            LayoutConfiguration, LayoutBreakpoint
     Services/          LayoutService, PdfDocumentService, WorkspaceStore, AiChatService, MSP host
-    Views/             InspectorView, ChatSurfaceView, WorkspaceSidebarView, SettingsView; deprecated PresenterSurfaceView pending removal
+    Views/             ChatTimelineView, InspectorView, WorkspaceSidebarView, SettingsView
     ViewModels/        ShellViewModel
   ReadOS.Msp/        .NET MSP runtime, SDK contracts, command model
   ReadOS.Msp.Hosting/
@@ -369,7 +369,7 @@ Recently closed: **T92 — Trustworthy MSP Boundary**, covering namespace confin
 
 ## Verification
 
-Managed tests (verified 2026-07-11: 69 + 259 + 300 = 628):
+Managed tests (verified 2026-08-12: 69 + 303 + 411 = 783):
 
 ```powershell
 dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj

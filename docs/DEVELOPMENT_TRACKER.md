@@ -12,16 +12,16 @@ This tracker turns the current ReadOS plan into executable work. Keep it updated
 
 ## Current Baseline
 
-Last verified: 2026-07-11.
+Last verified: 2026-08-12.
 
 - `.\scripts\verify-msp.ps1` passed.
-- Rust native MSP tests passed: 66 passed, 0 failed.
+- Rust native MSP tests passed: 77 passed, 0 failed.
 - Native MSP binary and FFI smoke verification passed; the release DLL exposes all seven required exports and uses the static MSVC CRT.
 - The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 - `ReadOS.Msp.Tests` passed: 69 passed, 0 failed.
-- `ReadOS.Msp.Hosting.Tests` passed: 259 passed, 0 failed, including 3/3 real release-DLL operations with no skip.
-- `ReadOS.App.Tests` passed: 300 passed, 0 failed.
-- Managed total: 628 passed, 0 failed.
+- `ReadOS.Msp.Hosting.Tests` passed: 303 passed, 0 failed, including 3/3 real release-DLL operations with no skip (the 3 native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`).
+- `ReadOS.App.Tests` passed: 411 passed, 0 failed.
+- Managed total: 783 passed, 0 failed (69 + 303 + 411 under the full verifier).
 - `ReadOS.sln` built with 0 warnings and 0 errors.
 - Verification and packaging scripts propagate external-command failures; Windows CI runs the verifier with the SDK pinned by `global.json`.
 - Provider credentials are protected with Windows DPAPI `CurrentUser` outside workspace JSON/exports, with legacy plaintext migration coverage.
@@ -112,8 +112,8 @@ Progress:
 
 - The existing `TimelineItems` projection now exposes `KindLabel` for visible record-type chips.
 - MSP timeline records now project distinct titles/glyphs for approval required, running, canceled, completed, and failed states.
-- `ChatSurfaceView` renders a compact record-type chip in each timeline item header.
-- `ChatSurfaceView` now uses separate body sections for message text, evidence, MSP approval, running command, completed/canceled command result, failed command diagnostics, and artifacts.
+- `ChatTimelineView` renders a compact record-type chip in each timeline item header.
+- `ChatTimelineView` now uses separate body sections for message text, evidence, MSP approval, running command, completed/canceled command result, failed command diagnostics, and artifacts.
 - `ThreadTimelineItem` exposes explicit binding states for evidence body, message body, MSP approval, running, result, and error panels.
 - Timeline action buttons now open artifacts in the Artifacts inspector, evidence records in the Evidence inspector, MSP results in the Run inspector, and failed MSP diagnostics in the Policy inspector with the matching transcript selected.
 
@@ -3069,7 +3069,7 @@ Current evidence:
 - Release builds use the static MSVC CRT. Native binary verification checks all seven required exports and rejects dynamic CRT markers; the current release DLL depends only on Windows system libraries.
 - The committed Apache-2.0 conformance snapshot records upstream revision and fixture paths for `:`, `echo`, `false`, `pwd`, `true`, and `echo -e`; clean checkout tests no longer require the nested `MSP/` clone.
 - [MSP_UPSTREAM_COMPATIBILITY_MATRIX.md](MSP_UPSTREAM_COMPATIBILITY_MATRIX.md) records the current adopted surface, Windows deviations, managed status, and next acceptance gate.
-- Rust fmt/test/clippy/release build, native binary/FFI smoke, 69 Core tests, 259 Hosting tests (including 3/3 real release-DLL operations without skip), 300 App tests, and the zero-warning/zero-error solution build pass; Rust has 66 tests and the managed total is 628. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+- Rust fmt/test/clippy/release build, native binary/FFI smoke, 69 Core tests, 303 Hosting tests (including 3/3 real release-DLL operations without skip), 411 App tests, and the zero-warning/zero-error solution build pass; Rust has 77 tests and the managed total is 783. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 - Packaging builds and copies `msp_core.dll`, supplies license/NOTICE/provenance, rejects raw `MSP/`, `.git`, credentials/private state, PDBs, and dynamic CRT markers, and requires the reported runtime ABI information. The latest completed no-skip package is `0.1.0-native-command-registry-verified`: staged FFI and packaged `LengthDelimitedV2` 2.0 negotiation succeed, the ZIP contains 532 entries with `RawMSP`/PDB/`.git` counts of zero, all five `nativeCommands` exit 0, each of the three proxied commands has one managed audit, cleanup leaves zero native residue, and the ZIP is `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`.
 - `native_command_core_registry_v1` is complete. Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace hard-coded command enumeration and dispatch; validation, duplicates, unknown lookup, deterministic names, pack composition, and registry-derived `help` are covered. The 12-case baseline/candidate ABI v1/v2 differential passes with no command-byte, exit-code, diagnostic, audit, state-change, fixture, ABI, or product-routing drift.
 - `native_mixed_workspace_read_v1` is the next dependency-ordered slice before product-routing `ls`/`cat`, followed by `native_stream_core_v1`; mutable WorkspaceFS/trash, pipelines/redirection, model-facing sessions, external processes/ConPTY, and wider shell/command conformance remain later independent gates. It must define capability traits, longest-prefix mount routing/rebasing, opaque callback handles, disposal, cancellation, concurrency, and .NET delegate lifetime without weakening fixed-local-NTFS confinement, ABI v2, sanitization, or managed lifecycle/audit authority. Synchronous native invocation cannot interrupt an already-running call; current cancellation checks only bound the side-effect-free `pwd`/`echo` calls before and after invocation. Therefore T95 remains in progress.
