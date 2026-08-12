@@ -24,9 +24,9 @@ $requiredExports = @(
     "msp_free_buffer_v2"
 )
 foreach ($requiredExport in $requiredExports) {
-    if (-not $binaryText.Contains(
+    if (-not ($binaryText.IndexOf(
             $requiredExport,
-            [System.StringComparison]::Ordinal)) {
+            [System.StringComparison]::Ordinal) -ge 0)) {
         throw "Native MSP DLL is missing required export marker: $requiredExport"
     }
 }
@@ -39,7 +39,7 @@ $forbiddenDynamicCrtNames = @(
     "ucrtbase.dll"
 )
 $dynamicCrtDependency = $forbiddenDynamicCrtNames | Where-Object {
-    $binaryText.Contains($_, [System.StringComparison]::OrdinalIgnoreCase)
+    $binaryText.IndexOf($_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 } | Select-Object -First 1
 if ($dynamicCrtDependency) {
     throw "Native MSP DLL is not CRT-self-contained; found dependency marker: $dynamicCrtDependency"

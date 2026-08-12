@@ -244,7 +244,7 @@ fn push_path_rules(
         return;
     }
     let child_replacement: &[u8] = if is_file_url { b"file:///" } else { b"/" };
-    for separator in [b'/', b'\\'] {
+    for &separator in b"/\\" {
         let mut needle = trimmed.as_bytes().to_vec();
         needle.push(separator);
         rules.push(ReplacementRule {

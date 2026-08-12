@@ -655,7 +655,7 @@ public sealed partial class MspTranscriptEntry : ObservableObject
 
     [JsonIgnore]
     public bool HasEffects => !string.IsNullOrWhiteSpace(Effects)
-        && !string.Equals(Effects, "None", StringComparison.OrdinalIgnoreCase);
+        && !string.Equals(Effects.Trim(), "None", StringComparison.OrdinalIgnoreCase);
 
     [JsonIgnore]
     public string ExitCodeLabel => $"exit {ExitCode}";
