@@ -176,6 +176,59 @@ public sealed class MspExecSessionHostFacadeTests
     }
 
     [Fact]
+    public async Task ExecCommandAsync_process_mode_maps_program_arguments_workspace_root_and_bounds()
+    {
+        var adapter = new RecordingExecSessionAdapter(_ => ExecResult(
+            sessionId: 41,
+            exitCode: 0,
+            terminalText: "process output\n",
+            wallTimeSeconds: 0.0031));
+        var facade = new MspExecSessionHostFacade(new FakeAdapterProvider(adapter));
+
+        var read = await facade.ExecCommandAsync(
+            MspExecSessionMode.Process,
+            "C:\\tools\\runner.exe",
+            new[] { "--flag", "value" },
+            "C:\\workspace",
+            yieldTimeMs: 500,
+            maxOutputTokens: 128);
+
+        Assert.Equal(41UL, read.SessionId);
+        Assert.Equal(0, read.ExitCode);
+        Assert.Contains("process output", read.TerminalText);
+
+        Assert.NotNull(adapter.LastRequest);
+        Assert.Equal(MspExecSessionMode.Process, adapter.LastRequest!.Mode);
+        Assert.Equal("C:\\tools\\runner.exe", adapter.LastRequest.Program);
+        Assert.Equal(new[] { "--flag", "value" }, adapter.LastRequest.Arguments);
+        Assert.Equal("C:\\workspace", adapter.LastRequest.WorkspaceRoot);
+        Assert.Equal(500, adapter.LastRequest.YieldTimeMs);
+        Assert.Equal(128, adapter.LastRequest.MaxOutputTokens);
+        Assert.Equal(0UL, adapter.LastRequest.SessionId);
+    }
+
+    [Fact]
+    public async Task ExecCommandAsync_shell_mode_omits_process_fields()
+    {
+        var adapter = new RecordingExecSessionAdapter(_ => ExecResult());
+        var facade = new MspExecSessionHostFacade(new FakeAdapterProvider(adapter));
+
+        var read = await facade.ExecCommandAsync(
+            MspExecSessionMode.Shell,
+            "echo hi",
+            new[] { "--ignored" },
+            "C:\\ignored");
+
+        Assert.Equal(1UL, read.SessionId);
+        Assert.NotNull(adapter.LastRequest);
+        Assert.Equal(MspExecSessionMode.Shell, adapter.LastRequest!.Mode);
+        Assert.Equal("echo hi", adapter.LastRequest.CommandText);
+        Assert.Null(adapter.LastRequest.Program);
+        Assert.Null(adapter.LastRequest.Arguments);
+        Assert.Null(adapter.LastRequest.WorkspaceRoot);
+    }
+
+    [Fact]
     public async Task ReadSession_returns_raw_record_without_codex_header()
     {
         var adapter = new RecordingExecSessionAdapter(_ => ExecResult(

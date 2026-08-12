@@ -73,7 +73,7 @@ pub use abi_v2::{
 };
 pub use session::{
     exec_milliseconds, exec_session_json_bytes, read_exec_milliseconds, write_stdin_milliseconds,
-    MspExecSessionError, MspExecSessionRequest, MspExecSessionResult, SessionId,
+    ExecSessionMode, MspExecSessionError, MspExecSessionRequest, MspExecSessionResult, SessionId,
     SessionInvokeError,
 };
 

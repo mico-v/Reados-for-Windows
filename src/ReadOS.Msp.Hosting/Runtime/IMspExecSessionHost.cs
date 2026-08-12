@@ -1,3 +1,4 @@
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Models;
 
 namespace ReadOS.Msp.Hosting.Runtime;
@@ -13,6 +14,15 @@ public interface IMspExecSessionHost
     Task<MspExecSessionRead> ExecCommandAsync(
         string command,
         string? workingDirectory = null,
+        int? yieldTimeMs = null,
+        int? maxOutputTokens = null,
+        CancellationToken ct = default);
+
+    Task<MspExecSessionRead> ExecCommandAsync(
+        MspExecSessionMode mode,
+        string program,
+        IReadOnlyList<string>? arguments,
+        string? workspaceRoot,
         int? yieldTimeMs = null,
         int? maxOutputTokens = null,
         CancellationToken ct = default);

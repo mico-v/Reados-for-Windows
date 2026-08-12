@@ -17,6 +17,7 @@
 
 use msp_core::process::{ProcessExit, ProcessSession, ProcessSpec};
 use msp_core::WindowsPathSanitizer;
+use serde_json::json;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -237,4 +238,63 @@ fn pty_stdin_write_after_exit_fails_cleanly() {
         session.write_stdin(b"late\n").is_err(),
         "write after exit must fail cleanly"
     );
+}
+
+#[test]
+fn session_exec_process_mode_drives_the_pty_child_with_stdin_continuation() {
+    if conpty_unavailable() {
+        return;
+    }
+    let root = temporary_directory("session-process");
+    let request = json!({
+        "contractVersion": msp_core::INTERNAL_CONTRACT_VERSION,
+        "kind": "exec",
+        "mode": "process",
+        "program": child_path().to_string_lossy(),
+        "workspaceRoot": root.to_string_lossy(),
+        "workingDirectory": "/",
+        "yieldTimeMs": 2_000,
+        "actor": "pty-session-test",
+    });
+    let bytes = msp_core::exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap();
+    let exec: msp_core::MspExecSessionResult = serde_json::from_slice(&bytes).unwrap();
+    assert!(exec.ok);
+    assert!(
+        exec.running,
+        "child must still be running after READY, got {exec:?}"
+    );
+    assert!(
+        exec.terminal_text.contains("READY\n"),
+        "expected READY, got {:?}",
+        exec.terminal_text
+    );
+
+    // stdin continuation echoes the line, mirroring `pty_basic_split`.
+    let write = json!({
+        "contractVersion": msp_core::INTERNAL_CONTRACT_VERSION,
+        "kind": "writeStdin",
+        "sessionId": exec.session_id,
+        "chars": "alpha\r\n",
+        "yieldTimeMs": 2_000,
+    });
+    let bytes = msp_core::exec_session_json_bytes(&serde_json::to_vec(&write).unwrap()).unwrap();
+    let after_alpha: msp_core::MspExecSessionResult = serde_json::from_slice(&bytes).unwrap();
+    assert!(after_alpha.ok);
+    assert!(after_alpha.terminal_text.contains("alpha\n"));
+    assert!(after_alpha.terminal_text.contains("got:alpha\n"));
+
+    // DONE makes the child print FINISHED and exit 0.
+    let write = json!({
+        "contractVersion": msp_core::INTERNAL_CONTRACT_VERSION,
+        "kind": "writeStdin",
+        "sessionId": exec.session_id,
+        "chars": "DONE\r\n",
+        "yieldTimeMs": 2_000,
+    });
+    let bytes = msp_core::exec_session_json_bytes(&serde_json::to_vec(&write).unwrap()).unwrap();
+    let done: msp_core::MspExecSessionResult = serde_json::from_slice(&bytes).unwrap();
+    assert!(done.ok);
+    assert!(!done.running, "child must exit after DONE, got {done:?}");
+    assert!(done.terminal_text.contains("FINISHED\n"));
+    assert_eq!(done.exit_code, Some(0));
 }

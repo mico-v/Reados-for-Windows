@@ -893,18 +893,13 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
 
         if (request.SessionId == 0)
         {
-            if (string.IsNullOrWhiteSpace(request.CommandText))
+            if (request.Mode == MspExecSessionMode.Process)
             {
-                throw new ArgumentException(
-                    "A new exec session requires non-empty command text.",
-                    nameof(request));
+                ValidateProcessExecArguments(request);
             }
-
-            if (request.CommandText.Contains('\0'))
+            else
             {
-                throw new ArgumentException(
-                    "Exec session command text must not contain NUL characters.",
-                    nameof(request));
+                ValidateShellExecArguments(request);
             }
 
             return;
@@ -919,6 +914,75 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
         }
     }
 
+    private static void ValidateShellExecArguments(MspNativeExecSessionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.CommandText))
+        {
+            throw new ArgumentException(
+                "A new exec session requires non-empty command text.",
+                nameof(request));
+        }
+
+        if (request.CommandText.Contains('\0'))
+        {
+            throw new ArgumentException(
+                "Exec session command text must not contain NUL characters.",
+                nameof(request));
+        }
+    }
+
+    private static void ValidateProcessExecArguments(MspNativeExecSessionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Program))
+        {
+            throw new ArgumentException(
+                "A process-mode exec session requires a non-empty program.",
+                nameof(request));
+        }
+
+        if (request.Program.Contains('\0'))
+        {
+            throw new ArgumentException(
+                "Process-mode exec session program must not contain NUL characters.",
+                nameof(request));
+        }
+
+        if (request.Arguments is { } arguments)
+        {
+            if (arguments.Count > MspNativeExecSessionLimits.MaximumProcessArguments)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(request),
+                    $"Process-mode exec sessions support at most {MspNativeExecSessionLimits.MaximumProcessArguments} arguments.");
+            }
+
+            foreach (var argument in arguments)
+            {
+                if (argument is null || argument.Contains('\0'))
+                {
+                    throw new ArgumentException(
+                        "Process-mode exec session arguments must not be null or contain NUL characters.",
+                        nameof(request));
+                }
+
+                if (argument.Length > MspNativeExecSessionLimits.MaximumArgumentCharacters)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(request),
+                        $"Process-mode exec session arguments must not exceed {MspNativeExecSessionLimits.MaximumArgumentCharacters} characters.");
+                }
+            }
+        }
+
+        if (request.WorkspaceRoot is null ||
+            !IsFullyQualifiedWindowsHostPath(request.WorkspaceRoot))
+        {
+            throw new ArgumentException(
+                "A process-mode exec session requires a fully-qualified Windows host workspace root.",
+                nameof(request));
+        }
+    }
+
     private static MspNativeExecSessionRequestWire CreateExecSessionRequest(
         MspNativeExecSessionRequest request)
     {
@@ -926,7 +990,11 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
         return new MspNativeExecSessionRequestWire
         {
             Kind = isWriteStdin ? "writeStdin" : "exec",
+            Mode = request.Mode == MspExecSessionMode.Process ? "process" : null,
             CommandText = request.CommandText,
+            Program = request.Program,
+            Arguments = request.Arguments?.ToArray(),
+            WorkspaceRoot = request.WorkspaceRoot,
             SessionId = request.SessionId,
             WorkingDirectory = request.WorkingDirectory,
             Actor = request.Actor,

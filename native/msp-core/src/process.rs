@@ -614,6 +614,12 @@ pub(crate) mod windows {
     #[derive(Debug)]
     struct OwnedHandle(Handle);
 
+    // Windows kernel handles are process-wide values that are usable from any
+    // thread. The process session may be moved between threads only through the
+    // session registry, which serializes every access with a mutex, so declaring
+    // the handle wrappers `Send` is sound: no access ever happens concurrently.
+    unsafe impl Send for OwnedHandle {}
+
     impl OwnedHandle {
         fn new(handle: Handle) -> Option<Self> {
             if handle.is_null() || handle == INVALID_HANDLE_VALUE {
@@ -638,6 +644,11 @@ pub(crate) mod windows {
 
     #[derive(Debug)]
     struct OwnedPseudoConsole(Handle);
+
+    // See the `Send` justification on `OwnedHandle`: the pseudoconsole handle
+    // is likewise a process-wide kernel handle moved only under the registry
+    // mutex.
+    unsafe impl Send for OwnedPseudoConsole {}
 
     impl OwnedPseudoConsole {
         fn new(handle: Handle) -> Self {
@@ -1148,11 +1159,42 @@ pub(crate) mod windows {
     #[derive(Debug)]
     pub enum ProcessError {
         Unsupported,
+        NotAllowed(String),
+        ShellRejected(String),
+        BoundsExceeded(String),
+        NotFound(String),
+        WorkingDirectoryEscape(String),
+        Io { operation: &'static str, code: u32 },
+        WriteTimeout,
+        SessionEnded,
     }
 
     impl std::fmt::Display for ProcessError {
         fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("the ConPTY process backend is only available on Windows")
+            match self {
+                Self::Unsupported => {
+                    formatter.write_str("the ConPTY process backend is only available on Windows")
+                }
+                Self::NotAllowed(value) => {
+                    write!(formatter, "program not on the spawn allowlist: {value}")
+                }
+                Self::ShellRejected(value) => write!(formatter, "shell program rejected: {value}"),
+                Self::BoundsExceeded(message) => {
+                    write!(formatter, "process spec exceeds bounds: {message}")
+                }
+                Self::NotFound(value) => write!(formatter, "program not found: {value}"),
+                Self::WorkingDirectoryEscape(value) => {
+                    write!(
+                        formatter,
+                        "working directory escapes the workspace root: {value}"
+                    )
+                }
+                Self::Io { operation, code } => {
+                    write!(formatter, "{operation} failed with Windows error {code}")
+                }
+                Self::WriteTimeout => formatter.write_str("write to the pseudoconsole timed out"),
+                Self::SessionEnded => formatter.write_str("the process session has ended"),
+            }
         }
     }
 
@@ -1239,3 +1281,52 @@ pub(crate) mod windows {
 }
 
 pub use windows::{ProcessError, ProcessExit, ProcessSession, ProcessSpec};
+
+/// Object-safe view over a running process session, so the session registry can
+/// hold a live child behind a `Box<dyn ProcessBackend>` and drive it across
+/// `exec_command` / `write_stdin` calls.
+///
+/// `Send` is required because live sessions are stored in a process-global
+/// mutex-protected registry; every access happens under the lock on a single
+/// thread, so no access ever runs concurrently.
+pub trait ProcessBackend: Send {
+    /// Reads output until the caller's `deadline`, the session's byte budget,
+    /// or the hard wall-clock budget (which kills the child).
+    fn read_output(&mut self, deadline: std::time::Instant) -> Result<Vec<u8>, ProcessError>;
+    /// Writes input to the child's stdin. Fails cleanly once the child exits.
+    fn write_stdin(&mut self, data: &[u8]) -> Result<(), ProcessError>;
+    /// Returns the exit status once the child has exited, else `None`.
+    fn poll_exit(&mut self) -> Option<ProcessExit>;
+    /// Terminates the child (and its whole job tree).
+    fn kill(&mut self);
+}
+
+impl ProcessBackend for windows::ProcessSession {
+    fn read_output(&mut self, deadline: std::time::Instant) -> Result<Vec<u8>, ProcessError> {
+        self.read_output(deadline)
+    }
+
+    fn write_stdin(&mut self, data: &[u8]) -> Result<(), ProcessError> {
+        self.write_stdin(data).map(|_| ())
+    }
+
+    fn poll_exit(&mut self) -> Option<ProcessExit> {
+        self.poll_exit()
+    }
+
+    fn kill(&mut self) {
+        self.kill();
+    }
+}
+
+/// Spawns a bounded ConPTY process session, boxing it behind the
+/// [`ProcessBackend`] trait for the session registry. Delegates to the existing
+/// Windows spawn; the non-Windows stub returns
+/// [`ProcessError::Unsupported`].
+pub fn spawn_boxed(
+    spec: ProcessSpec,
+    workspace_root: &str,
+) -> Result<Box<dyn ProcessBackend>, ProcessError> {
+    windows::ProcessSession::spawn(spec, std::path::Path::new(workspace_root))
+        .map(|session| Box::new(session) as Box<dyn ProcessBackend>)
+}

@@ -50,6 +50,40 @@ public sealed class MspExecSessionHostFacade : IMspExecSessionHost
     }
 
     /// <summary>
+    /// Runs an explicit process-mode exec synchronously to completion. Process
+    /// mode launches <paramref name="program"/> with bounded
+    /// <paramref name="arguments"/> inside the host-authorized
+    /// <paramref name="workspaceRoot"/>; shell mode (the default) routes the
+    /// program text through the host shell exactly like the command overload.
+    /// </summary>
+    public Task<MspExecSessionRead> ExecCommandAsync(
+        MspExecSessionMode mode,
+        string program,
+        IReadOnlyList<string>? arguments,
+        string? workspaceRoot,
+        int? yieldTimeMs = null,
+        int? maxOutputTokens = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ct.ThrowIfCancellationRequested();
+
+        var result = InvokeExecSession(new MspNativeExecSessionRequest
+        {
+            Mode = mode,
+            CommandText = mode == MspExecSessionMode.Shell ? program : null,
+            Program = mode == MspExecSessionMode.Process ? program : null,
+            Arguments = mode == MspExecSessionMode.Process ? arguments : null,
+            WorkspaceRoot = mode == MspExecSessionMode.Process ? workspaceRoot : null,
+            Actor = "agent",
+            YieldTimeMs = yieldTimeMs,
+            MaxOutputTokens = maxOutputTokens
+        }, ct);
+
+        return Task.FromResult(FormatModelVisible(result));
+    }
+
+    /// <summary>
     /// Continues an existing session through write_stdin. An empty or omitted
     /// <paramref name="chars"/> polls the retained terminal text/status once
     /// and closes; a non-empty write to an already-closed session returns the

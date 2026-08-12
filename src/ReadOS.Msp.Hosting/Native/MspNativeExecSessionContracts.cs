@@ -1,6 +1,21 @@
 namespace ReadOS.Msp.Hosting.Native;
 
 /// <summary>
+/// Selects how a new exec session is launched. Shell mode runs
+/// <see cref="MspNativeExecSessionRequest.CommandText"/> through the host
+/// shell; process mode launches <see cref="MspNativeExecSessionRequest.Program"/>
+/// directly with explicit bounded <see cref="MspNativeExecSessionRequest.Arguments"/>.
+/// </summary>
+public enum MspExecSessionMode
+{
+    /// <summary>Runs command text through the host shell (native default).</summary>
+    Shell,
+
+    /// <summary>Launches an explicit program with bounded arguments.</summary>
+    Process
+}
+
+/// <summary>
 /// One model-facing exec session request routed through ABI v2 operation 5
 /// (<c>MSP_ABI_V2_OPERATION_SESSION_EXEC</c>). A zero <see cref="SessionId"/>
 /// selects a new synchronous exec; a nonzero <see cref="SessionId"/> selects a
@@ -11,10 +26,37 @@ namespace ReadOS.Msp.Hosting.Native;
 public sealed record MspNativeExecSessionRequest
 {
     /// <summary>
-    /// Command text. Required and non-empty for a new exec
-    /// (<see cref="SessionId"/> == 0); must be null for a write_stdin.
+    /// Command text. Required and non-empty for a new shell exec
+    /// (<see cref="SessionId"/> == 0); must be null for a write_stdin and for
+    /// a process-mode exec (which uses <see cref="Program"/> instead).
     /// </summary>
     public string? CommandText { get; init; }
+
+    /// <summary>
+    /// Launch mode for a new exec. Null and <see cref="MspExecSessionMode.Shell"/>
+    /// both run command text through the shell; the wire omits the key for
+    /// shell so the native side applies its serde default.
+    /// </summary>
+    public MspExecSessionMode? Mode { get; init; }
+
+    /// <summary>
+    /// Program path for process-mode exec. Required and non-empty when
+    /// <see cref="Mode"/> is <see cref="MspExecSessionMode.Process"/>; must be
+    /// null for shell mode.
+    /// </summary>
+    public string? Program { get; init; }
+
+    /// <summary>
+    /// Bounded argument list for process-mode exec. Ignored for shell mode.
+    /// </summary>
+    public IReadOnlyList<string>? Arguments { get; init; }
+
+    /// <summary>
+    /// Host-authorized local workspace root for process-mode exec. Required and
+    /// fully-qualified when <see cref="Mode"/> is
+    /// <see cref="MspExecSessionMode.Process"/>; never sent for shell mode.
+    /// </summary>
+    public string? WorkspaceRoot { get; init; }
 
     /// <summary>0 for a new exec; the retained session id for write_stdin.</summary>
     public ulong SessionId { get; init; }
@@ -75,6 +117,12 @@ public sealed record MspNativeExecSessionError
 public static class MspNativeExecSessionLimits
 {
     public const int MaximumWriteStdinChars = 1024 * 1024;
+
+    /// <summary>Maximum number of arguments on a process-mode exec.</summary>
+    public const int MaximumProcessArguments = 1024;
+
+    /// <summary>Maximum character length of one process-mode argument.</summary>
+    public const int MaximumArgumentCharacters = 32 * 1024;
 }
 
 internal sealed record MspNativeExecSessionRequestWire
@@ -83,7 +131,15 @@ internal sealed record MspNativeExecSessionRequestWire
 
     public required string Kind { get; init; }
 
+    public string? Mode { get; init; }
+
     public string? CommandText { get; init; }
+
+    public string? Program { get; init; }
+
+    public string[]? Arguments { get; init; }
+
+    public string? WorkspaceRoot { get; init; }
 
     public ulong SessionId { get; init; }
 

@@ -20,8 +20,10 @@ use crate::command_core::{CommandPack, Context, Registry, RegistryError};
 use crate::contract::{
     unix_time_milliseconds, validate_contract_version, INTERNAL_CONTRACT_VERSION,
 };
+use crate::output_sanitizer::WindowsPathSanitizer;
 use crate::pipeline::execute_script;
-use crate::runtime::ReadOsCoreCommandPack;
+use crate::process::{ProcessBackend, ProcessError, ProcessExit, ProcessSpec};
+use crate::runtime::{ReadOsCoreCommandPack, MAX_COMMAND_STDOUT_BYTES};
 use crate::shell::{parse, ParsedShellScript};
 use crate::workspace_fs::{
     ReadOnlyWorkspaceFileSystem, WindowsLocalWritableWorkspace, WritableWorkspaceFileSystem,
@@ -29,9 +31,10 @@ use crate::workspace_fs::{
 use crate::workspace_path;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// A process-unique session identifier, monotonic from 1.
 pub type SessionId = u64;
@@ -39,12 +42,46 @@ pub type SessionId = u64;
 /// Maximum number of completed-session records retained at once.
 const SESSION_MAX_LIVE: usize = 64;
 
+/// Maximum number of live (still-running) process-mode sessions at once.
+///
+/// Live records are excluded from the completed-record TTL and LRU pool; when
+/// this cap is reached the least-recently-accessed live record is killed and
+/// finalized to make room.
+const SESSION_MAX_LIVE_PROCESSES: usize = 4;
+
 /// Completed-session records expire this many milliseconds after creation.
 const SESSION_TTL_MILLISECONDS: u64 = 60_000;
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
 static SESSION_REGISTRY: OnceLock<Mutex<SessionRegistry>> = OnceLock::new();
+
+/// Process-global spawn factory for process-mode sessions.
+///
+/// Defaults to [`crate::process::spawn_boxed`]; unit tests replace it (under
+/// `TEST_GLOBAL_LOCK`) with a factory that injects a scripted in-memory
+/// [`ProcessBackend`].
+type ProcessSpawnFactory =
+    dyn Fn(&ProcessSpec, &str) -> Result<Box<dyn ProcessBackend>, ProcessError> + Send + Sync;
+
+static PROCESS_SPAWN_FACTORY: OnceLock<Mutex<Box<ProcessSpawnFactory>>> = OnceLock::new();
+
+fn default_process_spawn_factory() -> Mutex<Box<ProcessSpawnFactory>> {
+    Mutex::new(Box::new(|spec: &ProcessSpec, workspace_root: &str| {
+        crate::process::spawn_boxed(spec.clone(), workspace_root)
+    }) as Box<ProcessSpawnFactory>)
+}
+
+fn spawn_process_backend(
+    spec: &ProcessSpec,
+    workspace_root: &str,
+) -> Result<Box<dyn ProcessBackend>, ProcessError> {
+    let mutex = PROCESS_SPAWN_FACTORY.get_or_init(default_process_spawn_factory);
+    let factory = mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    factory(spec, workspace_root)
+}
 
 const SESSION_SERIALIZATION_FALLBACK_JSON: &[u8] = br#"{"contractVersion":"reados-msp-native/1","ok":false,"sessionId":0,"running":false,"terminalText":"native response serialization failed\n","exitCode":1,"wallTimeSeconds":0.0,"truncated":false,"error":{"code":"msp.native.serialization","message":"native response serialization failed"}}"#;
 
@@ -55,6 +92,20 @@ pub enum SessionRequestKind {
     #[default]
     Exec,
     WriteStdin,
+}
+
+/// How an `exec_command` session runs its command.
+///
+/// [`Shell`](Self::Shell) (the default) runs the in-crate shell parser/pipeline
+/// and keeps every existing request and test byte-identical.
+/// [`Process`](Self::Process) spawns an external program through the bounded
+/// ConPTY process backend and supports stdin continuation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecSessionMode {
+    #[default]
+    Shell,
+    Process,
 }
 
 /// One model-facing `exec_command` or `write_stdin` request.
@@ -94,6 +145,15 @@ pub struct MspExecSessionRequest {
     pub yield_time_ms: Option<i64>,
     #[serde(default)]
     pub max_output_tokens: Option<i64>,
+    /// Session mode; defaults to [`ExecSessionMode::Shell`].
+    #[serde(default)]
+    pub mode: ExecSessionMode,
+    /// Absolute path of the external program for process-mode sessions.
+    #[serde(default)]
+    pub program: Option<String>,
+    /// Bounded argument vector for process-mode sessions.
+    #[serde(default)]
+    pub arguments: Vec<String>,
 }
 
 /// A session operation error descriptor in the result envelope.
@@ -191,6 +251,13 @@ fn exec_command_session(request: &MspExecSessionRequest) -> MspExecSessionResult
             Some(2),
         );
     }
+    match request.mode {
+        ExecSessionMode::Shell => exec_command_session_shell(request),
+        ExecSessionMode::Process => exec_command_session_process(request),
+    }
+}
+
+fn exec_command_session_shell(request: &MspExecSessionRequest) -> MspExecSessionResult {
     let working_directory = match workspace_path::normalize(&request.working_directory, "/") {
         Ok(path) => path,
         Err(error) => {
@@ -247,6 +314,10 @@ fn exec_command_session(request: &MspExecSessionRequest) -> MspExecSessionResult
                 last_read_ms: now_ms,
                 last_tick: 0,
                 read_once: false,
+                process: None,
+                accumulated: Vec::new(),
+                running: false,
+                sanitizer: None,
             },
             now_ms,
         );
@@ -262,6 +333,156 @@ fn exec_command_session(request: &MspExecSessionRequest) -> MspExecSessionResult
         wall_time_seconds,
         truncated,
         error: None,
+    }
+}
+
+/// The `exec_command` Process branch: spawns an external program through the
+/// bounded ConPTY backend, retains a live session for stdin continuation, and
+/// reads the first output chunk.
+fn exec_command_session_process(request: &MspExecSessionRequest) -> MspExecSessionResult {
+    let started_at = Instant::now();
+    let Some(program) = request.program.clone() else {
+        let message = "process mode requires an absolute program path";
+        return closed_error(
+            0,
+            "msp.process.program_required",
+            message,
+            with_trailing_newline(message),
+            Some(1),
+        );
+    };
+    let Some(workspace_root) = request.workspace_root.clone() else {
+        let message = "process mode requires a workspace root";
+        return closed_error(
+            0,
+            "msp.process.workspace_root_required",
+            message,
+            with_trailing_newline(message),
+            Some(1),
+        );
+    };
+    let working_directory = match workspace_path::normalize(&request.working_directory, "/") {
+        Ok(path) => {
+            let mut cwd = PathBuf::new();
+            for component in path.split('/') {
+                if !component.is_empty() {
+                    cwd.push(component);
+                }
+            }
+            cwd
+        }
+        Err(error) => {
+            let message = error.to_string();
+            return closed_error(
+                0,
+                "msp.workspace.invalid_path",
+                &message,
+                with_trailing_newline(&message),
+                Some(2),
+            );
+        }
+    };
+
+    let mut spec = ProcessSpec::new(program);
+    for argument in &request.arguments {
+        spec = spec.argument(argument.clone());
+    }
+    // The ConPTY backend bounds argv and the command line; a hard wall-clock
+    // budget of at least 30 s applies regardless of the per-read yield.
+    let wall_clock_timeout_ms = exec_milliseconds(request.yield_time_ms).max(30_000) as u64;
+    spec = spec
+        .working_directory(working_directory)
+        .output_budget_bytes(MAX_COMMAND_STDOUT_BYTES)
+        .wall_clock_timeout_ms(wall_clock_timeout_ms);
+
+    // The id is allocated before spawn so every live record keeps the
+    // monotonic ordering of spawn attempts.
+    let session_id = allocate_session_id();
+
+    let backend = match spawn_process_backend(&spec, &workspace_root) {
+        Ok(backend) => backend,
+        Err(error) => {
+            let message = error.to_string();
+            return closed_error(
+                0,
+                "msp.process.spawn",
+                &message,
+                with_trailing_newline(&message),
+                Some(1),
+            );
+        }
+    };
+
+    let now_ms = unix_time_milliseconds();
+    let sanitizer = WindowsPathSanitizer::new([workspace_root.as_str()]);
+    with_registry(|registry| {
+        registry.insert(
+            SessionRecord {
+                session_id,
+                terminal_text: String::new(),
+                exit_code: None,
+                wall_time_seconds: 0.0,
+                truncated: false,
+                created_at_ms: now_ms,
+                last_read_ms: now_ms,
+                last_tick: 0,
+                read_once: false,
+                process: Some(backend),
+                accumulated: Vec::new(),
+                running: true,
+                sanitizer: Some(sanitizer),
+            },
+            now_ms,
+        );
+    });
+
+    let deadline =
+        Instant::now() + Duration::from_millis(exec_milliseconds(request.yield_time_ms) as u64);
+    let outcome = with_registry(|registry| {
+        let record = registry.access_live(session_id)?;
+        let result = poll_process_output(record, deadline, request.max_output_tokens);
+        if result.is_none() {
+            finalize_after_error(record, request.max_output_tokens);
+        }
+        result
+    });
+    match outcome {
+        Some(ProcessPollOutcome::Running { terminal_text }) => MspExecSessionResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            ok: true,
+            session_id,
+            running: true,
+            terminal_text,
+            exit_code: None,
+            wall_time_seconds: started_at.elapsed().as_secs_f64(),
+            truncated: false,
+            error: None,
+        },
+        Some(ProcessPollOutcome::Exited {
+            terminal_text,
+            exit_code,
+            truncated,
+        }) => MspExecSessionResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            ok: true,
+            session_id,
+            running: false,
+            terminal_text,
+            exit_code: Some(exit_code),
+            wall_time_seconds: started_at.elapsed().as_secs_f64(),
+            truncated,
+            error: None,
+        },
+        None => {
+            let message = "process session read failed";
+            closed_error(
+                session_id,
+                "msp.process.read",
+                message,
+                with_trailing_newline(message),
+                Some(1),
+            )
+        }
     }
 }
 
@@ -351,6 +572,9 @@ fn write_stdin_session(request: &MspExecSessionRequest) -> MspExecSessionResult 
             Some(2),
         );
     }
+    if with_registry(|registry| registry.has_live_process(request.session_id)) {
+        return write_stdin_session_process(request);
+    }
     if !request.chars.as_deref().unwrap_or("").is_empty() {
         // Feeding stdin to a still-running command is a ConPTY gate that this
         // slice does not cross. A completed session's stdin is closed, so any
@@ -360,6 +584,164 @@ fn write_stdin_session(request: &MspExecSessionRequest) -> MspExecSessionResult 
     let now_ms = unix_time_milliseconds();
     with_registry(|registry| registry.poll(request.session_id, now_ms))
         .unwrap_or_else(|| inactive_session_error(request.session_id))
+}
+
+/// The `write_stdin` Process branch: writes input to a still-running child and
+/// reads the next output chunk, or polls the child with no input.
+fn write_stdin_session_process(request: &MspExecSessionRequest) -> MspExecSessionResult {
+    let session_id = request.session_id;
+    let chars = request.chars.as_deref().unwrap_or("");
+    let outcome = with_registry(|registry| {
+        let record = registry.access_live(session_id)?;
+        let deadline = Instant::now()
+            + Duration::from_millis(write_stdin_milliseconds(
+                chars.is_empty(),
+                request.yield_time_ms,
+            ) as u64);
+        let result = if chars.is_empty() {
+            poll_process_output(record, deadline, request.max_output_tokens)
+        } else {
+            process_write_then_read(record, chars, deadline, request.max_output_tokens)
+        };
+        if result.is_none() {
+            finalize_after_error(record, request.max_output_tokens);
+        }
+        result
+    });
+    match outcome {
+        Some(ProcessPollOutcome::Running { terminal_text }) => MspExecSessionResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            ok: true,
+            session_id,
+            running: true,
+            terminal_text,
+            exit_code: None,
+            wall_time_seconds: 0.0,
+            truncated: false,
+            error: None,
+        },
+        Some(ProcessPollOutcome::Exited {
+            terminal_text,
+            exit_code,
+            truncated,
+        }) => MspExecSessionResult {
+            contract_version: INTERNAL_CONTRACT_VERSION.to_string(),
+            ok: true,
+            session_id,
+            running: false,
+            terminal_text,
+            exit_code: Some(exit_code),
+            wall_time_seconds: 0.0,
+            truncated,
+            error: None,
+        },
+        None => inactive_session_error(session_id),
+    }
+}
+
+/// The outcome of one process read/write step.
+enum ProcessPollOutcome {
+    Running {
+        terminal_text: String,
+    },
+    Exited {
+        terminal_text: String,
+        exit_code: i32,
+        truncated: bool,
+    },
+}
+
+/// Reads one output chunk from a live process, accumulates it (normalized and
+/// sanitized), and finalizes the record when the child has exited.
+fn poll_process_output(
+    record: &mut SessionRecord,
+    deadline: Instant,
+    max_output_tokens: Option<i64>,
+) -> Option<ProcessPollOutcome> {
+    let chunk = {
+        let process = record.process.as_mut()?;
+        match process.read_output(deadline) {
+            Ok(chunk) => chunk,
+            Err(_) => return None,
+        }
+    };
+    let new_text = record.append_output(chunk);
+    let exit = {
+        let process = record.process.as_mut()?;
+        process.poll_exit()
+    };
+    match exit {
+        Some(exit) => {
+            let truncated = record.finalize_process(exit, max_output_tokens);
+            Some(ProcessPollOutcome::Exited {
+                terminal_text: record.terminal_text.clone(),
+                exit_code: exit.exit_code as i32,
+                truncated,
+            })
+        }
+        None => Some(ProcessPollOutcome::Running {
+            terminal_text: new_text,
+        }),
+    }
+}
+
+/// Writes input to a live process, then reads the next output chunk. When the
+/// child already exited the write fails cleanly; the remaining output is
+/// drained and the record finalized.
+fn process_write_then_read(
+    record: &mut SessionRecord,
+    chars: &str,
+    deadline: Instant,
+    max_output_tokens: Option<i64>,
+) -> Option<ProcessPollOutcome> {
+    let mut session_ended = false;
+    let mut drained_chunk = Vec::new();
+    let mut exit_after_end = None;
+    {
+        let process = record.process.as_mut()?;
+        match process.write_stdin(chars.as_bytes()) {
+            Ok(()) => {}
+            Err(error) => {
+                if !matches!(error, ProcessError::SessionEnded) {
+                    return None;
+                }
+                session_ended = true;
+                let drain_deadline = Instant::now() + Duration::from_millis(200);
+                drained_chunk = process.read_output(drain_deadline).unwrap_or_default();
+                exit_after_end = process.poll_exit();
+            }
+        }
+    }
+    if session_ended {
+        let _ = record.append_output(drained_chunk);
+        let exit = exit_after_end.unwrap_or(ProcessExit {
+            exit_code: 1,
+            terminated: true,
+        });
+        let truncated = record.finalize_process(exit, max_output_tokens);
+        return Some(ProcessPollOutcome::Exited {
+            terminal_text: record.terminal_text.clone(),
+            exit_code: exit.exit_code as i32,
+            truncated,
+        });
+    }
+    poll_process_output(record, deadline, max_output_tokens)
+}
+
+/// Kills and finalizes a live process after a read/write error so a failed
+/// session can never leak a still-running child.
+fn finalize_after_error(record: &mut SessionRecord, max_output_tokens: Option<i64>) {
+    let exit = {
+        let Some(process) = record.process.as_mut() else {
+            return;
+        };
+        process.kill();
+        process.poll_exit().unwrap_or(ProcessExit {
+            exit_code: 1,
+            terminated: true,
+        })
+    };
+    record.finalize_process(exit, max_output_tokens);
 }
 
 fn mount_writable(
@@ -395,7 +777,11 @@ fn allocate_session_id() -> SessionId {
     NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-/// The retained, completed-session record behind one [`SessionId`].
+/// The retained session record behind one [`SessionId`].
+///
+/// Shell records are always completed (`process: None`, `running: false`).
+/// Process-mode records are inserted live (`process: Some`, `running: true`)
+/// and become ordinary completed records once the child exits.
 struct SessionRecord {
     session_id: SessionId,
     terminal_text: String,
@@ -406,6 +792,67 @@ struct SessionRecord {
     last_read_ms: u64,
     last_tick: u64,
     read_once: bool,
+    /// Live process backend for process-mode sessions.
+    process: Option<Box<dyn ProcessBackend>>,
+    /// Normalized + sanitized child output accumulated so far.
+    accumulated: Vec<u8>,
+    /// True while a process-mode child is still running.
+    running: bool,
+    /// Sanitizer built from the session's workspace root; applied to every
+    /// child chunk before it can enter an envelope.
+    sanitizer: Option<WindowsPathSanitizer>,
+}
+
+impl SessionRecord {
+    fn is_live(&self) -> bool {
+        self.process.is_some() && self.running
+    }
+
+    /// Appends a freshly read child chunk after CRLF normalization and host
+    /// path sanitization, and returns the new chunk's text (also normalized and
+    /// sanitized) for a running-response envelope.
+    fn append_output(&mut self, chunk: Vec<u8>) -> String {
+        let normalized = normalize_crlf(chunk);
+        let sanitized = match &self.sanitizer {
+            Some(sanitizer) => sanitizer.sanitize(&normalized),
+            None => normalized,
+        };
+        self.accumulated.extend_from_slice(&sanitized);
+        String::from_utf8_lossy(&sanitized).into_owned()
+    }
+
+    /// Marks the session completed: records the exit status and moves the
+    /// accumulated (bounded) text into `terminal_text` so the record behaves
+    /// exactly like a completed shell record from here on. Returns whether the
+    /// accumulated text was truncated by `max_output_tokens`.
+    fn finalize_process(&mut self, exit: ProcessExit, max_output_tokens: Option<i64>) -> bool {
+        self.running = false;
+        self.process = None;
+        self.exit_code = Some(exit.exit_code as i32);
+        let mut text = String::from_utf8_lossy(&self.accumulated).into_owned();
+        let truncated = apply_output_token_bound(&mut text, max_output_tokens);
+        self.terminal_text = text;
+        self.truncated = truncated;
+        truncated
+    }
+}
+
+/// Normalizes CRLF line endings to LF, matching `pty-cases.json`.
+fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
+    if !data.contains(&b'\r') {
+        return data;
+    }
+    let mut output = Vec::with_capacity(data.len());
+    let mut iter = data.into_iter().peekable();
+    while let Some(byte) = iter.next() {
+        if byte == b'\r' && iter.peek() == Some(&b'\n') {
+            output.push(b'\n');
+            iter.next();
+        } else {
+            output.push(byte);
+        }
+    }
+    output
 }
 
 /// A bounded, expiring registry of completed sessions, keyed by [`SessionId`].
@@ -425,18 +872,37 @@ impl SessionRegistry {
         }
     }
 
-    /// Drops records that have outlived the creation TTL.
+    /// Drops completed records that have outlived the creation TTL. Live
+    /// process records are excluded from the TTL prune.
     fn prune(&mut self, now_ms: u64) {
         self.records.retain(|_, record| {
+            if record.is_live() {
+                return true;
+            }
             now_ms.saturating_sub(record.created_at_ms) <= SESSION_TTL_MILLISECONDS
         });
     }
 
-    /// Inserts a completed record after applying TTL and capacity eviction.
+    /// Inserts a record after applying TTL and capacity eviction.
+    ///
+    /// Live process records are bounded by [`SESSION_MAX_LIVE_PROCESSES`] and
+    /// are excluded from the completed-record pool; completed records (shell and
+    /// finalized process) count against [`SESSION_MAX_LIVE`].
     fn insert(&mut self, record: SessionRecord, now_ms: u64) {
         self.prune(now_ms);
-        while self.records.len() >= SESSION_MAX_LIVE {
-            self.evict_least_recently_accessed();
+        if record.is_live() {
+            let live_count = self
+                .records
+                .values()
+                .filter(|record| record.is_live())
+                .count();
+            if live_count >= SESSION_MAX_LIVE_PROCESSES {
+                self.evict_least_recently_accessed_live();
+            }
+        } else {
+            while self.records.len() >= SESSION_MAX_LIVE {
+                self.evict_least_recently_accessed();
+            }
         }
         self.tick = self.tick.saturating_add(1);
         let mut record = record;
@@ -449,6 +915,23 @@ impl SessionRegistry {
         let record = self.records.get_mut(&session_id)?;
         self.tick = self.tick.saturating_add(1);
         record.last_tick = self.tick;
+        Some(record)
+    }
+
+    /// Returns whether the session id currently refers to a live process.
+    fn has_live_process(&self, session_id: SessionId) -> bool {
+        self.records
+            .get(&session_id)
+            .is_some_and(|record| record.is_live())
+    }
+
+    /// Touches and returns a live process record, or `None` for unknown,
+    /// completed, or expired sessions.
+    fn access_live(&mut self, session_id: SessionId) -> Option<&mut SessionRecord> {
+        let record = self.access(session_id)?;
+        if !record.is_live() {
+            return None;
+        }
         Some(record)
     }
 
@@ -475,10 +958,34 @@ impl SessionRegistry {
         })
     }
 
+    /// Kills and finalizes the least-recently-accessed live process record so a
+    /// new live session can be created without exceeding the live cap. The
+    /// finalized record stays in the completed pool.
+    fn evict_least_recently_accessed_live(&mut self) {
+        let lru_id = self
+            .records
+            .iter()
+            .filter(|(_, record)| record.is_live())
+            .min_by_key(|(_, record)| (record.last_tick, record.last_read_ms))
+            .map(|(id, _)| *id);
+        if let Some(lru_id) = lru_id {
+            let record = self.records.get_mut(&lru_id).expect("lru id is present");
+            if let Some(mut process) = record.process.take() {
+                process.kill();
+                let exit = process.poll_exit().unwrap_or(ProcessExit {
+                    exit_code: 1,
+                    terminated: true,
+                });
+                record.finalize_process(exit, None);
+            }
+        }
+    }
+
     fn evict_least_recently_accessed(&mut self) {
         let lru_id = self
             .records
             .iter()
+            .filter(|(_, record)| !record.is_live())
             .min_by_key(|(_, record)| (record.last_tick, record.last_read_ms))
             .map(|(id, _)| *id);
         if let Some(lru_id) = lru_id {
@@ -610,6 +1117,63 @@ mod tests {
     /// retained records and monotonic ids stay deterministic.
     static TEST_GLOBAL_LOCK: Mutex<()> = Mutex::new(());
 
+    /// Replaces the process-global spawn factory with a scripted one. Callers
+    /// must hold `TEST_GLOBAL_LOCK` (as every process-mode test does).
+    fn set_process_spawn_factory(factory: Box<ProcessSpawnFactory>) {
+        let mutex = PROCESS_SPAWN_FACTORY.get_or_init(default_process_spawn_factory);
+        let mut guard = mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = factory;
+    }
+
+    /// In-memory scripted [`ProcessBackend`] for unit tests. Each `read_output`
+    /// call returns the next scripted chunk; once the chunks are exhausted the
+    /// scripted exit status is reported. Writing `DONE` clears any remaining
+    /// chunks and exits 0 so tests can close live sessions cleanly.
+    struct ScriptedProcess {
+        reads: Vec<Vec<u8>>,
+        exit: Option<ProcessExit>,
+        written: Vec<Vec<u8>>,
+    }
+
+    impl ProcessBackend for ScriptedProcess {
+        fn read_output(&mut self, _deadline: Instant) -> Result<Vec<u8>, ProcessError> {
+            if self.reads.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Ok(self.reads.remove(0))
+            }
+        }
+
+        fn write_stdin(&mut self, data: &[u8]) -> Result<(), ProcessError> {
+            self.written.push(data.to_vec());
+            if data.windows(4).any(|window| window == b"DONE") {
+                self.reads.clear();
+                self.exit = Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                });
+            }
+            Ok(())
+        }
+
+        fn poll_exit(&mut self) -> Option<ProcessExit> {
+            if self.reads.is_empty() {
+                self.exit
+            } else {
+                None
+            }
+        }
+
+        fn kill(&mut self) {
+            self.exit = Some(ProcessExit {
+                exit_code: 1,
+                terminated: true,
+            });
+        }
+    }
+
     fn exec_json(command_text: &str) -> Vec<u8> {
         let request = json!({
             "contractVersion": INTERNAL_CONTRACT_VERSION,
@@ -645,7 +1209,35 @@ mod tests {
             last_read_ms: created_at_ms,
             last_tick: 0,
             read_once: false,
+            process: None,
+            accumulated: Vec::new(),
+            running: false,
+            sanitizer: None,
         }
+    }
+
+    fn process_exec_json(program: &str, workspace_root: &str, arguments: &[&str]) -> Vec<u8> {
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": program,
+            "workspaceRoot": workspace_root,
+            "workingDirectory": "/",
+            "arguments": arguments,
+            "actor": "session-test",
+        });
+        exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap()
+    }
+
+    fn process_poll_json(session_id: SessionId, chars: &str) -> Vec<u8> {
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "writeStdin",
+            "sessionId": session_id,
+            "chars": chars,
+        });
+        exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap()
     }
 
     #[test]
@@ -855,6 +1447,253 @@ mod tests {
         assert_eq!(registry.records.len(), 1);
         assert!(registry.records.contains_key(&2));
         assert!(!registry.records.contains_key(&1));
+    }
+
+    #[test]
+    fn process_mode_requires_program_and_workspace_root() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        // Explicit process mode without a program is a closed error.
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "workspaceRoot": r"C:\ReadOS\workspace",
+        });
+        let result =
+            parse_result(exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap());
+        assert!(!result.ok);
+        assert_eq!(
+            result.error.as_ref().unwrap().code,
+            "msp.process.program_required"
+        );
+        assert_eq!(result.exit_code, Some(1));
+
+        // Explicit process mode with a program but no workspace root is a
+        // closed error.
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": r"C:\ReadOS\child.exe",
+        });
+        let result =
+            parse_result(exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap());
+        assert!(!result.ok);
+        assert_eq!(
+            result.error.as_ref().unwrap().code,
+            "msp.process.workspace_root_required"
+        );
+        assert_eq!(result.exit_code, Some(1));
+    }
+
+    #[test]
+    fn process_mode_retains_running_session_for_stdin_continuation() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        set_process_spawn_factory(Box::new(|_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![b"READY\r\n".to_vec(), b"got:alpha\r\n".to_vec()],
+                exit: Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                }),
+                written: Vec::new(),
+            }))
+        }));
+        let exec = parse_result(process_exec_json(
+            r"C:\ReadOS\child.exe",
+            r"C:\ReadOS\workspace",
+            &[],
+        ));
+        assert!(exec.ok);
+        assert!(exec.running, "session must stay live after the first chunk");
+        assert_eq!(exec.exit_code, None);
+        assert_eq!(exec.terminal_text, "READY\n");
+
+        let written = parse_result(process_poll_json(exec.session_id, "alpha\r\n"));
+        assert!(written.ok);
+        assert!(!written.running);
+        assert_eq!(written.exit_code, Some(0));
+        assert_eq!(written.terminal_text, "READY\ngot:alpha\n");
+
+        // A completed process session closes like the shell path on a later
+        // empty poll, then reports inactive.
+        let polled = parse_result(poll_json(exec.session_id));
+        assert!(polled.ok);
+        assert_eq!(polled.terminal_text, "READY\ngot:alpha\n");
+        assert_eq!(polled.exit_code, Some(0));
+        let closed = parse_result(poll_json(exec.session_id));
+        assert!(!closed.ok);
+        assert_eq!(closed.error.as_ref().unwrap().code, "msp.session.inactive");
+    }
+
+    #[test]
+    fn process_mode_empty_poll_reads_more_output_and_closes_on_done() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        set_process_spawn_factory(Box::new(|_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![b"READY\r\n".to_vec(), b"tick\r\n".to_vec()],
+                exit: None,
+                written: Vec::new(),
+            }))
+        }));
+        let exec = parse_result(process_exec_json(
+            r"C:\ReadOS\child.exe",
+            r"C:\ReadOS\workspace",
+            &[],
+        ));
+        assert!(exec.running);
+        assert_eq!(exec.terminal_text, "READY\n");
+
+        // An empty poll reads the next chunk while the process stays running.
+        let polled = parse_result(process_poll_json(exec.session_id, ""));
+        assert!(polled.ok);
+        assert!(polled.running);
+        assert_eq!(polled.terminal_text, "tick\n");
+
+        // DONE closes the session so the live cap stays clean for other tests.
+        let _ = parse_result(process_poll_json(exec.session_id, "DONE"));
+        let closed = parse_result(process_poll_json(exec.session_id, ""));
+        assert!(closed.ok);
+        assert!(!closed.running);
+        assert_eq!(closed.exit_code, Some(0));
+    }
+
+    #[test]
+    fn process_mode_live_cap_evicts_least_recently_accessed() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        set_process_spawn_factory(Box::new(|_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: Vec::new(),
+                exit: None,
+                written: Vec::new(),
+            }))
+        }));
+        let mut ids = Vec::new();
+        for _ in 0..SESSION_MAX_LIVE_PROCESSES {
+            let exec = parse_result(process_exec_json(
+                r"C:\ReadOS\child.exe",
+                r"C:\ReadOS\workspace",
+                &[],
+            ));
+            assert!(exec.running);
+            ids.push(exec.session_id);
+        }
+        // A fifth live session evicts (kills + finalizes) the least-recently
+        // accessed live record: the first one.
+        let fifth = parse_result(process_exec_json(
+            r"C:\ReadOS\child.exe",
+            r"C:\ReadOS\workspace",
+            &[],
+        ));
+        assert!(fifth.running);
+
+        let evicted = parse_result(poll_json(ids[0]));
+        assert!(evicted.ok);
+        assert!(!evicted.running, "evicted live session must be finalized");
+        assert_eq!(evicted.exit_code, Some(1));
+
+        // The remaining four sessions are still live.
+        for id in &ids[1..] {
+            let running = parse_result(process_poll_json(*id, ""));
+            assert!(running.running);
+        }
+        // Close the still-live sessions so later tests start clean.
+        for id in std::iter::once(fifth.session_id).chain(ids[1..].iter().copied()) {
+            let _ = parse_result(process_poll_json(id, "DONE"));
+            let closed = parse_result(process_poll_json(id, ""));
+            assert!(!closed.running);
+        }
+    }
+
+    #[test]
+    fn process_mode_output_is_sanitized_before_entering_the_envelope() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        let root = r"C:\ReadOS\workspace";
+        let chunk = format!("workspace-root:{root}\r\n");
+        set_process_spawn_factory(Box::new(move |_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![chunk.clone().into_bytes()],
+                exit: Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                }),
+                written: Vec::new(),
+            }))
+        }));
+        let exec = parse_result(process_exec_json(r"C:\ReadOS\child.exe", root, &[]));
+        assert!(exec.ok);
+        assert!(!exec.running);
+        assert!(
+            !exec.terminal_text.contains(root),
+            "host root must be redacted, got {:?}",
+            exec.terminal_text
+        );
+        assert!(exec.terminal_text.contains("workspace-root:/"));
+    }
+
+    #[test]
+    fn process_mode_applies_max_output_tokens_to_accumulated_text() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        set_process_spawn_factory(Box::new(|_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![b"hello world\r\n".to_vec()],
+                exit: Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                }),
+                written: Vec::new(),
+            }))
+        }));
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": r"C:\ReadOS\child.exe",
+            "workspaceRoot": r"C:\ReadOS\workspace",
+            "maxOutputTokens": 2,
+        });
+        let result =
+            parse_result(exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap());
+        assert!(result.ok);
+        assert!(!result.running);
+        assert!(result.truncated);
+        assert_eq!(result.terminal_text, "hello wo");
+        assert_eq!(result.exit_code, Some(0));
+    }
+
+    #[test]
+    fn process_mode_read_error_finalizes_and_closes_the_session() {
+        struct FailingProcess;
+        impl ProcessBackend for FailingProcess {
+            fn read_output(&mut self, _deadline: Instant) -> Result<Vec<u8>, ProcessError> {
+                Err(ProcessError::WriteTimeout)
+            }
+            fn write_stdin(&mut self, _data: &[u8]) -> Result<(), ProcessError> {
+                Err(ProcessError::WriteTimeout)
+            }
+            fn poll_exit(&mut self) -> Option<ProcessExit> {
+                Some(ProcessExit {
+                    exit_code: 1,
+                    terminated: true,
+                })
+            }
+            fn kill(&mut self) {}
+        }
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        set_process_spawn_factory(Box::new(|_, _| Ok(Box::new(FailingProcess))));
+        let exec = parse_result(process_exec_json(
+            r"C:\ReadOS\child.exe",
+            r"C:\ReadOS\workspace",
+            &[],
+        ));
+        assert!(!exec.ok);
+        assert_eq!(exec.error.as_ref().unwrap().code, "msp.process.read");
+        // The failed session was finalized (killed), so a later poll reports it
+        // closed rather than inactive.
+        let polled = parse_result(poll_json(exec.session_id));
+        assert!(polled.ok);
+        assert!(!polled.running);
+        assert_eq!(polled.exit_code, Some(1));
     }
 
     #[cfg(windows)]

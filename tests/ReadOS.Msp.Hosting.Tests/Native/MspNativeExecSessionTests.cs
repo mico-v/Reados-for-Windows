@@ -50,6 +50,86 @@ public sealed class MspNativeExecSessionTests
     }
 
     [Fact]
+    public void Process_mode_serializes_mode_program_arguments_and_workspace_root_but_shell_omits_mode()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(sessionId: 41, exitCode: 0),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        adapter.ExecSession(new MspNativeExecSessionRequest
+        {
+            Mode = MspExecSessionMode.Process,
+            Program = "C:\\tools\\runner.exe",
+            Arguments = new[] { "--flag", "value" },
+            WorkspaceRoot = "C:\\workspace"
+        });
+
+        using (var request = JsonDocument.Parse(transport.LastRequestJson))
+        {
+            Assert.Equal("process", request.RootElement.GetProperty("mode").GetString());
+            Assert.Equal("C:\\tools\\runner.exe", request.RootElement.GetProperty("program").GetString());
+            Assert.Equal("C:\\workspace", request.RootElement.GetProperty("workspaceRoot").GetString());
+            Assert.Equal(
+                new[] { "--flag", "value" },
+                request.RootElement.GetProperty("arguments")
+                    .EnumerateArray()
+                    .Select(argument => argument.GetString())
+                    .ToArray());
+            Assert.False(request.RootElement.TryGetProperty("commandText", out _));
+        }
+
+        adapter.ExecSession(new MspNativeExecSessionRequest
+        {
+            CommandText = "echo hi"
+        });
+
+        using (var request = JsonDocument.Parse(transport.LastRequestJson))
+        {
+            Assert.False(request.RootElement.TryGetProperty("mode", out _));
+            Assert.False(request.RootElement.TryGetProperty("program", out _));
+            Assert.False(request.RootElement.TryGetProperty("arguments", out _));
+            Assert.False(request.RootElement.TryGetProperty("workspaceRoot", out _));
+        }
+    }
+
+    [Fact]
+    public void Process_mode_rejects_missing_program_before_invoking()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ExecSession(new MspNativeExecSessionRequest
+            {
+                Mode = MspExecSessionMode.Process,
+                Program = "   ",
+                WorkspaceRoot = "C:\\workspace"
+            }));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Process_mode_rejects_non_fully_qualified_workspace_root_before_invoking()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ExecSession(new MspNativeExecSessionRequest
+            {
+                Mode = MspExecSessionMode.Process,
+                Program = "C:\\tools\\runner.exe",
+                WorkspaceRoot = "relative\\workspace"
+            }));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
     public void Exec_maps_wall_time_and_truncation_metadata()
     {
         var transport = new FakeTransport(
