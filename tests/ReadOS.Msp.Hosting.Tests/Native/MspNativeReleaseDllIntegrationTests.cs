@@ -268,6 +268,33 @@ public sealed class MspNativeReleaseDllIntegrationTests
         Assert.Equal(MspNativeWorkspaceErrorKind.NotFound, missing.ErrorKind);
     }
 
+    [ExplicitNativeDllFact]
+    public void Explicit_release_dll_execs_an_echo_command_session()
+    {
+        var libraryPath = Environment.GetEnvironmentVariable(
+            ExplicitNativeDllFactAttribute.EnvironmentVariable)!;
+        using var adapter = MspNativeAdapter.LoadWindows(new MspNativeLibraryOptions
+        {
+            LibraryPath = libraryPath
+        });
+
+        var result = adapter.ExecSession(new MspNativeExecSessionRequest
+        {
+            CommandText = "echo hello-session",
+            WorkingDirectory = "/",
+            Actor = "dotnet-integration",
+            YieldTimeMs = 1000,
+            MaxOutputTokens = 1024
+        });
+
+        Assert.True(result.Ok);
+        Assert.True(result.SessionId > 0);
+        Assert.False(result.Running);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hello-session", result.TerminalText);
+        Assert.Null(result.Error);
+    }
+
     private sealed class InMemoryNativeWorkspace : IMspNativeReadOnlyWorkspace
     {
         private readonly Dictionary<string, MspNativeWorkspaceFileInfo> files =

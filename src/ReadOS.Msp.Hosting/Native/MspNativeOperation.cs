@@ -5,5 +5,6 @@ public enum MspNativeOperation
     Execute,
     Parse,
     NormalizeWorkspacePath,
-    WorkspaceRead
+    WorkspaceRead,
+    ExecSession
 }

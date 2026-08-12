@@ -23,16 +23,18 @@ public sealed class WindowsMspNativeTransportTests
     }
 
     [Fact]
-    public void Abi_v2_workspace_read_capability_is_the_fourth_optional_bit()
+    public void Abi_v2_exec_sessions_capability_is_the_fifth_optional_bit()
     {
         Assert.Equal(1UL << 4, (ulong)MspNativeAbiV2Capabilities.WorkspaceRead);
+        Assert.Equal(1UL << 5, (ulong)MspNativeAbiV2Capabilities.ExecSessions);
         Assert.Equal(
-            0x1FUL,
+            0x3FUL,
             (ulong)MspNativeAbiV2Capabilities.LengthDelimitedJson |
             (ulong)MspNativeAbiV2Capabilities.Execute |
             (ulong)MspNativeAbiV2Capabilities.Parse |
             (ulong)MspNativeAbiV2Capabilities.Normalize |
-            (ulong)MspNativeAbiV2Capabilities.WorkspaceRead);
+            (ulong)MspNativeAbiV2Capabilities.WorkspaceRead |
+            (ulong)MspNativeAbiV2Capabilities.ExecSessions);
     }
 
     [Fact]

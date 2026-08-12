@@ -26,6 +26,15 @@ public interface IMspNativeAdapter : IDisposable
         // MspNativeAdapter overrides this with the real operation-4 path.
         throw new NotSupportedException();
     }
+
+    MspNativeExecSessionResult ExecSession(
+        MspNativeExecSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        // Default surface for adapters that do not route exec sessions.
+        // MspNativeAdapter overrides this with the real operation-5 path.
+        throw new NotSupportedException();
+    }
 }
 
 public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoProvider
@@ -245,6 +254,66 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
                 GC.KeepAlive(callbacks);
             }
         }
+    }
+
+    /// <summary>
+    /// Runs one model-facing exec session request synchronously through the
+    /// native MSP runtime. A new exec (sessionId 0) runs to completion and
+    /// returns terminal text plus a session id; a write_stdin empty-poll
+    /// returns the retained terminal text/status once and then closes. No host
+    /// path is ever sent; the request carries only model-visible virtual paths.
+    /// Cancellation is cooperative: the synchronous native call cannot be
+    /// preempted in flight, so the token is only honored before and after
+    /// invocation and when the native response reports a canceled session.
+    /// </summary>
+    public MspNativeExecSessionResult ExecSession(
+        MspNativeExecSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(request);
+        RequireExecSessionCapability();
+        ValidateExecSessionArguments(request);
+
+        var wireResult = InvokeAndDeserialize<MspNativeExecSessionResponseWire>(
+            MspNativeOperation.ExecSession,
+            CreateExecSessionRequest(request));
+        ValidateContractVersion(wireResult.ContractVersion, MspNativeOperation.ExecSession);
+        ValidateExecSessionResponse(wireResult);
+
+        if (!wireResult.Ok)
+        {
+            if (wireResult.Canceled && cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
+            return new MspNativeExecSessionResult
+            {
+                ContractVersion = MspNativeContract.Version,
+                Ok = false,
+                SessionId = wireResult.SessionId,
+                Running = wireResult.Running,
+                TerminalText = wireResult.TerminalText,
+                ExitCode = wireResult.ExitCode,
+                WallTimeSeconds = wireResult.WallTimeSeconds,
+                Truncated = wireResult.Truncated,
+                Error = wireResult.Error
+            };
+        }
+
+        return new MspNativeExecSessionResult
+        {
+            ContractVersion = MspNativeContract.Version,
+            Ok = true,
+            SessionId = wireResult.SessionId,
+            Running = wireResult.Running,
+            TerminalText = wireResult.TerminalText,
+            ExitCode = wireResult.ExitCode,
+            WallTimeSeconds = wireResult.WallTimeSeconds,
+            Truncated = wireResult.Truncated,
+            Error = null
+        };
     }
 
     public void Dispose()
@@ -783,6 +852,122 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             throw MspNativeAdapterException.Create(
                 MspNativeFailureKind.NativeUnsupportedOperation,
                 MspNativeOperation.WorkspaceRead);
+        }
+    }
+
+    private void RequireExecSessionCapability()
+    {
+        var runtimeInfo = NativeRuntimeInfo;
+        if (runtimeInfo.AbiMode != MspNativeAbiMode.LengthDelimitedV2 ||
+            (runtimeInfo.Capabilities & (ulong)MspNativeAbiV2Capabilities.ExecSessions) == 0)
+        {
+            throw MspNativeAdapterException.Create(
+                MspNativeFailureKind.NativeUnsupportedOperation,
+                MspNativeOperation.ExecSession);
+        }
+    }
+
+    private static void ValidateExecSessionArguments(MspNativeExecSessionRequest request)
+    {
+        if (request.YieldTimeMs is < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "YieldTimeMs must be non-negative.");
+        }
+
+        if (request.MaxOutputTokens is < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "MaxOutputTokens must be non-negative.");
+        }
+
+        if (request.Actor is { } actor &&
+            (actor.Length > 256 || actor.Any(char.IsControl)))
+        {
+            throw new ArgumentException(
+                "Native MSP exec session actors must be bounded, printable text.",
+                nameof(request));
+        }
+
+        if (request.SessionId == 0)
+        {
+            if (string.IsNullOrWhiteSpace(request.CommandText))
+            {
+                throw new ArgumentException(
+                    "A new exec session requires non-empty command text.",
+                    nameof(request));
+            }
+
+            if (request.CommandText.Contains('\0'))
+            {
+                throw new ArgumentException(
+                    "Exec session command text must not contain NUL characters.",
+                    nameof(request));
+            }
+
+            return;
+        }
+
+        if (request.Chars is { } chars &&
+            chars.Length > MspNativeExecSessionLimits.MaximumWriteStdinChars)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                $"write_stdin chars must not exceed {MspNativeExecSessionLimits.MaximumWriteStdinChars} characters.");
+        }
+    }
+
+    private static MspNativeExecSessionRequestWire CreateExecSessionRequest(
+        MspNativeExecSessionRequest request)
+    {
+        var isWriteStdin = request.SessionId > 0;
+        return new MspNativeExecSessionRequestWire
+        {
+            Kind = isWriteStdin ? "writeStdin" : "exec",
+            CommandText = request.CommandText,
+            SessionId = request.SessionId,
+            WorkingDirectory = request.WorkingDirectory,
+            Actor = request.Actor,
+            DryRun = request.DryRun,
+            YieldTimeMs = request.YieldTimeMs,
+            MaxOutputTokens = request.MaxOutputTokens,
+            Chars = request.Chars
+        };
+    }
+
+    private static void ValidateExecSessionResponse(MspNativeExecSessionResponseWire response)
+    {
+        const MspNativeOperation operation = MspNativeOperation.ExecSession;
+        if (response.WallTimeSeconds < 0 ||
+            double.IsNaN(response.WallTimeSeconds) ||
+            double.IsInfinity(response.WallTimeSeconds))
+        {
+            throw InvalidResponse(operation);
+        }
+
+        if (response.Ok)
+        {
+            if (response.Error is not null)
+            {
+                throw InvalidResponse(operation);
+            }
+
+            if (response.Running == response.ExitCode.HasValue)
+            {
+                // A running session has no exit code; a closed session does.
+                throw InvalidResponse(operation);
+            }
+
+            return;
+        }
+
+        if (response.Error is null ||
+            string.IsNullOrWhiteSpace(response.Error.Code) ||
+            response.Error.Message is null)
+        {
+            throw InvalidResponse(operation);
         }
     }
 

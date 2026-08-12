@@ -37,7 +37,8 @@ internal enum MspNativeAbiV2Capabilities : ulong
     Execute = 1UL << 1,
     Parse = 1UL << 2,
     Normalize = 1UL << 3,
-    WorkspaceRead = 1UL << 4
+    WorkspaceRead = 1UL << 4,
+    ExecSessions = 1UL << 5
 }
 
 internal enum MspNativeInvokeStatusV2

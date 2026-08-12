@@ -19,17 +19,20 @@ pub const MSP_ABI_V2_CAP_EXECUTE: u64 = 1 << 1;
 pub const MSP_ABI_V2_CAP_PARSE: u64 = 1 << 2;
 pub const MSP_ABI_V2_CAP_NORMALIZE: u64 = 1 << 3;
 pub const MSP_ABI_V2_CAPABILITY_WORKSPACE_READ: u64 = 1 << 4;
+pub const MSP_ABI_V2_CAPABILITY_EXEC_SESSIONS: u64 = 1 << 5;
 pub const MSP_ABI_V2_REQUIRED_CAPABILITIES: u64 = MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON
     | MSP_ABI_V2_CAP_EXECUTE
     | MSP_ABI_V2_CAP_PARSE
     | MSP_ABI_V2_CAP_NORMALIZE;
-pub const MSP_ABI_V2_CAPABILITIES: u64 =
-    MSP_ABI_V2_REQUIRED_CAPABILITIES | MSP_ABI_V2_CAPABILITY_WORKSPACE_READ;
+pub const MSP_ABI_V2_CAPABILITIES: u64 = MSP_ABI_V2_REQUIRED_CAPABILITIES
+    | MSP_ABI_V2_CAPABILITY_WORKSPACE_READ
+    | MSP_ABI_V2_CAPABILITY_EXEC_SESSIONS;
 
 pub const MSP_ABI_V2_OPERATION_EXECUTE: u32 = 1;
 pub const MSP_ABI_V2_OPERATION_PARSE: u32 = 2;
 pub const MSP_ABI_V2_OPERATION_NORMALIZE: u32 = 3;
 pub const MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE: u32 = 4;
+pub const MSP_ABI_V2_OPERATION_SESSION_EXEC: u32 = 5;
 
 pub const MSP_ABI_V2_STATUS_OK: i32 = 0;
 pub const MSP_ABI_V2_STATUS_INVALID_ARGUMENT: i32 = 1;
@@ -49,6 +52,8 @@ pub const MSP_ABI_V2_MAX_EXECUTE_RESPONSE_BYTES: u64 = MSP_ABI_V2_MAX_RESPONSE_B
 pub const MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES: u64 = 1024 * 1024;
 pub const MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES: u64 = 1024 * 1024;
 pub const MSP_ABI_V2_MAX_WORKSPACE_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+pub const MSP_ABI_V2_MAX_SESSION_REQUEST_BYTES: u64 = 1024 * 1024;
+pub const MSP_ABI_V2_MAX_SESSION_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +87,7 @@ enum OperationV2 {
     Parse,
     Normalize,
     WorkspaceInvoke,
+    SessionExec,
 }
 
 impl OperationV2 {
@@ -91,6 +97,7 @@ impl OperationV2 {
             MSP_ABI_V2_OPERATION_PARSE => Some(Self::Parse),
             MSP_ABI_V2_OPERATION_NORMALIZE => Some(Self::Normalize),
             MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE => Some(Self::WorkspaceInvoke),
+            MSP_ABI_V2_OPERATION_SESSION_EXEC => Some(Self::SessionExec),
             _ => None,
         }
     }
@@ -101,6 +108,7 @@ impl OperationV2 {
             Self::Parse => MSP_ABI_V2_MAX_PARSE_REQUEST_BYTES,
             Self::Normalize => MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES,
             Self::WorkspaceInvoke => MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES,
+            Self::SessionExec => MSP_ABI_V2_MAX_SESSION_REQUEST_BYTES,
         }
     }
 
@@ -110,6 +118,7 @@ impl OperationV2 {
             Self::Parse => MSP_ABI_V2_MAX_PARSE_RESPONSE_BYTES,
             Self::Normalize => MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES,
             Self::WorkspaceInvoke => MSP_ABI_V2_MAX_WORKSPACE_RESPONSE_BYTES,
+            Self::SessionExec => MSP_ABI_V2_MAX_SESSION_RESPONSE_BYTES,
         }
     }
 }
@@ -321,6 +330,15 @@ fn invoke_operation(
                 }
             }
         }
+        OperationV2::SessionExec => match crate::session::exec_session_json_bytes(request) {
+            Ok(response) => Ok(response),
+            Err(crate::session::SessionInvokeError::InvalidArgument) => {
+                Err(OperationInvokeError::InvalidArgument)
+            }
+            Err(crate::session::SessionInvokeError::TooLarge) => {
+                Err(OperationInvokeError::TooLarge)
+            }
+        },
     }
 }
 
@@ -514,7 +532,7 @@ mod tests {
         assert_eq!(info.abi_minor, 0);
         assert_eq!(info.reserved, 0);
         assert_eq!(info.contract_id, 0x324D_534F_4441_4552);
-        assert_eq!(info.capabilities, 0x1F);
+        assert_eq!(info.capabilities, 0x3F);
     }
 
     #[test]
@@ -761,6 +779,11 @@ mod tests {
                 MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES,
                 ptr::dangling::<u8>(),
             ),
+            (
+                MSP_ABI_V2_OPERATION_SESSION_EXEC,
+                MSP_ABI_V2_MAX_SESSION_REQUEST_BYTES,
+                ptr::null(),
+            ),
         ];
 
         for (operation, limit, request_ptr) in cases {
@@ -940,6 +963,36 @@ mod tests {
         );
         assert!(response_ptr.is_null());
         assert_eq!(response_len, 0);
+    }
+
+    #[test]
+    fn session_exec_operation_dispatches_exec_and_poll() {
+        let exec = format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","kind":"exec","commandText":"echo v2 session","workingDirectory":"/"}}"#
+        );
+        let response = invoke_success(MSP_ABI_V2_OPERATION_SESSION_EXEC, exec.as_bytes());
+        let exec: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(exec["ok"], true);
+        assert_eq!(exec["terminalText"], "v2 session\n");
+        assert_eq!(exec["running"], false);
+        assert_ne!(exec["sessionId"], 0);
+        let session_id = exec["sessionId"].as_u64().unwrap();
+
+        let poll = format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","kind":"writeStdin","sessionId":{session_id}}}"#
+        );
+        let response = invoke_success(MSP_ABI_V2_OPERATION_SESSION_EXEC, poll.as_bytes());
+        let polled: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(polled["ok"], true);
+        assert_eq!(polled["terminalText"], "v2 session\n");
+
+        let second_poll = format!(
+            r#"{{"contractVersion":"{INTERNAL_CONTRACT_VERSION}","kind":"writeStdin","sessionId":{session_id}}}"#
+        );
+        let response = invoke_success(MSP_ABI_V2_OPERATION_SESSION_EXEC, second_poll.as_bytes());
+        let closed: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(closed["ok"], false);
+        assert_eq!(closed["error"]["code"], "msp.session.inactive");
     }
 
     fn invoke_success(operation: u32, request: &[u8]) -> Vec<u8> {
