@@ -11,6 +11,7 @@ mod workspace_capabilities;
 mod workspace_fs;
 mod workspace_invoke;
 mod workspace_path;
+mod workspace_trash;
 
 pub use composite_workspace::{
     CompositeReadOnlyWorkspace, CompositeWritableWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount,
@@ -39,6 +40,14 @@ pub use workspace_fs::{
 };
 pub use workspace_path::{
     normalize as normalize_workspace_path, VirtualPath, WorkspacePathError, WorkspacePathPolicy,
+};
+// Re-exported for the host-facing trash slice and tests that address the trash
+// surface through the crate root; ABI v2 is unaffected (these are Rust items).
+#[allow(unused_imports)]
+pub(crate) use workspace_trash::{
+    RestoreCollisionPolicy, TrashDisplayStyle, WorkspaceTrashConfiguration,
+    WorkspaceTrashEmptyAuthorization, WorkspaceTrashFileSystem, WorkspaceTrashRecord,
+    WorkspaceTrashRestoreSummary,
 };
 
 pub use abi_v2::{

@@ -117,7 +117,7 @@ pub(crate) fn checked_directory_metadata_total(
 }
 
 #[cfg(windows)]
-mod windows {
+pub(crate) mod windows {
     use super::*;
     use crate::workspace_path::{resolve_windows_virtual_path, validate_windows_host_name};
     use std::collections::BTreeSet;
@@ -181,14 +181,14 @@ mod windows {
     }
 
     #[repr(C)]
-    struct ByHandleFileInformation {
-        file_attributes: u32,
+    pub(crate) struct ByHandleFileInformation {
+        pub(crate) file_attributes: u32,
         creation_time: FileTime,
         last_access_time: FileTime,
         last_write_time: FileTime,
-        volume_serial_number: u32,
-        file_size_high: u32,
-        file_size_low: u32,
+        pub(crate) volume_serial_number: u32,
+        pub(crate) file_size_high: u32,
+        pub(crate) file_size_low: u32,
         number_of_links: u32,
         file_index_high: u32,
         file_index_low: u32,
@@ -217,10 +217,10 @@ mod windows {
     /// is carried immediately after this header (at `size_of::<Self>()`).
     #[repr(C)]
     #[derive(Clone, Copy)]
-    struct FileRenameInfoHeader {
-        replace_if_exists: u8,
-        root_directory: Handle,
-        file_name_length: u32,
+    pub(crate) struct FileRenameInfoHeader {
+        pub(crate) replace_if_exists: u8,
+        pub(crate) root_directory: *mut c_void,
+        pub(crate) file_name_length: u32,
     }
 
     #[link(name = "kernel32")]
@@ -339,12 +339,16 @@ mod windows {
             Ok(paths)
         }
 
-        fn target_source(&self, path: &VirtualPath) -> PathBuf {
+        pub(crate) fn target_source(&self, path: &VirtualPath) -> PathBuf {
             let mut target = self.root_source.clone();
             for component in path.components() {
                 target.push(component);
             }
             target
+        }
+
+        pub(crate) fn root_handle(&self) -> &File {
+            &self.root_handle
         }
 
         fn open_target(
@@ -394,6 +398,37 @@ mod windows {
                 if self.policy.is_hidden_host_name(&component) {
                     return Err(WorkspacePathError::HiddenPath(requested_path.to_string()));
                 }
+            }
+            Ok(())
+        }
+
+        /// Internal counterpart to `authorize_final_relative_components`: every
+        /// relative component of the final handle path re-passes host-name
+        /// validation, but the hidden policy is intentionally NOT re-applied so
+        /// the `.msp` trash tree can be addressed by the trash slice.
+        pub(crate) fn validate_final_relative_components(
+            &self,
+            requested_path: &VirtualPath,
+            ancestor_final: &[u16],
+            target_final: &[u16],
+        ) -> Result<(), WorkspacePathError> {
+            let mut relative = &target_final[ancestor_final.len()..];
+            while relative.first() == Some(&(b'\\' as u16)) {
+                relative = &relative[1..];
+            }
+            for component in relative.split(|unit| *unit == b'\\' as u16) {
+                if component.is_empty() {
+                    continue;
+                }
+                let component =
+                    String::from_utf16(component).map_err(|_| WorkspacePathError::Io {
+                        path: requested_path.to_string(),
+                        operation: "resolve".to_string(),
+                    })?;
+                validate_windows_host_name(&component).map_err(|_| WorkspacePathError::Io {
+                    path: requested_path.to_string(),
+                    operation: "resolve".to_string(),
+                })?;
             }
             Ok(())
         }
@@ -503,7 +538,7 @@ mod windows {
     /// verifies the final handle path against the retained root handle, and
     /// re-verifies containment after the mutation.
     pub struct WindowsLocalWritableWorkspace {
-        read: WindowsLocalReadOnlyWorkspace,
+        pub(crate) read: WindowsLocalReadOnlyWorkspace,
     }
 
     impl WindowsLocalWritableWorkspace {
@@ -532,7 +567,7 @@ mod windows {
         /// Opens a target for mutation and verifies the open-then-verify
         /// contract: containment against the root handle, hidden-component
         /// reapplication, and reparse rejection.
-        fn open_for_write(
+        pub(crate) fn open_for_write(
             &self,
             path: &VirtualPath,
             desired_access: u32,
@@ -575,7 +610,7 @@ mod windows {
             Ok(())
         }
 
-        fn require_directory(
+        pub(crate) fn require_directory(
             &self,
             handle: &File,
             path: &VirtualPath,
@@ -589,7 +624,7 @@ mod windows {
             }
         }
 
-        fn open_parent_for_create(
+        pub(crate) fn open_parent_for_create(
             &self,
             parent: &VirtualPath,
             create_parent_directories: bool,
@@ -650,6 +685,117 @@ mod windows {
                             operation,
                         )?;
                         if let Err(error) = self.verify_write_handle(&current, &handle, operation) {
+                            let _ = set_delete_on_close(&handle);
+                            return Err(error);
+                        }
+                        self.require_directory(&handle, &current, operation)?;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(())
+        }
+
+        /// Opens a target under an internal (hidden `.msp`) path and applies the
+        /// open-then-verify contract without re-applying the hidden policy: the
+        /// `.msp` trash root is intentionally hidden from the model, so its
+        /// relative components must pass host-name validation but must NOT be
+        /// denied for being hidden. Containment against the retained root
+        /// handle and reparse rejection still apply.
+        fn open_internal_for_write(
+            &self,
+            path: &VirtualPath,
+            desired_access: u32,
+            creation_disposition: u32,
+            operation: &str,
+        ) -> Result<File, WorkspacePathError> {
+            let file = open_handle_with_disposition(
+                &self.read.target_source(path),
+                desired_access | FILE_READ_ATTRIBUTES,
+                creation_disposition,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                path.as_str(),
+                operation,
+            )?;
+            let root_final = final_path_for_handle(&self.read.root_handle, "/", operation)?;
+            self.verify_internal_handle(path, &file, &root_final, operation)?;
+            Ok(file)
+        }
+
+        /// The internal open-then-verify core check: the final handle path stays
+        /// inside `ancestor_final` (the workspace root or the verified trash
+        /// root), its relative components re-pass host-name validation, and the
+        /// object is not a reparse point. Unlike `verify_write_handle` the
+        /// hidden policy is intentionally not re-applied.
+        pub(crate) fn verify_internal_handle(
+            &self,
+            path: &VirtualPath,
+            file: &File,
+            ancestor_final: &[u16],
+            operation: &str,
+        ) -> Result<(), WorkspacePathError> {
+            let target_final = final_path_for_handle(file, path.as_str(), operation)?;
+            if !is_same_or_child_path(ancestor_final, &target_final) {
+                return Err(WorkspacePathError::AccessDenied(path.to_string()));
+            }
+            self.read
+                .validate_final_relative_components(path, ancestor_final, &target_final)?;
+            let information = information_for_handle(file, path.as_str(), operation)?;
+            if information.file_attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(WorkspacePathError::AccessDenied(path.to_string()));
+            }
+            Ok(())
+        }
+
+        /// Creates every missing directory component under the hidden `.msp`
+        /// tree, verifying each created handle via `verify_internal_handle`
+        /// before proceeding. A verification failure marks the orphan
+        /// delete-on-close so nothing escapes.
+        pub(crate) fn create_internal_intermediate_directories(
+            &self,
+            path: &VirtualPath,
+            operation: &str,
+        ) -> Result<(), WorkspacePathError> {
+            let mut current = VirtualPath::root();
+            for component in path.components() {
+                current =
+                    current
+                        .join_component(component)
+                        .map_err(|_| WorkspacePathError::Io {
+                            path: path.to_string(),
+                            operation: operation.to_string(),
+                        })?;
+                match self.open_internal_for_write(
+                    &current,
+                    PARENT_WRITE_ACCESS,
+                    OPEN_EXISTING,
+                    operation,
+                ) {
+                    Ok(handle) => {
+                        self.require_directory(&handle, &current, operation)?;
+                    }
+                    Err(WorkspacePathError::NotFound(_)) => {
+                        let created_path = extended_path_units(&self.read.target_source(&current));
+                        if unsafe { CreateDirectoryW(created_path.as_ptr(), ptr::null()) } == 0 {
+                            return Err(map_windows_error(
+                                unsafe { GetLastError() },
+                                current.as_str(),
+                                operation,
+                            ));
+                        }
+                        let handle = open_handle_with_disposition(
+                            &self.read.target_source(&current),
+                            PARENT_WRITE_ACCESS | DELETE,
+                            OPEN_EXISTING,
+                            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                            current.as_str(),
+                            operation,
+                        )?;
+                        let root_final =
+                            final_path_for_handle(&self.read.root_handle, "/", operation)?;
+                        if let Err(error) =
+                            self.verify_internal_handle(&current, &handle, &root_final, operation)
+                        {
                             let _ = set_delete_on_close(&handle);
                             return Err(error);
                         }
@@ -921,7 +1067,7 @@ mod windows {
         }
     }
 
-    fn query_directory(
+    pub(crate) fn query_directory(
         directory: &File,
         parent: &VirtualPath,
         volume_serial_number: u32,
@@ -1177,7 +1323,7 @@ mod windows {
         )
     }
 
-    fn open_handle_with_disposition(
+    pub(crate) fn open_handle_with_disposition(
         path: &Path,
         desired_access: u32,
         creation_disposition: u32,
@@ -1209,7 +1355,7 @@ mod windows {
 
     /// Marks `file` for delete-on-close. Returns the raw Win32 error so callers
     /// can map it to a `WorkspacePathError`.
-    fn set_delete_on_close(file: &File) -> Result<(), u32> {
+    pub(crate) fn set_delete_on_close(file: &File) -> Result<(), u32> {
         let delete_file: u8 = 1;
         let succeeded = unsafe {
             SetFileInformationByHandle(
@@ -1226,7 +1372,7 @@ mod windows {
         }
     }
 
-    fn parent_virtual_path(path: &VirtualPath) -> Option<VirtualPath> {
+    pub(crate) fn parent_virtual_path(path: &VirtualPath) -> Option<VirtualPath> {
         if path == &VirtualPath::root() {
             return None;
         }
@@ -1281,7 +1427,7 @@ mod windows {
         extended
     }
 
-    fn information_for_handle(
+    pub(crate) fn information_for_handle(
         file: &File,
         virtual_path: &str,
         operation: &str,
@@ -1299,7 +1445,7 @@ mod windows {
         }
     }
 
-    fn final_path_for_handle(
+    pub(crate) fn final_path_for_handle(
         file: &File,
         virtual_path: &str,
         operation: &str,
@@ -1369,7 +1515,7 @@ mod windows {
             <= 1
     }
 
-    fn is_same_or_child_path(root: &[u16], target: &[u16]) -> bool {
+    pub(crate) fn is_same_or_child_path(root: &[u16], target: &[u16]) -> bool {
         if target.len() < root.len() || !ordinal_prefix_equal_ignore_case(root, target) {
             return false;
         }
@@ -1387,7 +1533,7 @@ mod windows {
         unsafe { CompareStringOrdinal(prefix.as_ptr(), count, value.as_ptr(), count, 1) == 2 }
     }
 
-    fn raw_handle(file: &File) -> Handle {
+    pub(crate) fn raw_handle(file: &File) -> Handle {
         file.as_raw_handle() as Handle
     }
 
@@ -1411,7 +1557,11 @@ mod windows {
         i64::try_from(unix_ticks / 10_000).ok()
     }
 
-    fn map_windows_error(error: u32, virtual_path: &str, operation: &str) -> WorkspacePathError {
+    pub(crate) fn map_windows_error(
+        error: u32,
+        virtual_path: &str,
+        operation: &str,
+    ) -> WorkspacePathError {
         let virtual_path = virtual_path.to_string();
         match error {
             ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND => {
