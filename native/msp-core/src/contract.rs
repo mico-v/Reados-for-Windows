@@ -25,6 +25,12 @@ pub struct MspCommandRequest {
     pub dry_run: bool,
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
+    /// Byte input fed to the first pipeline stage of an executor-path command.
+    ///
+    /// Accepted during deserialization and omitted from serialization so it can
+    /// never enter audit/result JSON. Absent means empty standard input.
+    #[serde(default, skip_serializing)]
+    pub standard_input: Option<Vec<u8>>,
     /// Host-authorized local workspace root for the internal C ABI only.
     ///
     /// The value is accepted during deserialization but intentionally omitted
@@ -422,5 +428,22 @@ mod tests {
         let serialized = serde_json::to_string(&request).unwrap();
         assert!(!serialized.contains("workspaceRoot"));
         assert!(!serialized.contains(root));
+    }
+
+    #[test]
+    fn standard_input_is_accepted_but_never_serialized() {
+        let request: MspCommandRequest =
+            serde_json::from_str(r#"{"commandText":"cat","standardInput":[0,255,120]}"#).unwrap();
+        assert_eq!(
+            request.standard_input.as_deref(),
+            Some(&[0x00, 0xff, b'x'][..])
+        );
+
+        let serialized = serde_json::to_string(&request).unwrap();
+        assert!(!serialized.contains("standardInput"));
+
+        // A request without the field defaults to empty stdin.
+        let default: MspCommandRequest = serde_json::from_str(r#"{"commandText":"cat"}"#).unwrap();
+        assert_eq!(default.standard_input, None);
     }
 }

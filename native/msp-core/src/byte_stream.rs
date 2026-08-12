@@ -13,8 +13,11 @@
 
 #![allow(dead_code)]
 
-use crate::workspace_fs::ReadOnlyWorkspaceFileSystem;
+use crate::workspace_fs::{
+    ReadOnlyWorkspaceFileSystem, WritableWorkspaceFileSystem, WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES,
+};
 use crate::workspace_path::{VirtualPath, WorkspacePathError};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 
 /// Default chunk size for file-backed readers (mirrors upstream `chunkSize`).
@@ -38,6 +41,8 @@ pub(crate) enum StreamError {
     /// `Ok(None)` instead of surfacing this error.
     ReadAfterClose,
     Workspace(WorkspacePathError),
+    /// A command that only supports eager `run` was asked to stream.
+    NotStreamed,
 }
 
 /// Byte input stream contract (mirrors `MSPCommandInputStream`).
@@ -53,6 +58,26 @@ pub(crate) trait MspByteWriter {
     fn write(&mut self, data: &[u8]) -> Result<(), StreamError>;
 
     fn close_write(&mut self) -> Result<(), StreamError>;
+}
+
+impl<W: MspByteWriter + ?Sized> MspByteWriter for &mut W {
+    fn write(&mut self, data: &[u8]) -> Result<(), StreamError> {
+        (**self).write(data)
+    }
+
+    fn close_write(&mut self) -> Result<(), StreamError> {
+        (**self).close_write()
+    }
+}
+
+impl<R: MspByteReader + ?Sized> MspByteReader for &mut R {
+    fn read(&mut self, max_bytes: usize) -> Result<Option<Vec<u8>>, StreamError> {
+        (**self).read(max_bytes)
+    }
+
+    fn close_read(&mut self) -> Result<(), StreamError> {
+        (**self).close_read()
+    }
 }
 
 /// In-memory reader over an owned byte buffer (mirrors `MSPDataInputStream`).
@@ -254,6 +279,122 @@ impl MspByteReader for MspWorkspaceFileReader<'_> {
     fn close_read(&mut self) -> Result<(), StreamError> {
         self.closed = true;
         Ok(())
+    }
+}
+
+/// Workspace-file-backed writer (mirrors upstream redirection file sinks).
+///
+/// `open_truncate` either truncates the target (`>`, `>|`) or, in append mode,
+/// continues at the current file size (`>>`). Appending to a missing file
+/// creates it. Writes are chunked so every `write_file_range` call stays within
+/// `WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES`. No host path is ever recorded.
+pub(crate) struct MspWorkspaceFileWriter<'a> {
+    workspace: &'a dyn WritableWorkspaceFileSystem,
+    path: VirtualPath,
+    offset: u64,
+    closed: bool,
+}
+
+impl<'a> MspWorkspaceFileWriter<'a> {
+    pub(crate) fn open_truncate(
+        workspace: &'a dyn WritableWorkspaceFileSystem,
+        path: VirtualPath,
+        append: bool,
+    ) -> Result<Self, StreamError> {
+        let offset = if append {
+            match workspace.stat(&path) {
+                Ok(info) => info.size.unwrap_or(0),
+                Err(WorkspacePathError::NotFound(_)) => {
+                    workspace
+                        .create_file(&path, false, true)
+                        .map_err(StreamError::Workspace)?;
+                    0
+                }
+                Err(error) => return Err(StreamError::Workspace(error)),
+            }
+        } else {
+            workspace
+                .create_file(&path, true, true)
+                .map_err(StreamError::Workspace)?;
+            0
+        };
+        Ok(Self {
+            workspace,
+            path,
+            offset,
+            closed: false,
+        })
+    }
+
+    pub(crate) fn path(&self) -> &VirtualPath {
+        &self.path
+    }
+}
+
+impl MspByteWriter for MspWorkspaceFileWriter<'_> {
+    fn write(&mut self, data: &[u8]) -> Result<(), StreamError> {
+        if self.closed {
+            return Err(StreamError::WriteToClosed(
+                "Bad file descriptor".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Ok(());
+        }
+        let mut consumed = 0;
+        while consumed < data.len() {
+            let chunk = &data[consumed..];
+            let chunk = &chunk[..chunk
+                .len()
+                .min(WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES as usize)];
+            let written = self
+                .workspace
+                .write_file_range(&self.path, self.offset, chunk)
+                .map_err(StreamError::Workspace)?;
+            if written == 0 {
+                break;
+            }
+            self.offset = self
+                .offset
+                .checked_add(written)
+                .ok_or_else(|| workspace_write_io_error(&self.path))?;
+            consumed = consumed.saturating_add(written as usize);
+        }
+        Ok(())
+    }
+
+    fn close_write(&mut self) -> Result<(), StreamError> {
+        self.closed = true;
+        Ok(())
+    }
+}
+
+fn workspace_write_io_error(path: &VirtualPath) -> StreamError {
+    StreamError::Workspace(WorkspacePathError::Io {
+        path: path.to_string(),
+        operation: "write".to_string(),
+    })
+}
+
+/// Shared view of one file writer, letting stdout and stderr write through the
+/// same underlying file for `&>` / `&>>`.
+pub(crate) struct MspSharedFileWriter<'a, 'b> {
+    writer: &'b RefCell<MspWorkspaceFileWriter<'a>>,
+}
+
+impl<'a, 'b> MspSharedFileWriter<'a, 'b> {
+    pub(crate) fn new(writer: &'b RefCell<MspWorkspaceFileWriter<'a>>) -> Self {
+        Self { writer }
+    }
+}
+
+impl MspByteWriter for MspSharedFileWriter<'_, '_> {
+    fn write(&mut self, data: &[u8]) -> Result<(), StreamError> {
+        self.writer.borrow_mut().write(data)
+    }
+
+    fn close_write(&mut self) -> Result<(), StreamError> {
+        self.writer.borrow_mut().close_write()
     }
 }
 
@@ -594,5 +735,252 @@ mod tests {
         }
         assert_eq!(collected, content);
         assert_eq!(reader.read(16).unwrap(), None);
+    }
+
+    /// In-memory `WritableWorkspaceFileSystem` mock that records write call sizes.
+    struct TestWritableWorkspace {
+        policy: WorkspacePathPolicy,
+        files: RefCell<BTreeMap<VirtualPath, Vec<u8>>>,
+        write_sizes: RefCell<Vec<usize>>,
+    }
+
+    // The mock is exercised only from single-threaded tests.
+    unsafe impl Send for TestWritableWorkspace {}
+    unsafe impl Sync for TestWritableWorkspace {}
+
+    impl TestWritableWorkspace {
+        fn new() -> Self {
+            Self {
+                policy: WorkspacePathPolicy::new(Vec::<String>::new()),
+                files: RefCell::new(BTreeMap::new()),
+                write_sizes: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl ReadOnlyWorkspaceFileSystem for TestWritableWorkspace {
+        fn policy(&self) -> &WorkspacePathPolicy {
+            &self.policy
+        }
+
+        fn stat(&self, path: &VirtualPath) -> Result<WorkspaceFileInfo, WorkspacePathError> {
+            let files = self.files.borrow();
+            let data = files
+                .get(path)
+                .ok_or_else(|| WorkspacePathError::NotFound(path.to_string()))?;
+            Ok(WorkspaceFileInfo {
+                virtual_path: path.clone(),
+                file_type: WorkspaceFileType::RegularFile,
+                size: Some(data.len() as u64),
+                modification_time_unix_ms: Some(1_700_000_000_000),
+                file_identity: None,
+            })
+        }
+
+        fn list_directory(
+            &self,
+            path: &VirtualPath,
+        ) -> Result<Vec<WorkspaceDirectoryEntry>, WorkspacePathError> {
+            if self.files.borrow().contains_key(path) {
+                Err(WorkspacePathError::NotDirectory(path.to_string()))
+            } else {
+                Err(WorkspacePathError::NotFound(path.to_string()))
+            }
+        }
+
+        fn read_file_range(
+            &self,
+            path: &VirtualPath,
+            offset: u64,
+            length: usize,
+        ) -> Result<Vec<u8>, WorkspacePathError> {
+            let files = self.files.borrow();
+            let data = files
+                .get(path)
+                .ok_or_else(|| WorkspacePathError::NotFound(path.to_string()))?;
+            let start = usize::try_from(offset).unwrap_or(usize::MAX);
+            if start >= data.len() {
+                return Ok(Vec::new());
+            }
+            let end = start.saturating_add(length).min(data.len());
+            Ok(data[start..end].to_vec())
+        }
+    }
+
+    impl WritableWorkspaceFileSystem for TestWritableWorkspace {
+        fn create_file(
+            &self,
+            path: &VirtualPath,
+            overwrite: bool,
+            _create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            let mut files = self.files.borrow_mut();
+            if files.contains_key(path) && !overwrite {
+                Err(WorkspacePathError::AlreadyExists(path.to_string()))
+            } else {
+                files.insert(path.clone(), Vec::new());
+                Ok(())
+            }
+        }
+
+        fn write_file_range(
+            &self,
+            path: &VirtualPath,
+            offset: u64,
+            data: &[u8],
+        ) -> Result<u64, WorkspacePathError> {
+            self.write_sizes.borrow_mut().push(data.len());
+            let mut files = self.files.borrow_mut();
+            let entry = files
+                .get_mut(path)
+                .ok_or_else(|| WorkspacePathError::NotFound(path.to_string()))?;
+            let start = usize::try_from(offset)
+                .map_err(|_| WorkspacePathError::LimitExceeded(path.to_string()))?;
+            if start > entry.len() {
+                entry.resize(start, 0);
+            }
+            let end = start.saturating_add(data.len());
+            if end > entry.len() {
+                entry.resize(end, 0);
+            }
+            entry[start..end].copy_from_slice(data);
+            Ok(data.len() as u64)
+        }
+
+        fn rename(
+            &self,
+            _source: &VirtualPath,
+            _destination: &VirtualPath,
+            _overwrite: bool,
+            _create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            Err(WorkspacePathError::Unsupported("/".to_string()))
+        }
+
+        fn delete(&self, _path: &VirtualPath, _recursive: bool) -> Result<(), WorkspacePathError> {
+            Err(WorkspacePathError::Unsupported("/".to_string()))
+        }
+    }
+
+    fn resolve_test_path(raw: &str) -> VirtualPath {
+        VirtualPath::resolve(raw, "/").unwrap()
+    }
+
+    #[test]
+    fn file_writer_truncate_vs_append_and_offset_tracking() {
+        let workspace = TestWritableWorkspace::new();
+        let path = resolve_test_path("/log.txt");
+        workspace.create_file(&path, false, false).unwrap();
+        workspace.write_file_range(&path, 0, b"hello").unwrap();
+
+        // Append starts at the current size.
+        {
+            let mut writer =
+                MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), true).unwrap();
+            assert_eq!(writer.offset, 5);
+            writer.write(b" world").unwrap();
+            assert_eq!(writer.offset, 11);
+            writer.close_write().unwrap();
+        }
+        assert_eq!(
+            workspace.read_file_range(&path, 0, 64).unwrap(),
+            b"hello world"
+        );
+
+        // Truncate restarts from zero.
+        {
+            let mut writer =
+                MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), false).unwrap();
+            assert_eq!(writer.offset, 0);
+            writer.write(b"x").unwrap();
+            writer.close_write().unwrap();
+        }
+        assert_eq!(workspace.read_file_range(&path, 0, 64).unwrap(), b"x");
+    }
+
+    #[test]
+    fn file_writer_append_creates_missing_file_and_parents_path() {
+        let workspace = TestWritableWorkspace::new();
+        let path = resolve_test_path("/a/b/notes.txt");
+
+        let mut writer =
+            MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), true).unwrap();
+        writer.write(b"append").unwrap();
+        writer.close_write().unwrap();
+
+        assert_eq!(workspace.read_file_range(&path, 0, 64).unwrap(), b"append");
+    }
+
+    #[test]
+    fn file_writer_chunks_writes_at_the_workspace_range_limit() {
+        let workspace = TestWritableWorkspace::new();
+        let path = resolve_test_path("/blob.bin");
+        let content = vec![0xabu8; (WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES as usize) * 2 + 17];
+
+        let mut writer =
+            MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), false).unwrap();
+        writer.write(&content).unwrap();
+        writer.close_write().unwrap();
+
+        let calls = workspace.write_sizes.borrow();
+        assert!(
+            calls.len() >= 3,
+            "expected at least three range writes, got {calls:?}"
+        );
+        assert!(
+            calls
+                .iter()
+                .all(|size| *size <= WORKSPACE_MAXIMUM_WRITE_RANGE_BYTES as usize),
+            "write ranges must stay within the backend limit: {calls:?}"
+        );
+        drop(calls);
+        assert_eq!(
+            workspace
+                .read_file_range(&path, 0, content.len() + 1)
+                .unwrap(),
+            content
+        );
+    }
+
+    #[test]
+    fn file_writer_write_after_close_is_rejected_and_empty_writes_are_noop() {
+        let workspace = TestWritableWorkspace::new();
+        let path = resolve_test_path("/closed.txt");
+
+        let mut writer =
+            MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), false).unwrap();
+        writer.close_write().unwrap();
+        writer.close_write().unwrap();
+        assert_eq!(
+            writer.write(b"late"),
+            Err(StreamError::WriteToClosed(
+                "Bad file descriptor".to_string()
+            ))
+        );
+        assert_eq!(workspace.read_file_range(&path, 0, 64).unwrap().len(), 0);
+
+        let mut writer =
+            MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), false).unwrap();
+        writer.write(&[]).unwrap();
+        writer.close_write().unwrap();
+    }
+
+    #[test]
+    fn shared_file_writer_routes_both_streams_through_one_file() {
+        let workspace = TestWritableWorkspace::new();
+        let path = resolve_test_path("/combined.txt");
+
+        let writer =
+            MspWorkspaceFileWriter::open_truncate(&workspace, path.clone(), false).unwrap();
+        let cell = RefCell::new(writer);
+        let mut stdout = MspSharedFileWriter::new(&cell);
+        let mut stderr = MspSharedFileWriter::new(&cell);
+
+        stdout.write(b"out-").unwrap();
+        stderr.write(b"err").unwrap();
+        stdout.close_write().unwrap();
+        stderr.close_write().unwrap();
+
+        assert_eq!(workspace.read_file_range(&path, 0, 64).unwrap(), b"out-err");
     }
 }

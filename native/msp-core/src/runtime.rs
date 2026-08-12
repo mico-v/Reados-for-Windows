@@ -1,20 +1,24 @@
-use crate::command_core::{Command, CommandPack, Context, Invocation, Registry, RegistryError};
+use crate::byte_stream::{MspByteReader, MspByteWriter, StreamError, DEFAULT_STREAM_CHUNK_SIZE};
+use crate::command_core::{
+    run_registered_contained, Command, CommandPack, Context, Invocation, Registry, RegistryError,
+};
 use crate::contract::{
     unix_time_milliseconds, validate_contract_version, MspAuditRecord, MspCommandRequest,
     MspCommandResult, MspDiagnostic, MspPolicyDecision,
 };
 use crate::output_sanitizer::WindowsPathSanitizer;
-use crate::shell::parse;
+use crate::pipeline::execute_script;
+use crate::shell::{parse, ParsedCommandLine};
 use crate::workspace_fs::{
-    ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WorkspaceFileType,
+    ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WindowsLocalWritableWorkspace,
+    WorkspaceFileType, WritableWorkspaceFileSystem,
 };
 use crate::workspace_path::{self, WorkspacePathError};
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 const FILE_READ_CHUNK_SIZE: usize = 64 * 1024;
-const MAX_COMMAND_STDOUT_BYTES: usize = 2 * 1024 * 1024;
-const MAX_COMMAND_STDERR_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_COMMAND_STDOUT_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const MAX_COMMAND_STDERR_BYTES: usize = 64 * 1024;
 
 static DEFAULT_COMMAND_REGISTRY: OnceLock<Result<Registry, RegistryError>> = OnceLock::new();
 
@@ -79,36 +83,14 @@ pub fn execute_request(mut request: MspCommandRequest) -> MspCommandResult {
         }
     };
 
-    let command = match script.single_simple_command() {
-        Ok(command) => command,
-        Err(error) => {
-            let message = error.message.clone();
-            return complete(
-                &request,
-                None,
-                Vec::new(),
-                MspPolicyDecision::not_evaluated(),
-                started_at,
-                MspCommandResult::failure(
-                    error.exit_code,
-                    with_trailing_newline(&message),
-                    MspDiagnostic::error("msp.shell.unsupported_execution_form", message),
-                ),
-                &sanitizer,
-            );
-        }
-    };
-
-    let command_name = command.command_name.clone();
-    let arguments = command.arguments.clone();
     let registry = match default_registry() {
         Ok(registry) => registry,
         Err(_) => {
             let message = "native command registry is unavailable";
             return complete(
                 &request,
-                Some(command_name),
-                arguments,
+                None,
+                Vec::new(),
                 MspPolicyDecision::not_evaluated(),
                 started_at,
                 MspCommandResult::failure(
@@ -120,7 +102,28 @@ pub fn execute_request(mut request: MspCommandRequest) -> MspCommandResult {
             );
         }
     };
-    let Some(registered_command) = registry.command(&command_name) else {
+
+    // FAST path: a single simple command with no redirections keeps the legacy
+    // dispatch flow byte-for-byte.
+    if let Ok(single) = script.single_simple_command() {
+        if single.redirections.is_empty() {
+            return execute_fast_path(
+                &request,
+                single,
+                registry,
+                started_at,
+                &mut sanitizer_paths,
+                &mut sanitizer,
+            );
+        }
+    }
+
+    // EXECUTOR path: pipelines, lists, negation, and redirections.
+    let lead = &script.pipelines[0].commands[0];
+    let command_name = lead.command_name.clone();
+    let arguments = lead.arguments.clone();
+
+    let Some(_registered) = registry.command(&command_name) else {
         let message = format!("{command_name}: command not found");
         let mut diagnostic = MspDiagnostic::error("msp.command_not_found", message.clone());
         diagnostic.target = Some(command_name.clone());
@@ -137,74 +140,89 @@ pub fn execute_request(mut request: MspCommandRequest) -> MspCommandResult {
     };
 
     let policy_decision = MspPolicyDecision::allow();
-    let result = if !command.redirections.is_empty() {
-        let message = "shell: redirection execution is not implemented by this Rust slice";
-        MspCommandResult::failure(
-            2,
-            format!("{message}\n"),
-            MspDiagnostic::error("msp.shell.unsupported_redirection", message),
-        )
-    } else if request.dry_run {
-        MspCommandResult::success(format!("dry-run: {}", request.command_text))
-    } else {
-        let workspace = match request.workspace_root.as_deref() {
-            Some(root) => match WindowsLocalReadOnlyWorkspace::open(root) {
-                Ok(workspace) => {
-                    let paths = match workspace.root_sanitizer_paths() {
-                        Ok(paths) => paths,
-                        Err(error) => {
-                            let message = error.to_string();
-                            return complete(
-                                &request,
-                                Some(command_name),
-                                arguments,
-                                policy_decision,
-                                started_at,
-                                MspCommandResult::failure(
-                                    1,
-                                    format!("workspace: {message}\n"),
-                                    MspDiagnostic::error("msp.workspace.mount", message),
-                                ),
-                                &sanitizer,
-                            );
-                        }
-                    };
-                    sanitizer_paths.extend(paths);
-                    sanitizer = WindowsPathSanitizer::new(&sanitizer_paths);
-                    Some(workspace)
-                }
-                Err(error) => {
-                    let message = error.to_string();
-                    return complete(
-                        &request,
-                        Some(command_name),
-                        arguments,
-                        policy_decision,
-                        started_at,
-                        MspCommandResult::failure(
-                            1,
-                            format!("workspace: {message}\n"),
-                            MspDiagnostic::error("msp.workspace.mount", message),
-                        ),
-                        &sanitizer,
-                    );
-                }
-            },
-            None => None,
-        };
-        let invocation = Invocation::new(
-            &command.command_name,
-            &command.arguments,
-            &request.command_text,
+    if request.dry_run {
+        return complete(
+            &request,
+            Some(command_name),
+            arguments,
+            policy_decision,
+            started_at,
+            MspCommandResult::success(format!("dry-run: {}", request.command_text)),
+            &sanitizer,
         );
-        let context = Context::new(
-            &request.working_directory,
-            workspace
-                .as_ref()
-                .map(|workspace| workspace as &dyn ReadOnlyWorkspaceFileSystem),
-            registry,
-        );
-        execute_registered_command(registered_command, invocation, &context)
+    }
+
+    let writable = match request.workspace_root.as_deref() {
+        Some(root) => match WindowsLocalWritableWorkspace::open(root) {
+            Ok(workspace) => {
+                let paths = match workspace.read.root_sanitizer_paths() {
+                    Ok(paths) => paths,
+                    Err(error) => {
+                        let message = error.to_string();
+                        return complete(
+                            &request,
+                            Some(command_name),
+                            arguments,
+                            policy_decision,
+                            started_at,
+                            MspCommandResult::failure(
+                                1,
+                                format!("workspace: {message}\n"),
+                                MspDiagnostic::error("msp.workspace.mount", message),
+                            ),
+                            &sanitizer,
+                        );
+                    }
+                };
+                sanitizer_paths.extend(paths);
+                sanitizer = WindowsPathSanitizer::new(&sanitizer_paths);
+                Some(workspace)
+            }
+            Err(error) => {
+                let message = error.to_string();
+                return complete(
+                    &request,
+                    Some(command_name),
+                    arguments,
+                    policy_decision,
+                    started_at,
+                    MspCommandResult::failure(
+                        1,
+                        format!("workspace: {message}\n"),
+                        MspDiagnostic::error("msp.workspace.mount", message),
+                    ),
+                    &sanitizer,
+                );
+            }
+        },
+        None => None,
+    };
+
+    let context = Context::new(
+        &request.working_directory,
+        writable
+            .as_ref()
+            .map(|workspace| workspace as &dyn ReadOnlyWorkspaceFileSystem),
+        registry,
+    );
+    let pipeline_result = execute_script(
+        &script,
+        registry,
+        &context,
+        writable
+            .as_ref()
+            .map(|workspace| workspace as &dyn WritableWorkspaceFileSystem),
+        request.standard_input.clone().unwrap_or_default(),
+    );
+
+    let result = MspCommandResult {
+        contract_version: crate::contract::INTERNAL_CONTRACT_VERSION.to_string(),
+        stdout_data: pipeline_result.stdout_data,
+        stderr_data: pipeline_result.stderr_data,
+        exit_code: pipeline_result.exit_code,
+        state_change: None,
+        audit_records: Vec::new(),
+        diagnostics: pipeline_result.diagnostics,
     };
 
     complete(
@@ -218,6 +236,118 @@ pub fn execute_request(mut request: MspCommandRequest) -> MspCommandResult {
     )
 }
 
+/// The legacy single-command path, preserved exactly for no-redirection input.
+fn execute_fast_path(
+    request: &MspCommandRequest,
+    command: &ParsedCommandLine,
+    registry: &Registry,
+    started_at: u64,
+    sanitizer_paths: &mut Vec<String>,
+    sanitizer: &mut WindowsPathSanitizer,
+) -> MspCommandResult {
+    let command_name = command.command_name.clone();
+    let arguments = command.arguments.clone();
+
+    let Some(registered_command) = registry.command(&command_name) else {
+        let message = format!("{command_name}: command not found");
+        let mut diagnostic = MspDiagnostic::error("msp.command_not_found", message.clone());
+        diagnostic.target = Some(command_name.clone());
+        diagnostic.recovery_hint = Some("Use an enabled MSP command pack command.".to_string());
+        return complete(
+            request,
+            Some(command_name),
+            arguments,
+            MspPolicyDecision::not_evaluated(),
+            started_at,
+            MspCommandResult::failure(127, format!("{message}\n"), diagnostic),
+            sanitizer,
+        );
+    };
+
+    let policy_decision = MspPolicyDecision::allow();
+    if request.dry_run {
+        return complete(
+            request,
+            Some(command_name),
+            arguments,
+            policy_decision,
+            started_at,
+            MspCommandResult::success(format!("dry-run: {}", request.command_text)),
+            sanitizer,
+        );
+    }
+
+    let workspace = match request.workspace_root.as_deref() {
+        Some(root) => match WindowsLocalReadOnlyWorkspace::open(root) {
+            Ok(workspace) => {
+                let paths = match workspace.root_sanitizer_paths() {
+                    Ok(paths) => paths,
+                    Err(error) => {
+                        let message = error.to_string();
+                        return complete(
+                            request,
+                            Some(command_name),
+                            arguments,
+                            policy_decision,
+                            started_at,
+                            MspCommandResult::failure(
+                                1,
+                                format!("workspace: {message}\n"),
+                                MspDiagnostic::error("msp.workspace.mount", message),
+                            ),
+                            sanitizer,
+                        );
+                    }
+                };
+                sanitizer_paths.extend(paths);
+                *sanitizer = WindowsPathSanitizer::new(sanitizer_paths);
+                Some(workspace)
+            }
+            Err(error) => {
+                let message = error.to_string();
+                return complete(
+                    request,
+                    Some(command_name),
+                    arguments,
+                    policy_decision,
+                    started_at,
+                    MspCommandResult::failure(
+                        1,
+                        format!("workspace: {message}\n"),
+                        MspDiagnostic::error("msp.workspace.mount", message),
+                    ),
+                    sanitizer,
+                );
+            }
+        },
+        None => None,
+    };
+
+    let invocation = Invocation::new(
+        &command.command_name,
+        &command.arguments,
+        &request.command_text,
+    );
+    let context = Context::new(
+        &request.working_directory,
+        workspace
+            .as_ref()
+            .map(|workspace| workspace as &dyn ReadOnlyWorkspaceFileSystem),
+        registry,
+    );
+    let result = run_registered_contained(registered_command, invocation, &context);
+
+    complete(
+        request,
+        Some(command_name),
+        arguments,
+        policy_decision,
+        started_at,
+        result,
+        sanitizer,
+    )
+}
+
 fn default_registry() -> Result<&'static Registry, &'static RegistryError> {
     DEFAULT_COMMAND_REGISTRY
         .get_or_init(|| {
@@ -227,7 +357,7 @@ fn default_registry() -> Result<&'static Registry, &'static RegistryError> {
         .as_ref()
 }
 
-struct ReadOsCoreCommandPack;
+pub(crate) struct ReadOsCoreCommandPack;
 
 impl CommandPack for ReadOsCoreCommandPack {
     fn name(&self) -> &str {
@@ -237,7 +367,12 @@ impl CommandPack for ReadOsCoreCommandPack {
     fn commands(&self) -> Vec<Box<dyn Command>> {
         vec![
             FunctionCommand::boxed(":", "Return a successful status.", execute_success),
-            FunctionCommand::boxed("cat", "Read workspace file bytes.", execute_cat_command),
+            FunctionCommand::boxed_streaming(
+                "cat",
+                "Read workspace file bytes.",
+                execute_cat_command,
+                execute_cat_streamed,
+            ),
             FunctionCommand::boxed("echo", "Write arguments.", execute_echo_command),
             FunctionCommand::boxed("false", "Return a failing status.", execute_false_command),
             FunctionCommand::boxed("help", "List enabled commands.", execute_help_command),
@@ -257,10 +392,19 @@ type CommandHandler = for<'invocation, 'context, 'borrow> fn(
     &'borrow Context<'context>,
 ) -> MspCommandResult;
 
+type StreamCommandHandler = for<'invocation, 'context, 'borrow> fn(
+    Invocation<'invocation>,
+    &'borrow Context<'context>,
+    Option<&mut dyn MspByteReader>,
+    Option<&mut dyn MspByteWriter>,
+    Option<&mut dyn MspByteWriter>,
+) -> Result<i32, StreamError>;
+
 struct FunctionCommand {
     name: &'static str,
     summary: &'static str,
     handler: CommandHandler,
+    stream_handler: Option<StreamCommandHandler>,
 }
 
 impl FunctionCommand {
@@ -273,6 +417,21 @@ impl FunctionCommand {
             name,
             summary,
             handler,
+            stream_handler: None,
+        })
+    }
+
+    fn boxed_streaming(
+        name: &'static str,
+        summary: &'static str,
+        handler: CommandHandler,
+        stream_handler: StreamCommandHandler,
+    ) -> Box<dyn Command> {
+        Box::new(Self {
+            name,
+            summary,
+            handler,
+            stream_handler: Some(stream_handler),
         })
     }
 }
@@ -289,38 +448,24 @@ impl Command for FunctionCommand {
     fn run(&self, invocation: Invocation<'_>, context: &Context<'_>) -> MspCommandResult {
         (self.handler)(invocation, context)
     }
-}
 
-fn execute_registered_command(
-    command: &dyn Command,
-    invocation: Invocation<'_>,
-    context: &Context<'_>,
-) -> MspCommandResult {
-    // Raw input and summary are part of the upstream-aligned contract even
-    // though the current eight built-ins do not render them into output.
-    let _raw_input_length = invocation.raw_input().len();
-    match catch_unwind(AssertUnwindSafe(|| {
-        let _summary = command.summary();
-        command.run(invocation, context)
-    })) {
-        Ok(result) if result.audit_records.is_empty() => result,
-        Ok(_) => command_boundary_failure(
-            invocation.name(),
-            "registered command returned invalid audit evidence",
-            "msp.command.invalid_result",
-        ),
-        Err(_) => command_boundary_failure(
-            invocation.name(),
-            "registered command execution failed",
-            "msp.command.panic",
-        ),
+    fn run_streamed(
+        &self,
+        invocation: Invocation<'_>,
+        context: &Context<'_>,
+        stdin: Option<&mut dyn MspByteReader>,
+        stdout: Option<&mut dyn MspByteWriter>,
+        stderr: Option<&mut dyn MspByteWriter>,
+    ) -> Result<i32, StreamError> {
+        match self.stream_handler {
+            Some(handler) => handler(invocation, context, stdin, stdout, stderr),
+            None => Err(StreamError::NotStreamed),
+        }
     }
-}
 
-fn command_boundary_failure(command_name: &str, message: &str, code: &str) -> MspCommandResult {
-    let mut diagnostic = MspDiagnostic::error(code, message);
-    diagnostic.target = Some(command_name.to_string());
-    MspCommandResult::failure(1, format!("{message}\n"), diagnostic)
+    fn streams_stdio(&self) -> bool {
+        self.stream_handler.is_some()
+    }
 }
 
 fn execute_success(_invocation: Invocation<'_>, _context: &Context<'_>) -> MspCommandResult {
@@ -362,6 +507,93 @@ fn execute_cat_command(invocation: Invocation<'_>, context: &Context<'_>) -> Msp
         context.current_directory(),
         context.workspace(),
     )
+}
+
+/// Streamed `cat`: copies standard input to standard output in bounded chunks,
+/// or streams workspace file bytes for explicit operands. Workspace errors are
+/// surfaced as `StreamError::Workspace` so the executor can route them.
+fn execute_cat_streamed(
+    invocation: Invocation<'_>,
+    context: &Context<'_>,
+    mut stdin: Option<&mut dyn MspByteReader>,
+    mut stdout: Option<&mut dyn MspByteWriter>,
+    mut stderr: Option<&mut dyn MspByteWriter>,
+) -> Result<i32, StreamError> {
+    let mut options_finished = false;
+    let mut operands = Vec::new();
+    for argument in invocation.arguments() {
+        if !options_finished && argument == "--" {
+            options_finished = true;
+            continue;
+        }
+        if !options_finished && argument.starts_with('-') && argument != "-" {
+            let message =
+                format!("cat: {argument}: invalid option\ncat: usage: cat [--] [file ...]");
+            if let Some(stderr) = stderr.as_deref_mut() {
+                let _ = stderr.write(message.as_bytes());
+            }
+            return Ok(2);
+        }
+        operands.push(argument.as_str());
+    }
+
+    let workspace = context.workspace();
+
+    if operands.is_empty() {
+        if let (Some(stdin), Some(stdout)) = (stdin.as_deref_mut(), stdout.as_deref_mut()) {
+            copy_stdin_to_stdout(stdin, stdout)?;
+        }
+        return Ok(0);
+    }
+
+    for operand in operands {
+        if operand == "-" {
+            if let (Some(stdin), Some(stdout)) = (stdin.as_deref_mut(), stdout.as_deref_mut()) {
+                copy_stdin_to_stdout(stdin, stdout)?;
+            }
+            continue;
+        }
+        let Some(workspace) = workspace else {
+            let message = "cat: workspace is not mounted\n";
+            if let Some(stderr) = stderr.as_deref_mut() {
+                let _ = stderr.write(message.as_bytes());
+            }
+            return Ok(1);
+        };
+        let path = workspace
+            .resolve(operand, context.current_directory())
+            .map_err(StreamError::Workspace)?;
+        let mut offset = 0_u64;
+        loop {
+            let chunk = workspace
+                .read_file_range(&path, offset, DEFAULT_STREAM_CHUNK_SIZE)
+                .map_err(StreamError::Workspace)?;
+            let count = chunk.len();
+            if count == 0 {
+                break;
+            }
+            if let Some(stdout) = stdout.as_deref_mut() {
+                stdout.write(&chunk)?;
+            }
+            offset = offset.checked_add(count as u64).ok_or_else(|| {
+                StreamError::Workspace(WorkspacePathError::Io {
+                    path: path.to_string(),
+                    operation: "read".to_string(),
+                })
+            })?;
+        }
+    }
+    Ok(0)
+}
+
+fn copy_stdin_to_stdout(
+    stdin: &mut dyn MspByteReader,
+    stdout: &mut dyn MspByteWriter,
+) -> Result<(), StreamError> {
+    while let Some(chunk) = stdin.read(DEFAULT_STREAM_CHUNK_SIZE)? {
+        stdout.write(&chunk)?;
+    }
+    Ok(())
 }
 
 fn execute_ls(
@@ -893,18 +1125,14 @@ mod tests {
             crate::contract::MspPolicyDecisionKind::NotEvaluated
         );
 
+        // A `> file` redirection is now an executor-path command, but dry-run
+        // still short-circuits without touching the workspace or a file.
         let mut redirected = request("echo value > output.txt");
         redirected.dry_run = true;
         let redirected = execute_request(redirected);
-        assert_eq!(redirected.exit_code, 2);
-        assert_eq!(
-            redirected.stderr_text(),
-            "shell: redirection execution is not implemented by this Rust slice\n"
-        );
-        assert_eq!(
-            redirected.diagnostics[0].code,
-            "msp.shell.unsupported_redirection"
-        );
+        assert_eq!(redirected.exit_code, 0);
+        assert_eq!(redirected.stdout_text(), "dry-run: echo value > output.txt");
+        assert!(redirected.stderr_data.is_empty());
         assert_eq!(
             redirected.audit_records[0].policy_decision.kind,
             crate::contract::MspPolicyDecisionKind::Allow
@@ -968,7 +1196,7 @@ mod tests {
         let arguments = Vec::new();
         let invocation = Invocation::new("panic", &arguments, "panic");
         let context = Context::new("/", None, default_registry().unwrap());
-        let result = execute_registered_command(&PanicCommand, invocation, &context);
+        let result = run_registered_contained(&PanicCommand, invocation, &context);
 
         assert_eq!(result.exit_code, 1);
         assert_eq!(
@@ -1088,6 +1316,7 @@ mod tests {
             session_id: "session-1".to_string(),
             dry_run: false,
             environment: BTreeMap::new(),
+            standard_input: None,
             workspace_root: None,
         }
     }

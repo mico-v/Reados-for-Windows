@@ -4,6 +4,7 @@ mod command_core;
 mod composite_workspace;
 mod contract;
 mod output_sanitizer;
+mod pipeline;
 mod runtime;
 mod shell;
 mod workspace_callback;

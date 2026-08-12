@@ -1,7 +1,9 @@
-use crate::contract::MspCommandResult;
+use crate::byte_stream::{MspByteReader, MspByteWriter, StreamError};
+use crate::contract::{MspCommandResult, MspDiagnostic};
 use crate::workspace_fs::ReadOnlyWorkspaceFileSystem;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 const MAX_COMMAND_NAME_BYTES: usize = 64;
 const MAX_COMMAND_PACK_NAME_BYTES: usize = 64;
@@ -16,6 +18,26 @@ pub(crate) trait Command: Send + Sync + 'static {
     }
 
     fn run(&self, invocation: Invocation<'_>, context: &Context<'_>) -> MspCommandResult;
+
+    /// Runs the command against caller-supplied byte streams instead of
+    /// returning a fully materialized `MspCommandResult`. Commands that cannot
+    /// stream return `Err(StreamError::NotStreamed)` and the executor falls
+    /// back to the eager `run` path.
+    fn run_streamed(
+        &self,
+        _invocation: Invocation<'_>,
+        _context: &Context<'_>,
+        _stdin: Option<&mut dyn MspByteReader>,
+        _stdout: Option<&mut dyn MspByteWriter>,
+        _stderr: Option<&mut dyn MspByteWriter>,
+    ) -> Result<i32, StreamError> {
+        Err(StreamError::NotStreamed)
+    }
+
+    /// Whether `run_streamed` should be preferred for this command.
+    fn streams_stdio(&self) -> bool {
+        false
+    }
 }
 
 /// The parser-owned command data passed to a registered command.
@@ -251,6 +273,61 @@ fn validate_canonical_name(name: &str, maximum: usize) -> Result<(), NameError> 
         }
     }
     Ok(())
+}
+
+/// Runs a registered command's eager path inside a panic boundary.
+///
+/// A panic is contained as a contract failure, and a command that fabricates
+/// audit evidence is rejected. The returned result never carries host paths or
+/// panic detail strings.
+pub(crate) fn run_registered_contained(
+    command: &dyn Command,
+    invocation: Invocation<'_>,
+    context: &Context<'_>,
+) -> MspCommandResult {
+    let _raw_input_length = invocation.raw_input().len();
+    match catch_unwind(AssertUnwindSafe(|| {
+        let _summary = command.summary();
+        command.run(invocation, context)
+    })) {
+        Ok(result) if result.audit_records.is_empty() => result,
+        Ok(_) => command_boundary_failure(
+            invocation.name(),
+            "registered command returned invalid audit evidence",
+            "msp.command.invalid_result",
+        ),
+        Err(_) => command_boundary_failure(
+            invocation.name(),
+            "registered command execution failed",
+            "msp.command.panic",
+        ),
+    }
+}
+
+/// Runs a registered command's streamed path inside a panic boundary.
+///
+/// A panic degrades to `Err(StreamError::NotStreamed)` so the executor can fall
+/// back to the eager path instead of crashing the single-threaded core.
+pub(crate) fn run_streamed_contained(
+    command: &dyn Command,
+    invocation: Invocation<'_>,
+    context: &Context<'_>,
+    stdin: Option<&mut dyn MspByteReader>,
+    stdout: Option<&mut dyn MspByteWriter>,
+    stderr: Option<&mut dyn MspByteWriter>,
+) -> Result<i32, StreamError> {
+    match catch_unwind(AssertUnwindSafe(|| {
+        command.run_streamed(invocation, context, stdin, stdout, stderr)
+    })) {
+        Ok(result) => result,
+        Err(_) => Err(StreamError::NotStreamed),
+    }
+}
+
+fn command_boundary_failure(command_name: &str, message: &str, code: &str) -> MspCommandResult {
+    let mut diagnostic = MspDiagnostic::error(code, message);
+    diagnostic.target = Some(command_name.to_string());
+    MspCommandResult::failure(1, format!("{message}\n"), diagnostic)
 }
 
 #[cfg(test)]
