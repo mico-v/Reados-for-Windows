@@ -57,7 +57,7 @@ native/
 MSP/                 nested local reference only; ignored and not packaged
 ```
 
-Verified on 2026-08-12: 77 Rust tests, 69 Core tests, 303 Hosting tests (including 3/3 real release-DLL operations), and 411 App tests (783 managed total under the full verifier), plus native binary/FFI verification and a zero-warning/zero-error solution build. The Hosting count includes 3/3 real release-DLL operations; the 3 native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
+Verified on 2026-08-12: 93 Rust tests, 69 Core tests, 318 Hosting tests (including real release-DLL operations), and 411 App tests (798 managed total under the full verifier), plus native binary/FFI verification and a zero-warning/zero-error solution build. The Hosting count includes the real release-DLL operations; the native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`. The registry candidate release DLL SHA256 is `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 
 The latest completed full package gate is `package-windows.ps1 -StopExisting -Version 0.1.0-native-command-registry-verified`. It verifies publish, the seven-export static-CRT native binary, staged ABI v2/v1 FFI, package contents, direct packaged Rust `ls /` and binary `cat /workspace.json`, and product-host Rust proxy execution for `pwd`, `echo ''`, and `echo -n reados-native-proxy`. Packaged runtime evidence reports `LengthDelimitedV2` 2.0, 532 ZIP entries, `RawMSP`/PDB/`.git` counts of zero, all five `nativeCommands` exiting 0, an audit count of 1 for each proxy, cleanup with zero native-run residue, and ZIP creation at `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`.
 
@@ -167,7 +167,7 @@ IAsyncEnumerable<MspCommandEvent> ExecuteStreamingAsync(
 
 ReadOS also exposes `ExecuteApprovedStreamingAsync(...)` to replay an operator-approved mutating command while retaining the same lifecycle/progress event stream.
 
-`native_command_core_registry_v1` is complete: Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace hard-coded dispatch without changing output bytes, exit codes, diagnostics, audit evidence, fixtures, ABI behavior, or product routing. The next Hosting/core requirement is `native_mixed_workspace_read_v1`: define the lifetime-safe callback/handle boundary needed to bridge the app-owned virtual workspace while raw P/Invoke, native handles, and native-library paths remain outside App/domain code.
+`native_command_core_registry_v1` is complete: Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace hard-coded dispatch without changing output bytes, exit codes, diagnostics, audit evidence, fixtures, ABI behavior, or product routing. `native_mixed_workspace_read_v1` is complete: ABI v2 operation 4 (`WORKSPACE_INVOKE`) defines the lifetime-safe callback/handle boundary that bridges the app-owned virtual workspace into Rust (`CallbackReadOnlyWorkspace` + composite), with raw P/Invoke, native handles, and native-library paths still confined to the Hosting `Native` adapter rather than App/domain code.
 
 ## Phase 3: Policy And Mutating Commands
 
@@ -237,7 +237,7 @@ Current verified foundation:
 - static MSVC CRT release output with native export/dependency verification;
 - the Hosting native adapter described above, including real release-DLL `pwd`/parse/path/WorkspaceFS integration tests with no skip under the full verifier;
 - `native_pwd_echo_adoption_v1`: managed `MspRuntime` owns parse, policy/approval, dry-run, streaming, terminal result, cancellation projection, and exactly-once product audit; only canonical lowercase `pwd`/`echo` execute through one lazy Rust proxy, case variants fail closed without managed fallback, and `ls`/`cat`/`help` plus app-domain commands remain managed;
-- `native_abi_v2_handshake_v1`: seven required DLL exports, a fixed 32-byte `2.0` handshake with contract `0x324D534F44414552` and capabilities `0xF`, length-delimited pointer/`ulong` buffers, embedded-NUL preservation, fail-closed partial-export/handshake handling, allocator separation, free-exactly-once ownership, serialized invoke/dispose, and runtime ABI evidence;
+- `native_abi_v2_handshake_v1`: seven required DLL exports, a fixed 32-byte `2.0` handshake with contract `0x324D534F44414552` and capabilities `0x1F` (required `0xF`), length-delimited pointer/`ulong` buffers, embedded-NUL preservation, fail-closed partial-export/handshake handling, allocator separation, free-exactly-once ownership, serialized invoke/dispose, and runtime ABI evidence;
 - `native_command_core_registry_v1`: validated `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts, deterministic registry names and `help`, duplicate/invalid registration rejection, unknown lookup, pack composition, and a passing 12-case baseline/candidate ABI v1/v2 differential with no observable command or product-routing drift;
 - package automation that builds and copies `msp_core.dll`, supplies license/NOTICE/provenance, rejects raw `MSP/`, `.git`, credentials/private state, PDBs, and dynamic CRT markers, runs staged v2/v1 FFI, direct native `ls`/`cat` on an isolated fixed-NTFS temporary root, exercises host-proxy `pwd`, `echo ''`, and `echo -n reados-native-proxy` with one managed audit each, requires ABI v2 runtime evidence, cleans in `finally`, and produces the verified ABI v2 ZIP.
 
@@ -267,7 +267,7 @@ Current limitations are explicit: the synchronous v1 FFI cannot interrupt work a
 - `msp_invoke_v2` and `msp_free_buffer_v2` use explicit pointer/`ulong` lengths. Embedded NUL requests are not truncated, and v1/v2 allocations and free exports never mix.
 - Hosting selects v1 only if all three v2 exports are absent. Any partial set, ABI size/version/contract/capability drift, malformed response, or oversized result fails closed. Every native-return path frees exactly once, and invoke/dispose use the same lock.
 - Parse/Execute/Normalize request caps are 128 KiB/1 MiB/1 MiB; response caps are 16 MiB/64 MiB/1 MiB. The Rust bounded writer stops before reserve/copy, closing the measured 54.5x Parse amplification denial-of-service path.
-- Runtime ABI information is exposed for package smoke. Rust/native verification, 303 Hosting tests, 3/3 real release-DLL operations, static CRT, the full solution verifier, staged v2/v1 FFI, and the no-skip ABI v2 packaged-process gate pass.
+- Runtime ABI information is exposed for package smoke. Rust/native verification, 318 Hosting tests, real release-DLL operations, static CRT, the full solution verifier, staged v2/v1 FFI, and the no-skip ABI v2 packaged-process gate pass.
 
 ### Completed runtime gate: `native_command_core_registry_v1`
 
@@ -276,14 +276,14 @@ Current limitations are explicit: the synchronous v1 FFI cannot interrupt work a
 - Currently implemented output bytes, exit codes, diagnostics, audit evidence, state changes, conformance fixtures, ABI behavior, and managed product routing remain unchanged.
 - Sixty-six Rust tests and the 12-case baseline/candidate ABI v1/v2 differential pass against candidate DLL SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A` without adding commands, streams, sessions, pipelines, processes, or filesystem behavior.
 
-### Next adoption gate: `native_mixed_workspace_read_v1`
+### Completed adoption gate: `native_mixed_workspace_read_v1`
 
-- Add capability-based read-only WorkspaceFS traits and deterministic longest-prefix mount routing with virtual-path rebasing.
-- Define an opaque-handle and callback boundary for the app-owned virtual workspace, including ownership, disposal, cancellation, concurrency, and .NET delegate-lifetime rules before enabling managed callbacks.
-- Preserve direct fixed-local-NTFS reads, `VirtualPath`, path sanitization, ABI v2 negotiation/ownership, and managed policy/audit authority.
-- Do not migrate product `ls`/`cat` until direct, virtual, and mixed read semantics pass focused, differential, real-DLL, and package-level evidence.
+- Capability-based read-only WorkspaceFS traits (`WorkspaceReadCapabilities`) and deterministic longest-prefix mount routing/rebasing (`CompositeReadOnlyWorkspace`) are implemented.
+- The opaque-handle and callback boundary for the app-owned virtual workspace is implemented as ABI v2 operation 4 (`WORKSPACE_INVOKE`): the managed `MspNativeWorkspaceHostV1` table (invoke/free/is_cancelled) + mount topology is carried into Rust, which serves `ReadOnlyWorkspaceFileSystem` through a `CallbackReadOnlyWorkspace` with strict bounds, panic containment, cancellation, free-exactly-once ownership, and host-path disclosure rejection.
+- Direct fixed-local-NTFS reads, `VirtualPath`, path sanitization, ABI v2 negotiation/ownership, and managed policy/audit authority are preserved.
+- Product `ls`/`cat` are NOT migrated; direct, virtual, and mixed read semantics are proven by Rust unit tests (93 total), managed adapter tests, and a real release-DLL differential test (in-memory virtual workspace + `/media` mount through the real DLL).
 
-Dependency-ordered follow-up slices are `native_stream_core_v1` before pipeline execution, then mutable WorkspaceFS/trash, pipelines/redirection, exec sessions, and finally Windows ConPTY/Job Objects. These are separate review and release gates, not one migration PR.
+The next dependency-ordered slice is `native_stream_core_v1` before pipeline execution, then mutable WorkspaceFS/trash, pipelines/redirection, exec sessions, and finally Windows ConPTY/Job Objects. These are separate review and release gates, not one migration PR.
 
 ### Compatibility Matrix
 
@@ -331,7 +331,7 @@ Every command added to MSP must have:
 
 ## Verification
 
-Run managed tests (verified baseline: 69 + 303 + 411 = 783):
+Run managed tests (verified baseline: 69 + 318 + 411 = 798):
 
 ```powershell
 dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
@@ -347,4 +347,4 @@ Run the full MSP verification path:
 
 The full script fails immediately on Rust format/test/clippy/release build, native binary/FFI smoke, restore, any of the three managed test projects, real release-DLL adapter tests, or solution build. `.github/workflows/windows-ci.yml` runs this verifier on Windows using the SDK pinned by `global.json`. The release package script must additionally prove that the raw `MSP/` reference repository is absent while required native binary, license, NOTICE, and provenance files are present.
 
-Current verified result on 2026-08-12: 77 Rust tests, native binary/FFI smoke, 69 Core tests, 303 Hosting tests, 411 App tests (783 managed total under the full verifier), and a zero-warning/zero-error solution build. The static-CRT release DLL exposes all seven required exports, has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, real-DLL ABI v2 Execute/Parse/Normalize passes 3/3, and the 12-case baseline/candidate ABI v1/v2 differential passes. The latest completed no-skip package gate is `0.1.0-native-command-registry-verified`, producing `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip` with staged/package smoke, `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five successful native commands, and three proxy audit counts of 1.
+Current verified result on 2026-08-12: 93 Rust tests, native binary/FFI smoke, 69 Core tests, 318 Hosting tests, 411 App tests (798 managed total under the full verifier), and a zero-warning/zero-error solution build. The static-CRT release DLL exposes all seven required exports, has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, real-DLL ABI v2 Execute/Parse/Normalize passes 3/3 plus the workspace-read differential, reports capabilities `0x1F` (required `0xF`), and the 12-case baseline/candidate ABI v1/v2 differential passes. The latest completed no-skip package gate is `0.1.0-native-command-registry-verified`, producing `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip` with staged/package smoke, `LengthDelimitedV2` 2.0, 532 entries, `RawMSP`/PDB/`.git` counts of zero, five successful native commands, and three proxy audit counts of 1.
