@@ -1,4 +1,5 @@
 mod abi_v2;
+mod byte_stream;
 mod command_core;
 mod composite_workspace;
 mod contract;
