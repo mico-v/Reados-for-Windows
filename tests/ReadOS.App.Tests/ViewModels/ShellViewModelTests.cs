@@ -1255,6 +1255,73 @@ public sealed class ShellViewModelTests
         Assert.Equal(2, conversation.Messages.Count);
     }
 
+    [Fact]
+    public async Task Chat_provider_failure_withholds_provider_response_details()
+    {
+        var workspace = new WorkspaceState();
+        workspace.Projects.Add(new ProjectItem
+        {
+            Id = "project-1",
+            Name = "Project"
+        });
+        const string sensitiveFragment = "provider echoed sk-live-secret-12345";
+        var chatService = new TestAiChatService
+        {
+            Response = "unused",
+            Failure = new AiChatServiceException($"provider returned 500: {sensitiveFragment}")
+        };
+        var viewModel = new ShellViewModel(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            new TestFileDialogService(),
+            chatService);
+
+        await viewModel.InitializeAsync();
+        viewModel.ComposerDraft = "explain the document";
+
+        await viewModel.SendPromptCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(sensitiveFragment, viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("已隐藏提供方响应详情", viewModel.StatusMessage, StringComparison.Ordinal);
+        var conversation = Assert.Single(workspace.Projects[0].StandaloneConversations);
+        var failureMessage = Assert.Single(conversation.Messages, message => message.Role == ChatRole.Assistant);
+        Assert.DoesNotContain(sensitiveFragment, failureMessage.Content, StringComparison.Ordinal);
+        Assert.Contains("已隐藏提供方响应详情", failureMessage.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task File_attachment_with_crafted_host_path_does_not_read_arbitrary_file()
+    {
+        var workspace = new WorkspaceState();
+        workspace.Projects.Add(new ProjectItem
+        {
+            Id = "project-1",
+            Name = "Project"
+        });
+        var chatService = new TestAiChatService();
+        var viewModel = new ShellViewModel(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            new TestFileDialogService(),
+            chatService);
+
+        await viewModel.InitializeAsync();
+        viewModel.PendingAttachments.Add(new ChatAttachment
+        {
+            Id = "crafted-attachment",
+            Kind = AttachmentKind.File,
+            Title = "Crafted",
+            FilePath = "C:\\secret.txt",
+            DocumentId = string.Empty
+        });
+
+        await viewModel.SendPromptCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, Assert.Single(chatService.LastAttachmentTexts));
+        var conversation = Assert.Single(workspace.Projects[0].StandaloneConversations);
+        Assert.Equal(2, conversation.Messages.Count);
+    }
+
     private sealed class TestWorkspaceStore : IWorkspaceStore
     {
         private readonly WorkspaceState workspace;
@@ -1391,6 +1458,8 @@ public sealed class ShellViewModelTests
     {
         public string Response { get; set; } = "unused";
 
+        public Exception? Failure { get; set; }
+
         public string LastPrompt { get; private set; } = string.Empty;
 
         public IReadOnlyList<ChatAttachment> LastAttachments { get; private set; } = Array.Empty<ChatAttachment>();
@@ -1409,6 +1478,11 @@ public sealed class ShellViewModelTests
             bool allowMspCommandRequests = true,
             CancellationToken cancellationToken = default)
         {
+            if (Failure is not null)
+            {
+                throw Failure;
+            }
+
             LastPrompt = userPrompt;
             var capturedAttachments = attachments.ToArray();
             LastAttachments = capturedAttachments;

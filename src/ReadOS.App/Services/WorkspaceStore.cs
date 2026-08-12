@@ -293,12 +293,34 @@ public sealed class WorkspaceStore : IWorkspaceStore
 
     public string GetAbsolutePath(LibraryItem item)
     {
-        if (Path.IsPathFullyQualified(item.RelativePath))
+        if (!TryResolveConfinedPath(item.RelativePath, out var fullPath))
         {
-            return item.RelativePath;
+            throw new InvalidOperationException($"workspace.path.not_confined: {item.RelativePath}");
         }
 
-        return Path.GetFullPath(Path.Combine(LibraryRoot, item.RelativePath));
+        return fullPath;
+    }
+
+    private bool TryResolveConfinedPath(string relativePath, out string fullPath)
+    {
+        fullPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(relativePath) || relativePath.IndexOf('\0') >= 0)
+        {
+            return false;
+        }
+
+        if (Path.IsPathFullyQualified(relativePath) ||
+            Path.IsPathRooted(relativePath) ||
+            (relativePath.Length >= 2 &&
+                char.IsLetter(relativePath[0]) &&
+                relativePath[1] == ':'))
+        {
+            return false;
+        }
+
+        fullPath = Path.GetFullPath(Path.Combine(LibraryRoot, relativePath));
+        return fullPath.StartsWith(LibraryRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            fullPath.Equals(LibraryRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     private static WorkspaceState CreateInitialState()
@@ -319,7 +341,7 @@ public sealed class WorkspaceStore : IWorkspaceStore
         return state;
     }
 
-    private static void EnsureStateShape(WorkspaceState state)
+    private void EnsureStateShape(WorkspaceState state)
     {
         if (state.Projects.Count == 0)
         {
@@ -328,6 +350,13 @@ public sealed class WorkspaceStore : IWorkspaceStore
 
         foreach (var project in state.Projects)
         {
+            foreach (var item in project.LibraryItems
+                .Where(item => !TryResolveConfinedPath(item.RelativePath, out _))
+                .ToArray())
+            {
+                project.LibraryItems.Remove(item);
+            }
+
             if (project.StandaloneConversations.Count == 0)
             {
                 project.StandaloneConversations.Add(new ChatConversation

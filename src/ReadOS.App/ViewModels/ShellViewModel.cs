@@ -33,6 +33,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private const int MaxMspTranscriptEntries = 200;
     private const int MaxPreparedMspCommands = 8;
     private const string DefaultArtifactRefinementInstruction = "tighten caveats and keep citations";
+    private const string ChatModelProviderFailureMessage = "请求失败：模型提供方调用失败。为保护请求与凭据数据，已隐藏提供方响应详情。";
 
     private readonly IWorkspaceStore workspaceStore;
     private readonly IPdfDocumentService pdfService;
@@ -1724,9 +1725,15 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SelectedConversation.Messages.Add(chatTurnService.CreateFailureMessage(ex, DateTimeOffset.Now));
+            var failureMessage = ex is AiChatServiceException
+                ? ChatModelProviderFailureMessage
+                : $"请求失败：{ex.Message}";
+            SelectedConversation.Messages.Add(
+                ex is AiChatServiceException
+                    ? chatTurnService.CreateReadOsMessage(failureMessage, DateTimeOffset.Now)
+                    : chatTurnService.CreateFailureMessage(ex, DateTimeOffset.Now));
             RefreshChatMessages();
-            StatusMessage = $"请求失败：{ex.Message}";
+            StatusMessage = failureMessage;
         }
         finally
         {
@@ -2750,9 +2757,7 @@ public sealed partial class ShellViewModel : ObservableObject
                     string.Equals(item.Path, attachment.FilePath, StringComparison.OrdinalIgnoreCase))?.Content ?? string.Empty;
             }
 
-            var path = !string.IsNullOrWhiteSpace(attachment.FilePath)
-                ? attachment.FilePath
-                : document is null ? string.Empty : workspaceStore.GetAbsolutePath(document);
+            var path = document is null ? string.Empty : workspaceStore.GetAbsolutePath(document);
             return File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
         }
 

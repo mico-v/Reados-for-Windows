@@ -375,8 +375,11 @@ internal sealed class ReadOsPackageSmokeService
             }
 
             if (!commandResult.Stdout.Contains(
-                options.WorkspaceRoot,
-                StringComparison.OrdinalIgnoreCase))
+                "workspaceRoot\t<workspace>",
+                StringComparison.OrdinalIgnoreCase) ||
+                !commandResult.Stdout.Contains(
+                    "libraryRoot\t<library>",
+                    StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
                     "The package smoke MSP host did not use the isolated workspace root.");

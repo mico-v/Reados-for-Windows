@@ -172,7 +172,7 @@ internal sealed class ReadOsReaderAttachmentService
             Kind = AttachmentKind.File,
             DocumentId = document.Id,
             Title = $"{document.Name} · 全文",
-            FilePath = documentPath
+            FilePath = string.Empty
         };
     }
 

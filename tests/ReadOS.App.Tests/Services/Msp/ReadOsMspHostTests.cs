@@ -83,7 +83,7 @@ public sealed class ReadOsMspHostTests
             hostRuntime.RequestFactory.Create("workspace info"));
 
         Assert.True(result.Succeeded, result.Stderr);
-        Assert.Contains("workspaceRoot\tV:\\ReadOS-Test", result.Stdout);
+        Assert.Contains("workspaceRoot\t<workspace>", result.Stdout);
         var audit = Assert.Single(result.AuditRecords);
         Assert.Equal("reados-agent", audit.Actor);
         Assert.Equal(ReadOsMspHost.DefaultSessionId, audit.SessionId);
@@ -155,7 +155,7 @@ public sealed class ReadOsMspHostTests
         var result = await host.ExecuteAsync("workspace info", "test-agent");
 
         Assert.True(result.Succeeded, result.Stderr);
-        Assert.Contains("workspaceRoot\tV:\\ReadOS-Test", result.Stdout);
+        Assert.Contains("workspaceRoot\t<workspace>", result.Stdout);
         Assert.Contains("documents\t1", result.Stdout);
     }
 

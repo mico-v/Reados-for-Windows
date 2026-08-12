@@ -38,7 +38,7 @@ public sealed class ReadOsReaderAttachmentServiceTests
         Assert.Equal(AttachmentKind.File, attachment.Kind);
         Assert.Equal("doc", attachment.DocumentId);
         Assert.Equal("Notes.md · 全文", attachment.Title);
-        Assert.Equal("notes.md", attachment.FilePath);
+        Assert.Equal(string.Empty, attachment.FilePath);
     }
 
     [Fact]

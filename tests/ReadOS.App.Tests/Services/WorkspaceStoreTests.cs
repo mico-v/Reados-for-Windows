@@ -175,6 +175,76 @@ public sealed class WorkspaceStoreTests
                 entry.FullName.EndsWith(".dpapi", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void GetAbsolutePath_rejects_unconfined_paths_and_resolves_confined_paths()
+    {
+        using var directory = new TemporaryDirectory();
+        var workspaceRoot = Path.Combine(directory.Path, "workspace");
+        var store = CreateStore(workspaceRoot, new TestProviderCredentialStore());
+
+        var escapingItem = new LibraryItem
+        {
+            RelativePath = @"..\..\secret"
+        };
+        var escapingException = Assert.Throws<InvalidOperationException>(() => store.GetAbsolutePath(escapingItem));
+        Assert.Contains("workspace.path.not_confined", escapingException.Message);
+
+        var absoluteItem = new LibraryItem
+        {
+            RelativePath = @"C:\Windows"
+        };
+        var absoluteException = Assert.Throws<InvalidOperationException>(() => store.GetAbsolutePath(absoluteItem));
+        Assert.Contains("workspace.path.not_confined", absoluteException.Message);
+
+        var confinedItem = new LibraryItem
+        {
+            RelativePath = Path.Combine("docs", "guide.pdf")
+        };
+        var resolved = store.GetAbsolutePath(confinedItem);
+        var expected = Path.GetFullPath(Path.Combine(store.LibraryRoot, "docs", "guide.pdf"));
+        Assert.Equal(expected, resolved);
+        Assert.StartsWith(
+            store.LibraryRoot + Path.DirectorySeparatorChar,
+            resolved,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Load_drops_crafted_library_items_that_escape_the_library_root()
+    {
+        using var directory = new TemporaryDirectory();
+        var workspaceRoot = Path.Combine(directory.Path, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+        var statePath = Path.Combine(workspaceRoot, "workspace.json");
+        await File.WriteAllTextAsync(
+            statePath,
+            """
+            {
+              "settings": { "useOfflineResponses": false },
+              "projects": [
+                {
+                  "name": "Crafted",
+                  "libraryItems": [
+                    { "name": "escape", "relativePath": "..\\..\\secret" },
+                    { "name": "absolute", "relativePath": "C:\\Windows" },
+                    { "name": "confined", "relativePath": "docs\\guide.pdf" }
+                  ]
+                }
+              ]
+            }
+            """);
+        var store = CreateStore(workspaceRoot, new TestProviderCredentialStore());
+
+        var state = await store.LoadAsync();
+
+        var project = Assert.Single(state.Projects);
+        var item = Assert.Single(project.LibraryItems);
+        Assert.Equal("confined", item.Name);
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(store.LibraryRoot, "docs", "guide.pdf")),
+            store.GetAbsolutePath(item));
+    }
+
     private static WorkspaceStore CreateStore(
         string workspaceRoot,
         IProviderCredentialStore credentialStore)

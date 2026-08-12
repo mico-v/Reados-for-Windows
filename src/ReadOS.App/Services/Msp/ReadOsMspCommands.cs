@@ -49,8 +49,8 @@ internal sealed class ReadOsWorkspaceCommand : IMspCommand
 
         var documents = workspace.Projects.SelectMany(project => project.LibraryItems).Where(item => item.Kind != LibraryItemKind.Folder).ToArray();
         var builder = new StringBuilder();
-        builder.AppendLine($"workspaceRoot\t{workspaceStore.WorkspaceRoot}");
-        builder.AppendLine($"libraryRoot\t{workspaceStore.LibraryRoot}");
+        builder.AppendLine("workspaceRoot\t<workspace>");
+        builder.AppendLine("libraryRoot\t<library>");
         builder.AppendLine($"projects\t{workspace.Projects.Count}");
         builder.AppendLine($"documents\t{documents.Length}");
         builder.AppendLine($"pdfs\t{documents.Count(item => item.Kind == LibraryItemKind.Pdf)}");
@@ -2532,8 +2532,8 @@ internal sealed class ReadOsWindowsCommand : IMspCommand
         var normalized = target.ToLowerInvariant();
         var path = normalized switch
         {
-            "workspace" => workspaceStore.WorkspaceRoot,
-            "library" => workspaceStore.LibraryRoot,
+            "workspace" => "/workspace",
+            "library" => "/library",
             "current" => CurrentDocumentPath(),
             _ => null
         };
@@ -2546,7 +2546,7 @@ internal sealed class ReadOsWindowsCommand : IMspCommand
     private string? CurrentDocumentPath()
     {
         var selected = selectedDocumentProvider();
-        return selected is null ? null : workspaceStore.GetAbsolutePath(selected);
+        return selected is null ? null : $"/documents/{selected.Id}";
     }
 }
 
