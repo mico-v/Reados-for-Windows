@@ -520,6 +520,7 @@ fn rebase_backend_error(
         WorkspacePathError::IsDirectory(path) => WorkspacePathError::IsDirectory(rebase(path)),
         WorkspacePathError::LimitExceeded(path) => WorkspacePathError::LimitExceeded(rebase(path)),
         WorkspacePathError::Unsupported(path) => WorkspacePathError::Unsupported(rebase(path)),
+        WorkspacePathError::Canceled(path) => WorkspacePathError::Canceled(rebase(path)),
         WorkspacePathError::Io { path, .. } => WorkspacePathError::Io {
             path: rebase(path),
             operation: operation.to_string(),
@@ -549,7 +550,7 @@ fn canonical_virtual_path(path: &str) -> Option<VirtualPath> {
     (normalized.as_str() == path).then_some(normalized)
 }
 
-fn is_valid_entry_name(name: &str) -> bool {
+pub(crate) fn is_valid_entry_name(name: &str) -> bool {
     if name.is_empty() || matches!(name, "." | "..") || name.contains(['/', '\0']) {
         return false;
     }
@@ -951,6 +952,7 @@ mod tests {
             WorkspacePathError::IsDirectory("/child".to_string()),
             WorkspacePathError::LimitExceeded("/child".to_string()),
             WorkspacePathError::Unsupported("/child".to_string()),
+            WorkspacePathError::Canceled("/child".to_string()),
             WorkspacePathError::Io {
                 path: "/child".to_string(),
                 operation: "backend-private".to_string(),

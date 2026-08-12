@@ -1,3 +1,4 @@
+use crate::workspace_invoke::WorkspaceInvokeError;
 use crate::{
     execute_json_bytes, normalize_workspace_path_json_bytes, parse_json_bytes, MspCommandResult,
     MspDiagnostic, MspShellParseResult, MspWorkspacePathResult, ShellParseError,
@@ -17,15 +18,18 @@ pub const MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON: u64 = 1 << 0;
 pub const MSP_ABI_V2_CAP_EXECUTE: u64 = 1 << 1;
 pub const MSP_ABI_V2_CAP_PARSE: u64 = 1 << 2;
 pub const MSP_ABI_V2_CAP_NORMALIZE: u64 = 1 << 3;
+pub const MSP_ABI_V2_CAPABILITY_WORKSPACE_READ: u64 = 1 << 4;
 pub const MSP_ABI_V2_REQUIRED_CAPABILITIES: u64 = MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON
     | MSP_ABI_V2_CAP_EXECUTE
     | MSP_ABI_V2_CAP_PARSE
     | MSP_ABI_V2_CAP_NORMALIZE;
-pub const MSP_ABI_V2_CAPABILITIES: u64 = MSP_ABI_V2_REQUIRED_CAPABILITIES;
+pub const MSP_ABI_V2_CAPABILITIES: u64 =
+    MSP_ABI_V2_REQUIRED_CAPABILITIES | MSP_ABI_V2_CAPABILITY_WORKSPACE_READ;
 
 pub const MSP_ABI_V2_OPERATION_EXECUTE: u32 = 1;
 pub const MSP_ABI_V2_OPERATION_PARSE: u32 = 2;
 pub const MSP_ABI_V2_OPERATION_NORMALIZE: u32 = 3;
+pub const MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE: u32 = 4;
 
 pub const MSP_ABI_V2_STATUS_OK: i32 = 0;
 pub const MSP_ABI_V2_STATUS_INVALID_ARGUMENT: i32 = 1;
@@ -43,6 +47,8 @@ pub const MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES: u64 = 1024 * 1024;
 pub const MSP_ABI_V2_MAX_PARSE_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 pub const MSP_ABI_V2_MAX_EXECUTE_RESPONSE_BYTES: u64 = MSP_ABI_V2_MAX_RESPONSE_BYTES;
 pub const MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES: u64 = 1024 * 1024;
+pub const MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES: u64 = 1024 * 1024;
+pub const MSP_ABI_V2_MAX_WORKSPACE_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,6 +81,7 @@ enum OperationV2 {
     Execute,
     Parse,
     Normalize,
+    WorkspaceInvoke,
 }
 
 impl OperationV2 {
@@ -83,6 +90,7 @@ impl OperationV2 {
             MSP_ABI_V2_OPERATION_EXECUTE => Some(Self::Execute),
             MSP_ABI_V2_OPERATION_PARSE => Some(Self::Parse),
             MSP_ABI_V2_OPERATION_NORMALIZE => Some(Self::Normalize),
+            MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE => Some(Self::WorkspaceInvoke),
             _ => None,
         }
     }
@@ -92,6 +100,7 @@ impl OperationV2 {
             Self::Execute => MSP_ABI_V2_MAX_EXECUTE_REQUEST_BYTES,
             Self::Parse => MSP_ABI_V2_MAX_PARSE_REQUEST_BYTES,
             Self::Normalize => MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES,
+            Self::WorkspaceInvoke => MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES,
         }
     }
 
@@ -100,6 +109,7 @@ impl OperationV2 {
             Self::Execute => MSP_ABI_V2_MAX_EXECUTE_RESPONSE_BYTES,
             Self::Parse => MSP_ABI_V2_MAX_PARSE_RESPONSE_BYTES,
             Self::Normalize => MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES,
+            Self::WorkspaceInvoke => MSP_ABI_V2_MAX_WORKSPACE_RESPONSE_BYTES,
         }
     }
 }
@@ -228,8 +238,11 @@ unsafe fn invoke_impl(
 
     let response = match invoke_operation(operation, request) {
         Ok(response) => response,
-        Err(ResponseSerializationError::TooLarge) => {
+        Err(OperationInvokeError::TooLarge) => {
             return MSP_ABI_V2_STATUS_RESPONSE_TOO_LARGE;
+        }
+        Err(OperationInvokeError::InvalidArgument) => {
+            return MSP_ABI_V2_STATUS_INVALID_ARGUMENT;
         }
     };
 
@@ -246,7 +259,7 @@ unsafe fn invoke_impl(
 fn invoke_operation(
     operation: OperationV2,
     request: &[u8],
-) -> Result<Vec<u8>, ResponseSerializationError> {
+) -> Result<Vec<u8>, OperationInvokeError> {
     let response_limit = usize::try_from(operation.response_limit())
         .expect("all ABI v2 response limits fit in usize");
     match operation {
@@ -266,6 +279,7 @@ fn invoke_operation(
                 execute_fallback_json(),
                 response_limit,
             )
+            .map_err(OperationInvokeError::from_serialization)
         }
         OperationV2::Parse => {
             let response = parse_json_bytes(request);
@@ -280,6 +294,7 @@ fn invoke_operation(
                 }),
             };
             serialize_with_fallback(&response, &fallback, parse_fallback_json(), response_limit)
+                .map_err(OperationInvokeError::from_serialization)
         }
         OperationV2::Normalize => {
             let response = normalize_workspace_path_json_bytes(request);
@@ -295,6 +310,30 @@ fn invoke_operation(
                 normalize_fallback_json(),
                 response_limit,
             )
+            .map_err(OperationInvokeError::from_serialization)
+        }
+        OperationV2::WorkspaceInvoke => {
+            match crate::workspace_invoke::invoke_workspace_read(request) {
+                Ok(response) => Ok(response),
+                Err(WorkspaceInvokeError::TooLarge) => Err(OperationInvokeError::TooLarge),
+                Err(WorkspaceInvokeError::InvalidArgument) => {
+                    Err(OperationInvokeError::InvalidArgument)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OperationInvokeError {
+    TooLarge,
+    InvalidArgument,
+}
+
+impl OperationInvokeError {
+    fn from_serialization(error: ResponseSerializationError) -> Self {
+        match error {
+            ResponseSerializationError::TooLarge => Self::TooLarge,
         }
     }
 }
@@ -306,11 +345,11 @@ enum SerializationAttemptError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ResponseSerializationError {
+pub(crate) enum ResponseSerializationError {
     TooLarge,
 }
 
-fn serialize_with_fallback<T: Serialize>(
+pub(crate) fn serialize_with_fallback<T: Serialize>(
     value: &T,
     fallback: &T,
     last_resort: &[u8],
@@ -475,7 +514,7 @@ mod tests {
         assert_eq!(info.abi_minor, 0);
         assert_eq!(info.reserved, 0);
         assert_eq!(info.contract_id, 0x324D_534F_4441_4552);
-        assert_eq!(info.capabilities, 0xF);
+        assert_eq!(info.capabilities, 0x1F);
     }
 
     #[test]
@@ -852,6 +891,55 @@ mod tests {
             msp_free_buffer_v2(ptr::null_mut(), 0);
             msp_free_buffer_v2(ptr::null_mut(), u64::MAX);
         }
+    }
+
+    #[test]
+    fn workspace_invoke_dispatches_and_rejects_malformed_hosts_at_the_abi_boundary() {
+        use crate::workspace_callback::test_util::{TestHost, TestHostFile};
+
+        let host = TestHost::new().with_file("/a.bin", TestHostFile::file(b"hello"));
+        let request = format!(
+            r#"{{"host":{},"callbackBaseId":1,"mounts":[],"operation":"readFileRange","virtualPath":"/a.bin","offset":1,"length":3}}"#,
+            host.host_table_address()
+        );
+        let response = invoke_success(MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE, request.as_bytes());
+        let value: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["bytesBase64"], "ZWxs");
+
+        let mut response_ptr = ptr::null_mut();
+        let mut response_len = 0;
+        let bad_request =
+            br#"{"host":0,"callbackBaseId":1,"mounts":[],"operation":"stat","virtualPath":"/"}"#;
+        let status = unsafe {
+            msp_invoke_v2(
+                MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE,
+                bad_request.as_ptr(),
+                bad_request.len() as u64,
+                &mut response_ptr,
+                &mut response_len,
+            )
+        };
+        assert_eq!(status, MSP_ABI_V2_STATUS_INVALID_ARGUMENT);
+        assert!(response_ptr.is_null());
+        assert_eq!(response_len, 0);
+
+        let mut response_ptr = ptr::null_mut();
+        let mut response_len = 0;
+        assert_eq!(
+            unsafe {
+                msp_invoke_v2(
+                    MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE,
+                    ptr::null(),
+                    MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES + 1,
+                    &mut response_ptr,
+                    &mut response_len,
+                )
+            },
+            MSP_ABI_V2_STATUS_REQUEST_TOO_LARGE
+        );
+        assert!(response_ptr.is_null());
+        assert_eq!(response_len, 0);
     }
 
     fn invoke_success(operation: u32, request: &[u8]) -> Vec<u8> {

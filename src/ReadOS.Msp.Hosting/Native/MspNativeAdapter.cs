@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,19 @@ public interface IMspNativeAdapter : IDisposable
     MspNativeShellParseResult Parse(MspNativeShellParseRequest request);
 
     MspNativeWorkspacePathResult NormalizeWorkspacePath(MspNativeWorkspacePathRequest request);
+
+    MspNativeWorkspaceReadResult ReadWorkspace(
+        MspNativeWorkspaceInvocation invocation,
+        MspNativeWorkspaceReadOperation operation,
+        string virtualPath,
+        ulong offset = 0,
+        int length = 0,
+        CancellationToken cancellationToken = default)
+    {
+        // Default surface for adapters that do not route workspace reads.
+        // MspNativeAdapter overrides this with the real operation-4 path.
+        throw new NotSupportedException();
+    }
 }
 
 public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoProvider
@@ -180,6 +194,57 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             MspNativeOperation.NormalizeWorkspacePath);
         ValidateWorkspacePathResult(result);
         return result;
+    }
+
+    /// <summary>
+    /// Reads model-visible virtual workspace metadata and bytes through the
+    /// native MSP runtime. The invocation topology is virtual only; no host
+    /// path is ever sent. The managed workspace callbacks must NOT re-enter
+    /// this adapter while a workspace handler runs: the native transport
+    /// serializes invocations under a single gate, so a re-entrant call from a
+    /// workspace handler would deadlock that gate.
+    /// </summary>
+    public MspNativeWorkspaceReadResult ReadWorkspace(
+        MspNativeWorkspaceInvocation invocation,
+        MspNativeWorkspaceReadOperation operation,
+        string virtualPath,
+        ulong offset = 0,
+        int length = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(invocation);
+        ValidateWorkspaceReadArguments(operation, virtualPath, offset, length);
+        RequireWorkspaceReadCapability();
+
+        var callbacks = new WindowsMspNativeWorkspaceCallbacks(invocation, cancellationToken);
+        var hostPointer = Marshal.AllocHGlobal(Marshal.SizeOf<MspNativeWorkspaceHostV1>());
+        try
+        {
+            Marshal.StructureToPtr(callbacks.Host, hostPointer, fDeleteOld: false);
+            var response = InvokeAndDeserialize<MspNativeWorkspaceReadResponseWireV1>(
+                MspNativeOperation.WorkspaceRead,
+                CreateWorkspaceReadRequest(
+                    invocation,
+                    operation,
+                    virtualPath,
+                    offset,
+                    length,
+                    hostPointer));
+            return DecodeWorkspaceReadResponse(response, operation, cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                Marshal.FreeHGlobal(hostPointer);
+            }
+            finally
+            {
+                callbacks.Dispose();
+                GC.KeepAlive(callbacks);
+            }
+        }
     }
 
     public void Dispose()
@@ -707,6 +772,167 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
         {
             throw InvalidResponse(operation);
         }
+    }
+
+    private void RequireWorkspaceReadCapability()
+    {
+        var runtimeInfo = NativeRuntimeInfo;
+        if (runtimeInfo.AbiMode != MspNativeAbiMode.LengthDelimitedV2 ||
+            (runtimeInfo.Capabilities & (ulong)MspNativeAbiV2Capabilities.WorkspaceRead) == 0)
+        {
+            throw MspNativeAdapterException.Create(
+                MspNativeFailureKind.NativeUnsupportedOperation,
+                MspNativeOperation.WorkspaceRead);
+        }
+    }
+
+    private static void ValidateWorkspaceReadArguments(
+        MspNativeWorkspaceReadOperation operation,
+        string virtualPath,
+        ulong offset,
+        int length)
+    {
+        if (!Enum.IsDefined(operation))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(operation),
+                "The workspace read operation is not defined.");
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(virtualPath);
+        if (!IsNormalizedVirtualPath(virtualPath))
+        {
+            throw new ArgumentException(
+                "VirtualPath must be a normalized model-visible absolute path.",
+                nameof(virtualPath));
+        }
+
+        if (length < 0 || length > MspNativeWorkspaceAbiV1.MaximumReadRangeBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(length),
+                $"Workspace read length must be between 0 and {MspNativeWorkspaceAbiV1.MaximumReadRangeBytes} bytes.");
+        }
+
+        if (operation != MspNativeWorkspaceReadOperation.ReadFileRange &&
+            (offset != 0 || length != 0))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(offset),
+                "Workspace stat and list operations require a zero offset and length.");
+        }
+    }
+
+    private static MspNativeWorkspaceReadRequestWireV1 CreateWorkspaceReadRequest(
+        MspNativeWorkspaceInvocation invocation,
+        MspNativeWorkspaceReadOperation operation,
+        string virtualPath,
+        ulong offset,
+        int length,
+        nint hostPointer)
+    {
+        var mounts = invocation.Mounts.Count == 0
+            ? null
+            : invocation.Mounts
+                .Select(mount => new MspNativeWorkspaceReadMountWireV1
+                {
+                    Path = mount.Path,
+                    BackendId = mount.Backend.Id
+                })
+                .ToArray();
+        return new MspNativeWorkspaceReadRequestWireV1
+        {
+            Host = (ulong)hostPointer,
+            CallbackBaseId = invocation.CallbackBase?.Id,
+            Mounts = mounts,
+            Operation = operation,
+            VirtualPath = virtualPath,
+            Offset = offset,
+            Length = checked((ulong)length)
+        };
+    }
+
+    private MspNativeWorkspaceReadResult DecodeWorkspaceReadResponse(
+        MspNativeWorkspaceReadResponseWireV1 response,
+        MspNativeWorkspaceReadOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (response.Ok)
+        {
+            return operation switch
+            {
+                MspNativeWorkspaceReadOperation.Stat => DecodeWorkspaceReadFileInfo(response),
+                MspNativeWorkspaceReadOperation.ListDirectory =>
+                    DecodeWorkspaceReadEntries(response),
+                MspNativeWorkspaceReadOperation.ReadFileRange => DecodeWorkspaceReadBytes(response),
+                _ => throw InvalidResponse(MspNativeOperation.WorkspaceRead)
+            };
+        }
+
+        if (response.Canceled && cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        throw new MspNativeWorkspaceException(ParseWorkspaceReadErrorKind(response.ErrorKind));
+    }
+
+    private static MspNativeWorkspaceReadResult DecodeWorkspaceReadFileInfo(
+        MspNativeWorkspaceReadResponseWireV1 response)
+    {
+        var wireInfo = response.FileInfo
+            ?? throw InvalidResponse(MspNativeOperation.WorkspaceRead);
+        return MspNativeWorkspaceReadResult.FileInfo(new MspNativeWorkspaceFileInfo
+        {
+            FileType = wireInfo.FileType,
+            SizeBytes = wireInfo.SizeBytes,
+            ModificationTimeUnixMs = wireInfo.ModificationTimeUnixMs,
+            FileIdentity = wireInfo.FileIdentity
+        });
+    }
+
+    private static MspNativeWorkspaceReadResult DecodeWorkspaceReadEntries(
+        MspNativeWorkspaceReadResponseWireV1 response)
+    {
+        var wireEntries = response.Entries
+            ?? throw InvalidResponse(MspNativeOperation.WorkspaceRead);
+        var entries = wireEntries
+            .Select(entry => new MspNativeWorkspaceDirectoryEntry
+            {
+                Name = entry.Name,
+                Info = new MspNativeWorkspaceFileInfo
+                {
+                    FileType = entry.Info.FileType,
+                    SizeBytes = entry.Info.SizeBytes,
+                    ModificationTimeUnixMs = entry.Info.ModificationTimeUnixMs,
+                    FileIdentity = entry.Info.FileIdentity
+                }
+            })
+            .ToArray();
+        return MspNativeWorkspaceReadResult.Entries(Array.AsReadOnly(entries));
+    }
+
+    private MspNativeWorkspaceReadResult DecodeWorkspaceReadBytes(
+        MspNativeWorkspaceReadResponseWireV1 response)
+    {
+        var bytes = DecodeAuthoritativeBytes(
+            response.BytesBase64,
+            MspNativeOperation.WorkspaceRead);
+        return MspNativeWorkspaceReadResult.Bytes(bytes);
+    }
+
+    private static MspNativeWorkspaceErrorKind ParseWorkspaceReadErrorKind(string? errorKind)
+    {
+        if (errorKind is not null &&
+            Enum.TryParse<MspNativeWorkspaceErrorKind>(
+                errorKind,
+                ignoreCase: true,
+                out var kind))
+        {
+            return kind;
+        }
+
+        return MspNativeWorkspaceErrorKind.Io;
     }
 
     private static bool IsNormalizedVirtualPath(string? path)

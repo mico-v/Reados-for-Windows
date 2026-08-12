@@ -36,7 +36,8 @@ internal enum MspNativeAbiV2Capabilities : ulong
     LengthDelimitedJson = 1UL << 0,
     Execute = 1UL << 1,
     Parse = 1UL << 2,
-    Normalize = 1UL << 3
+    Normalize = 1UL << 3,
+    WorkspaceRead = 1UL << 4
 }
 
 internal enum MspNativeInvokeStatusV2

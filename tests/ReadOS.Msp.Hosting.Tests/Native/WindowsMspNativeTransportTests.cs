@@ -23,6 +23,19 @@ public sealed class WindowsMspNativeTransportTests
     }
 
     [Fact]
+    public void Abi_v2_workspace_read_capability_is_the_fourth_optional_bit()
+    {
+        Assert.Equal(1UL << 4, (ulong)MspNativeAbiV2Capabilities.WorkspaceRead);
+        Assert.Equal(
+            0x1FUL,
+            (ulong)MspNativeAbiV2Capabilities.LengthDelimitedJson |
+            (ulong)MspNativeAbiV2Capabilities.Execute |
+            (ulong)MspNativeAbiV2Capabilities.Parse |
+            (ulong)MspNativeAbiV2Capabilities.Normalize |
+            (ulong)MspNativeAbiV2Capabilities.WorkspaceRead);
+    }
+
+    [Fact]
     public void Constructor_rejects_missing_library_without_disclosing_path()
     {
         if (!OperatingSystem.IsWindows())

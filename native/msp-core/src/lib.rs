@@ -5,8 +5,10 @@ mod contract;
 mod output_sanitizer;
 mod runtime;
 mod shell;
+mod workspace_callback;
 mod workspace_capabilities;
 mod workspace_fs;
+mod workspace_invoke;
 mod workspace_path;
 
 pub use composite_workspace::{CompositeReadOnlyWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount};
@@ -23,6 +25,9 @@ pub use shell::{
     ParsedListOperator, ParsedPipeOperator, ParsedRedirection, ParsedRedirectionOperator,
     ParsedShellScript, ParsedWord, ParsedWordPart, ShellParseError, ShellParseErrorKind,
 };
+pub use workspace_callback::{
+    CallbackReadOnlyWorkspace, MspWorkspaceHostV1, MspWorkspaceRequestV1,
+};
 pub use workspace_capabilities::WorkspaceReadCapabilities;
 pub use workspace_fs::{
     ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WorkspaceDirectoryEntry,
@@ -34,13 +39,16 @@ pub use workspace_path::{
 
 pub use abi_v2::{
     msp_free_buffer_v2, msp_get_abi_info_v2, msp_invoke_v2, MspAbiInfoV2, MSP_ABI_V2_CAPABILITIES,
-    MSP_ABI_V2_CAP_EXECUTE, MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON, MSP_ABI_V2_CAP_NORMALIZE,
-    MSP_ABI_V2_CAP_PARSE, MSP_ABI_V2_CONTRACT_ID, MSP_ABI_V2_INFO_SIZE, MSP_ABI_V2_MAJOR,
+    MSP_ABI_V2_CAPABILITY_WORKSPACE_READ, MSP_ABI_V2_CAP_EXECUTE,
+    MSP_ABI_V2_CAP_LENGTH_DELIMITED_JSON, MSP_ABI_V2_CAP_NORMALIZE, MSP_ABI_V2_CAP_PARSE,
+    MSP_ABI_V2_CONTRACT_ID, MSP_ABI_V2_INFO_SIZE, MSP_ABI_V2_MAJOR,
     MSP_ABI_V2_MAX_EXECUTE_REQUEST_BYTES, MSP_ABI_V2_MAX_EXECUTE_RESPONSE_BYTES,
     MSP_ABI_V2_MAX_NORMALIZE_REQUEST_BYTES, MSP_ABI_V2_MAX_NORMALIZE_RESPONSE_BYTES,
     MSP_ABI_V2_MAX_PARSE_REQUEST_BYTES, MSP_ABI_V2_MAX_PARSE_RESPONSE_BYTES,
-    MSP_ABI_V2_MAX_REQUEST_BYTES, MSP_ABI_V2_MAX_RESPONSE_BYTES, MSP_ABI_V2_MINOR,
-    MSP_ABI_V2_OPERATION_EXECUTE, MSP_ABI_V2_OPERATION_NORMALIZE, MSP_ABI_V2_OPERATION_PARSE,
+    MSP_ABI_V2_MAX_REQUEST_BYTES, MSP_ABI_V2_MAX_RESPONSE_BYTES,
+    MSP_ABI_V2_MAX_WORKSPACE_REQUEST_BYTES, MSP_ABI_V2_MAX_WORKSPACE_RESPONSE_BYTES,
+    MSP_ABI_V2_MINOR, MSP_ABI_V2_OPERATION_EXECUTE, MSP_ABI_V2_OPERATION_NORMALIZE,
+    MSP_ABI_V2_OPERATION_PARSE, MSP_ABI_V2_OPERATION_WORKSPACE_INVOKE,
     MSP_ABI_V2_REQUIRED_CAPABILITIES, MSP_ABI_V2_STATUS_INVALID_ARGUMENT, MSP_ABI_V2_STATUS_OK,
     MSP_ABI_V2_STATUS_PANIC, MSP_ABI_V2_STATUS_REQUEST_TOO_LARGE,
     MSP_ABI_V2_STATUS_RESPONSE_TOO_LARGE, MSP_ABI_V2_STATUS_UNSUPPORTED_OPERATION,

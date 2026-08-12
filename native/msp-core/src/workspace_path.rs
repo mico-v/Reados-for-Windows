@@ -78,6 +78,7 @@ pub enum WorkspacePathError {
     IsDirectory(String),
     LimitExceeded(String),
     Unsupported(String),
+    Canceled(String),
     Io { path: String, operation: String },
 }
 
@@ -92,6 +93,7 @@ impl WorkspacePathError {
             | Self::IsDirectory(path)
             | Self::LimitExceeded(path)
             | Self::Unsupported(path)
+            | Self::Canceled(path)
             | Self::Io { path, .. } => path,
         }
     }
@@ -114,6 +116,7 @@ impl fmt::Display for WorkspacePathError {
             Self::Unsupported(path) => {
                 write!(formatter, "workspace operation is unsupported: {path}")
             }
+            Self::Canceled(path) => write!(formatter, "workspace operation canceled: {path}"),
             Self::Io { path, operation } => {
                 write!(formatter, "workspace {operation} failed: {path}")
             }

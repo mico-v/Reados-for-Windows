@@ -696,6 +696,374 @@ public sealed class MspNativeAdapterTests
         Assert.Equal(MspNativeFailureKind.InvalidResponse, exception.FailureKind);
     }
 
+    [Fact]
+    public void Read_workspace_stat_maps_file_info_through_v2_request()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true,
+                ["fileInfo"] = new Dictionary<string, object?>
+                {
+                    ["fileType"] = "regularFile",
+                    ["sizeBytes"] = 4UL,
+                    ["modificationTimeUnixMs"] = 123L,
+                    ["fileIdentity"] = "volume:0001"
+                }
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var result = adapter.ReadWorkspace(
+            invocation,
+            MspNativeWorkspaceReadOperation.Stat,
+            "/docs/readme.txt");
+
+        Assert.Equal(MspNativeOperation.WorkspaceRead, transport.LastOperation);
+        using (var request = JsonDocument.Parse(transport.LastRequestJson))
+        {
+            Assert.Equal("stat", request.RootElement.GetProperty("operation").GetString());
+            Assert.Equal(
+                "/docs/readme.txt",
+                request.RootElement.GetProperty("virtualPath").GetString());
+            Assert.Equal(0UL, request.RootElement.GetProperty("offset").GetUInt64());
+            Assert.Equal(0UL, request.RootElement.GetProperty("length").GetUInt64());
+            Assert.Equal(1UL, request.RootElement.GetProperty("callbackBaseId").GetUInt64());
+            Assert.True(request.RootElement.GetProperty("host").GetUInt64() > 0);
+        }
+
+        var fileInfo = Assert
+            .IsType<MspNativeWorkspaceReadResult.FileInfoResult>(result)
+            .FileInfo;
+        Assert.Equal(MspNativeWorkspaceFileType.RegularFile, fileInfo.FileType);
+        Assert.Equal(4UL, fileInfo.SizeBytes);
+        Assert.Equal(123L, fileInfo.ModificationTimeUnixMs);
+        Assert.Equal("volume:0001", fileInfo.FileIdentity);
+    }
+
+    [Fact]
+    public void Read_workspace_list_maps_directory_entries()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true,
+                ["entries"] = new object[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["name"] = "a.txt",
+                        ["info"] = new Dictionary<string, object?>
+                        {
+                            ["fileType"] = "regularFile",
+                            ["sizeBytes"] = 2UL,
+                            ["modificationTimeUnixMs"] = null,
+                            ["fileIdentity"] = null
+                        }
+                    }
+                }
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var result = adapter.ReadWorkspace(
+            invocation,
+            MspNativeWorkspaceReadOperation.ListDirectory,
+            "/docs");
+
+        using (var request = JsonDocument.Parse(transport.LastRequestJson))
+        {
+            Assert.Equal("listDirectory", request.RootElement.GetProperty("operation").GetString());
+            Assert.Equal("/docs", request.RootElement.GetProperty("virtualPath").GetString());
+        }
+
+        var entries = Assert
+            .IsType<MspNativeWorkspaceReadResult.EntriesResult>(result)
+            .Entries;
+        var entry = Assert.Single(entries);
+        Assert.Equal("a.txt", entry.Name);
+        Assert.Equal(MspNativeWorkspaceFileType.RegularFile, entry.Info.FileType);
+        Assert.Equal(2UL, entry.Info.SizeBytes);
+        Assert.Null(entry.Info.FileIdentity);
+    }
+
+    [Fact]
+    public void Read_workspace_read_maps_bytes_and_requests_exact_range()
+    {
+        var expected = new byte[] { 0x00, 0xff, (byte)'A', (byte)'\n' };
+        var transport = new FakeTransport(
+            (_, requestJson) =>
+            {
+                using var request = JsonDocument.Parse(requestJson);
+                Assert.Equal("readFileRange", request.RootElement.GetProperty("operation").GetString());
+                Assert.Equal(7UL, request.RootElement.GetProperty("offset").GetUInt64());
+                Assert.Equal(4UL, request.RootElement.GetProperty("length").GetUInt64());
+                return Json(new Dictionary<string, object?>
+                {
+                    ["ok"] = true,
+                    ["bytesBase64"] = Convert.ToBase64String(expected)
+                });
+            },
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var result = adapter.ReadWorkspace(
+            invocation,
+            MspNativeWorkspaceReadOperation.ReadFileRange,
+            "/docs/binary.bin",
+            offset: 7,
+            length: 4);
+
+        Assert.Equal(
+            expected,
+            Assert.IsType<MspNativeWorkspaceReadResult.BytesResult>(result).Bytes.ToArray());
+    }
+
+    [Fact]
+    public void Read_workspace_not_found_maps_to_closed_workspace_exception()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = false,
+                ["errorKind"] = "notFound",
+                ["canceled"] = false
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var exception = Assert.Throws<MspNativeWorkspaceException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                "/docs/missing.txt"));
+
+        Assert.Equal(MspNativeWorkspaceErrorKind.NotFound, exception.ErrorKind);
+    }
+
+    [Fact]
+    public void Read_workspace_canceled_with_token_throws_operation_canceled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = false,
+                ["errorKind"] = "canceled",
+                ["canceled"] = true
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                "/docs/readme.txt",
+                cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public void Read_workspace_requires_length_delimited_v2_and_workspace_read_capability()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true
+            }),
+            new MspNativeRuntimeInfo(
+                MspNativeAbiMode.LengthDelimitedV2,
+                2,
+                0,
+                MspNativeContract.AbiV2ContractId,
+                MspNativeContract.AbiV2RequiredCapabilities));
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var exception = Assert.Throws<MspNativeAdapterException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                "/docs/readme.txt"));
+
+        Assert.Equal(MspNativeFailureKind.NativeUnsupportedOperation, exception.FailureKind);
+        Assert.Equal(MspNativeOperation.WorkspaceRead, exception.Operation);
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Read_workspace_rejects_legacy_v1_transport()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true
+            }),
+            new MspNativeRuntimeInfo(
+                MspNativeAbiMode.LegacyV1,
+                0,
+                0,
+                0,
+                0));
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        var exception = Assert.Throws<MspNativeAdapterException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                "/docs/readme.txt"));
+
+        Assert.Equal(MspNativeFailureKind.NativeUnsupportedOperation, exception.FailureKind);
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Read_workspace_serializes_mounts_as_path_and_backend_id_without_host_paths()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true,
+                ["fileInfo"] = new Dictionary<string, object?>
+                {
+                    ["fileType"] = "regularFile",
+                    ["sizeBytes"] = 1UL,
+                    ["modificationTimeUnixMs"] = null,
+                    ["fileIdentity"] = null
+                }
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = new MspNativeWorkspaceInvocation(
+            mounts:
+            [
+                new MspNativeWorkspaceMount
+                {
+                    Path = "/media",
+                    Backend = new MspNativeWorkspaceBackend
+                    {
+                        Id = 7,
+                        Workspace = new StubWorkspace()
+                    }
+                }
+            ]);
+
+        adapter.ReadWorkspace(
+            invocation,
+            MspNativeWorkspaceReadOperation.Stat,
+            "/media/readme.txt");
+
+        using var request = JsonDocument.Parse(transport.LastRequestJson);
+        Assert.False(request.RootElement.TryGetProperty("callbackBaseId", out _));
+        var mount = Assert.Single(
+            request.RootElement.GetProperty("mounts").EnumerateArray());
+        Assert.Equal("/media", mount.GetProperty("path").GetString());
+        Assert.Equal(7UL, mount.GetProperty("backendId").GetUInt64());
+        Assert.False(request.RootElement.TryGetProperty("workspaceRoot", out _));
+    }
+
+    [Theory]
+    [InlineData("relative")]
+    [InlineData("/trailing/")]
+    [InlineData("/docs/../readme")]
+    public void Read_workspace_rejects_non_normalized_virtual_path(string virtualPath)
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                virtualPath));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Read_workspace_rejects_oversized_range_before_invoking()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.ReadFileRange,
+                "/docs/binary.bin",
+                length: MspNativeWorkspaceAbiV1.MaximumReadRangeBytes + 1));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Read_workspace_rejects_nonzero_range_for_stat_and_list()
+    {
+        var transport = new FakeTransport(
+            (_, _) => Json(new Dictionary<string, object?>
+            {
+                ["ok"] = true
+            }),
+            WorkspaceReadRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var invocation = CreateInvocation();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.Stat,
+                "/docs/readme.txt",
+                offset: 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.ReadWorkspace(
+                invocation,
+                MspNativeWorkspaceReadOperation.ListDirectory,
+                "/docs",
+                length: 4));
+        Assert.Null(transport.LastOperation);
+    }
+
+    private static MspNativeWorkspaceInvocation CreateInvocation()
+    {
+        return new MspNativeWorkspaceInvocation(
+            callbackBase: new MspNativeWorkspaceBackend
+            {
+                Id = 1,
+                Workspace = new StubWorkspace()
+            });
+    }
+
+    private static MspNativeRuntimeInfo WorkspaceReadRuntimeInfo()
+    {
+        return new MspNativeRuntimeInfo(
+            MspNativeAbiMode.LengthDelimitedV2,
+            2,
+            0,
+            MspNativeContract.AbiV2ContractId,
+            (ulong)MspNativeAbiV2Capabilities.LengthDelimitedJson |
+            (ulong)MspNativeAbiV2Capabilities.Execute |
+            (ulong)MspNativeAbiV2Capabilities.Parse |
+            (ulong)MspNativeAbiV2Capabilities.Normalize |
+            (ulong)MspNativeAbiV2Capabilities.WorkspaceRead);
+    }
+
     private static Dictionary<string, object?> Diagnostic(
         string code,
         string message,
@@ -829,6 +1197,32 @@ public sealed class MspNativeAdapterTests
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class StubWorkspace : IMspNativeReadOnlyWorkspace
+    {
+        public ValueTask<MspNativeWorkspaceFileInfo> StatAsync(
+            string virtualPath,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public ValueTask<IReadOnlyList<MspNativeWorkspaceDirectoryEntry>> ListDirectoryAsync(
+            string virtualPath,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public ValueTask<ReadOnlyMemory<byte>> ReadFileRangeAsync(
+            string virtualPath,
+            ulong offset,
+            int length,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
         }
     }
 }

@@ -360,6 +360,7 @@ internal sealed class WindowsMspNativeTransport :
             MspNativeOperation.Execute => 1U,
             MspNativeOperation.Parse => 2U,
             MspNativeOperation.NormalizeWorkspacePath => 3U,
+            MspNativeOperation.WorkspaceRead => 4U,
             _ => throw MspNativeAdapterException.Create(
                 MspNativeFailureKind.InvocationFailed,
                 operation)
