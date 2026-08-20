@@ -48,9 +48,9 @@ if (-not $SkipNative) {
     try {
         $env:CARGO_INCREMENTAL = "0"
         Invoke-NativeCommand -FilePath $cargo -ArgumentList @("fmt", "--check")
-        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("test")
-        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("clippy", "--all-targets", "--", "-D", "warnings")
-        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("build", "--release")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("test", "--locked")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("clippy", "--all-targets", "--locked", "--", "-D", "warnings")
+        Invoke-NativeCommand -FilePath $cargo -ArgumentList @("build", "--release", "--locked")
         $nativeDllPath = Join-Path (Get-Location) "target\release\msp_core.dll"
         if (-not (Test-Path -LiteralPath $nativeDllPath -PathType Leaf)) {
             throw "Native MSP release DLL was not produced: $nativeDllPath"

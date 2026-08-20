@@ -96,6 +96,35 @@ Assert-RelativeManifestPath -RelativePath ([string] $json.provenance.reados_deri
 $sourceInventory = $json.source_inventory
 Assert-RelativeManifestPath -RelativePath ([string] $sourceInventory.source_package_readme) -ShouldExist $true
 Assert-RelativeManifestPath -RelativePath ([string] $sourceInventory.windows_workspace_manifest) -ShouldExist $true
+if ($null -ne $json.provenance.source_archives) {
+    foreach ($archive in @($json.provenance.source_archives)) {
+        $archivePath = [string] $archive.path
+        if ([string]::IsNullOrWhiteSpace($archivePath) -or
+            [System.IO.Path]::IsPathRooted($archivePath) -or
+            $archivePath -match '(^|[\/])\.\.([\/]|$)') {
+            throw "Source archive path is not repository-relative: $archivePath"
+        }
+        $archiveFullPath = Join-Path $repoRoot ($archivePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+        if (-not (Test-Path -LiteralPath $archiveFullPath -PathType Leaf)) {
+            continue
+        }
+        $expectedArchiveHash = [string] $archive.sha256
+        if ($expectedArchiveHash -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "Source archive has an invalid SHA-256: $archivePath"
+        }
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $digest = $sha256.ComputeHash([System.IO.File]::ReadAllBytes($archiveFullPath))
+            $actualArchiveHash = ([System.BitConverter]::ToString($digest) -replace '-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+        if ($actualArchiveHash -ne $expectedArchiveHash.ToLowerInvariant()) {
+            throw "Source archive SHA-256 mismatch: $archivePath (expected $expectedArchiveHash, observed $actualArchiveHash)"
+        }
+    }
+}
 $workspaceText = Get-Content -LiteralPath (Join-Path $repoRoot ([string] $sourceInventory.windows_workspace_manifest)) -Raw
 $workspaceMemberMatches = [regex]::Matches($workspaceText, '(?m)^\s*"([^"]+)"\s*,?\s*$')
 $actualWorkspaceMembers = @(

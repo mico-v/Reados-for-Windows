@@ -147,7 +147,14 @@ function Assert-Hash {
         throw "$Description hash in release metadata is not a SHA-256 value: $Expected"
     }
 
-    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = $sha256.ComputeHash([System.IO.File]::ReadAllBytes($Path))
+        $actual = ([System.BitConverter]::ToString($digest) -replace '-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
     if ($actual -ne $Expected.ToLowerInvariant()) {
         throw "$Description SHA-256 mismatch. Expected $Expected, observed $actual."
     }

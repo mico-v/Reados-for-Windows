@@ -22,6 +22,18 @@
       "MSP/.git"
     ],
     "source_package_snapshot": "2026-08-18 Windows x64 preview (MSP/SOURCE-PACKAGE-README.md)",
+    "source_archives": [
+      {
+        "path": "MSP/msp-windows-rust-source-preview-20260818.zip",
+        "sha256": "3e5775db6d5d02754df8b64c2689e29af3dc12137805bb87623c33e72091a922",
+        "role": "Windows Rust workspace and release tooling"
+      },
+      {
+        "path": "MSP/MSP-main (1).zip",
+        "sha256": "bfc77efa148872fcbeb41e7d1b980ceaade009df0e0cc4532fb3fd6e2f6342cf",
+        "role": "broader MSP/specification snapshot; Windows implementation placeholder"
+      }
+    ],
     "license_paths": [
       "MSP/LICENSE",
       "MSP/NOTICE",
