@@ -2608,8 +2608,9 @@ mod policy_tests {
             .join(".")
             .join(path.file_name().unwrap());
         let canonical = canonicalize_executable_path(&spelling).unwrap();
+        let expected = fs::canonicalize(&path).unwrap();
         assert!(canonical.is_absolute());
-        assert!(same_policy_path(&canonical, &path));
+        assert!(same_policy_path(&canonical, &expected));
 
         let entry = ExecutablePolicyEntry::from_host_verified_path(
             &spelling,
