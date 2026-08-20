@@ -1,7 +1,7 @@
 use crate::workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 use crate::workspace_fs::{
     checked_directory_metadata_total, ReadOnlyWorkspaceFileSystem, WorkspaceDirectoryEntry,
-    WorkspaceFileInfo, WorkspaceFileType, WritableWorkspaceFileSystem,
+    WorkspaceFileInfo, WorkspaceFileType, WorkspaceUsageInfo, WritableWorkspaceFileSystem,
 };
 use crate::workspace_path::{VirtualPath, WorkspacePathError, WorkspacePathPolicy};
 use std::collections::{BTreeMap, BTreeSet};
@@ -281,7 +281,9 @@ impl ReadOnlyWorkspaceFileSystem for CompositeReadOnlyWorkspace {
                 | (capabilities & WorkspaceReadCapabilities::LIST_DIRECTORY)
         } else if self.is_exact_mount(path) {
             capabilities
-                & (WorkspaceReadCapabilities::STAT | WorkspaceReadCapabilities::LIST_DIRECTORY)
+                & (WorkspaceReadCapabilities::STAT
+                    | WorkspaceReadCapabilities::LIST_DIRECTORY
+                    | WorkspaceReadCapabilities::USAGE)
         } else {
             capabilities
         }
@@ -401,6 +403,15 @@ impl ReadOnlyWorkspaceFileSystem for CompositeReadOnlyWorkspace {
             .file_system
             .read_file_range(&route.backend_path, offset, length)
             .map_err(|error| rebase_backend_error(&route, error, "read"))
+    }
+
+    fn usage(&self, path: &VirtualPath) -> Result<WorkspaceUsageInfo, WorkspacePathError> {
+        let route = self.route(path, "usage")?;
+        Self::require_capability(&route, WorkspaceReadCapabilities::USAGE)?;
+        route
+            .file_system
+            .usage(&route.backend_path)
+            .map_err(|error| rebase_backend_error(&route, error, "usage"))
     }
 }
 
@@ -590,6 +601,10 @@ impl ReadOnlyWorkspaceFileSystem for CompositeWritableWorkspace {
     ) -> Result<Vec<u8>, WorkspacePathError> {
         self.read_only.read_file_range(path, offset, length)
     }
+
+    fn usage(&self, path: &VirtualPath) -> Result<WorkspaceUsageInfo, WorkspacePathError> {
+        self.read_only.usage(path)
+    }
 }
 
 impl WritableWorkspaceFileSystem for CompositeWritableWorkspace {
@@ -607,6 +622,20 @@ impl WritableWorkspaceFileSystem for CompositeWritableWorkspace {
         } else {
             capabilities
         }
+    }
+
+    fn create_directory(
+        &self,
+        path: &VirtualPath,
+        create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError> {
+        let route = self.route_write(path, "mkdir")?;
+        self.reject_mount_target(&route.virtual_path)?;
+        Self::require_write_capability(&route, WorkspaceWriteCapabilities::CREATE_DIRECTORY)?;
+        route
+            .file_system
+            .create_directory(&route.backend_path, create_parent_directories)
+            .map_err(|error| rebase_backend_error(&route, error, "mkdir"))
     }
 
     fn create_file(
@@ -936,7 +965,7 @@ mod tests {
             Self {
                 policy,
                 capabilities: WorkspaceReadCapabilities::ALL,
-                write_capabilities: WorkspaceWriteCapabilities::ALL,
+                write_capabilities: WorkspaceWriteCapabilities::LEGACY_ALL,
                 directories,
                 files,
                 listing_overrides: BTreeMap::new(),

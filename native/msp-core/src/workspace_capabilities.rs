@@ -14,10 +14,16 @@ impl WorkspaceReadCapabilities {
     pub const STAT: Self = Self(1 << 0);
     pub const LIST_DIRECTORY: Self = Self(1 << 1);
     pub const READ_FILE_RANGE: Self = Self(1 << 2);
+    /// Reports provider-owned filesystem capacity and allocation metadata.
+    ///
+    /// This capability is deliberately separate from the ordinary metadata
+    /// operations: a backend must opt in before `df` may ask it for usage.
+    pub const USAGE: Self = Self(1 << 3);
     pub const ALL: Self = Self(Self::STAT.0 | Self::LIST_DIRECTORY.0 | Self::READ_FILE_RANGE.0);
+    pub const KNOWN: Self = Self(Self::ALL.0 | Self::USAGE.0);
 
     pub const fn from_bits(bits: u32) -> Option<Self> {
-        if bits & !Self::ALL.0 == 0 {
+        if bits & !Self::KNOWN.0 == 0 {
             Some(Self(bits))
         } else {
             None
@@ -86,7 +92,15 @@ impl WorkspaceWriteCapabilities {
     pub const WRITE_FILE_RANGE: Self = Self(1 << 1);
     pub const RENAME: Self = Self(1 << 2);
     pub const DELETE: Self = Self(1 << 3);
-    pub const ALL: Self =
+    pub const CREATE_DIRECTORY: Self = Self(1 << 4);
+    pub const ALL: Self = Self(
+        Self::CREATE_FILE.0
+            | Self::WRITE_FILE_RANGE.0
+            | Self::RENAME.0
+            | Self::DELETE.0
+            | Self::CREATE_DIRECTORY.0,
+    );
+    pub const LEGACY_ALL: Self =
         Self(Self::CREATE_FILE.0 | Self::WRITE_FILE_RANGE.0 | Self::RENAME.0 | Self::DELETE.0);
 
     pub const fn from_bits(bits: u32) -> Option<Self> {

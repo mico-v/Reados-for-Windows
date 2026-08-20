@@ -14,19 +14,18 @@ Turn ReadOS into a secure, verifiable, demonstrable, and package-ready Windows M
 Authoritative inputs
 
 1. Read and follow the repository AGENTS.md instructions and the current working tree before changing anything.
-2. Treat the nested MSP/ repository as a read-only design and conformance reference pinned to its checked-out commit. Its important sources are:
+2. Treat the nested MSP/ repository as a read-only Apache-2.0 design, source-package, and conformance reference. Its inspectable inputs in this checkout are:
    - MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md
    - MSP/Spec/Profiles/MSPV1LinuxCommandLayerProfile.md
    - MSP/Spec/WorkspaceFS/WorkspaceFSProfile.md
    - MSP/Spec/AgentBridge/ExecCommandProfile.md
-   - MSP/Conformance/Fixtures/
-   - MSP/Implementations/Swift/Sources/MSPCore/
-   - MSP/Implementations/Swift/Sources/MSPShellLanguage/
-   - MSP/Implementations/Swift/Sources/MSPShellExpansion/
-   - MSP/Implementations/Swift/Sources/ModelShellProxy/
-3. MSP/ is a separate Apache-2.0 repository and is not a parent-repository source directory or package payload. Do not add the whole checkout to ReadOS history. Prefer clean-room implementation from documented behavior and fixtures. If any source or asset is copied or derived, preserve the required license, NOTICE, modification notice, and source provenance.
-4. The current ReadOS tracker and plans are DEVELOPMENT_PLAN.md, docs/DEVELOPMENT_TRACKER.md, and docs/MSP_SDK_DEVELOPMENT_PLAN.md. Update them only with evidence actually produced in the current work.
-5. The verified 2026-07-11 baseline is Rust 66, Core 69, Hosting 259, App 300, managed total 628, native binary/FFI verification, 3/3 real release-DLL operations, and a zero-warning/zero-error solution build. The registry candidate release DLL SHA256 is 2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A. Treat these as a floor, not a reason to repeat completed implementation work.
+   - MSP/Conformance/Fixtures/ and available reference outputs
+   - MSP/Implementations/Windows/Cargo.toml and its declared workspace members
+   - the committed conformance/msp-upstream/ snapshot
+   The source package excludes the Mac/Swift implementation source; do not treat the previously cited Swift MSPCore/MSPShell/MSPPOSIXCore paths as locally available evidence.
+3. MSP/ is a separate Apache-2.0 source package and is not a parent-repository source directory or package payload. Do not add the whole checkout to ReadOS history. Prefer clean-room implementation from documented behavior and fixtures. If any source or asset is copied or derived, preserve the required license, NOTICE, modification notice, and source provenance.
+4. The current ReadOS tracker and plans are DEVELOPMENT_PLAN.md, docs/DEVELOPMENT_TRACKER.md, docs/MSP_SDK_DEVELOPMENT_PLAN.md, and conformance/msp-upstream/windows-capability-manifest.json. Update them only with evidence actually produced in the current work.
+5. Missing Windows parity inventory/release runners and reports are blocked in the capability manifest; never convert absent external evidence into a passing report.
 
 Current truthful release state
 

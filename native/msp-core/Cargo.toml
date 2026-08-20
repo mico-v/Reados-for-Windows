@@ -15,5 +15,11 @@ path = "src/bin/msp_pty_test_child.rs"
 
 [dependencies]
 base64 = "0.22"
+getrandom = "0.2"
+hmac = "0.12"
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+zeroize = "1"

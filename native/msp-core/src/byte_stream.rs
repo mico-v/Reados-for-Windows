@@ -326,6 +326,18 @@ impl<'a> MspWorkspaceFileWriter<'a> {
         })
     }
 
+    pub(crate) fn open_existing(
+        workspace: &'a dyn WritableWorkspaceFileSystem,
+        path: VirtualPath,
+    ) -> Self {
+        Self {
+            workspace,
+            path,
+            offset: 0,
+            closed: false,
+        }
+    }
+
     pub(crate) fn path(&self) -> &VirtualPath {
         &self.path
     }

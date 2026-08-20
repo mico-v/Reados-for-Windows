@@ -154,31 +154,55 @@ impl WindowsPathSanitizer {
     }
 }
 
-/// Streaming wrapper that keeps at most one maximum-rule window pending, so a
-/// host root split at any byte boundary is never emitted before it can be
-/// recognized and replaced.
+/// Streaming wrapper for one process-output byte stream.
 ///
-/// The wrapper is byte-generic: it operates on a single pre-built rule set
-/// (UTF-8 or UTF-16LE) and needs no knowledge of the encoding. The sibling and
-/// prefix boundary logic transfers to UTF-16LE because the byte before a
-/// UTF-16LE host path is the previous code unit's high byte (`0x00` for ASCII)
-/// which is not a path-continuation byte.
+/// The wrapper keeps only bytes that may still become the beginning of a host
+/// path. Ordinary output is emitted immediately, while a host root at the end
+/// of a chunk remains pending until the next chunk (or EOF) establishes its
+/// sibling/prefix boundary. Encoding selection is also stream-persistent: an
+/// automatic sanitizer waits for enough initial evidence before choosing the
+/// UTF-8 or UTF-16LE rule set, so a UTF-16LE path split across chunks cannot be
+/// misclassified as UTF-8.
 #[derive(Debug, Clone)]
 pub struct StreamingWindowsPathSanitizer {
     ruleset: RuleSet,
+    auto_sanitizer: Option<WindowsPathSanitizer>,
+    detection: Vec<u8>,
     pending: Vec<u8>,
     cursor: usize,
     previous_input_byte: Option<u8>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum StreamMatch {
+    Replace(usize),
+    NeedsMore,
+    NoMatch,
+}
+
 impl StreamingWindowsPathSanitizer {
+    /// Creates a stream sanitizer that selects the existing UTF-8/UTF-16LE
+    /// heuristic once, then keeps that choice for the stream lifetime.
     pub fn new(sanitizer: WindowsPathSanitizer) -> Self {
-        Self::from_ruleset(sanitizer.ruleset_for(&[]).clone())
+        if sanitizer.force_utf16le {
+            Self::from_ruleset(sanitizer.utf16le.clone())
+        } else {
+            Self {
+                ruleset: RuleSet::default(),
+                auto_sanitizer: Some(sanitizer),
+                detection: Vec::new(),
+                pending: Vec::new(),
+                cursor: 0,
+                previous_input_byte: None,
+            }
+        }
     }
 
     fn from_ruleset(ruleset: RuleSet) -> Self {
         Self {
             ruleset,
+            auto_sanitizer: None,
+            detection: Vec::new(),
             pending: Vec::new(),
             cursor: 0,
             previous_input_byte: None,
@@ -186,13 +210,47 @@ impl StreamingWindowsPathSanitizer {
     }
 
     pub fn append(&mut self, data: &[u8]) -> Vec<u8> {
-        self.compact_pending();
-        self.pending.extend_from_slice(data);
+        if self.auto_sanitizer.is_some() {
+            self.detection.extend_from_slice(data);
+            if !self.select_encoding(false) {
+                return Vec::new();
+            }
+            let detection = std::mem::take(&mut self.detection);
+            self.pending.extend_from_slice(&detection);
+        } else {
+            self.pending.extend_from_slice(data);
+        }
         self.process(false)
     }
 
     pub fn flush(&mut self) -> Vec<u8> {
+        if self.auto_sanitizer.is_some() {
+            self.select_encoding(true);
+            let detection = std::mem::take(&mut self.detection);
+            self.pending.extend_from_slice(&detection);
+        }
         self.process(true)
+    }
+
+    /// Returns false while the automatic encoding decision needs more bytes.
+    fn select_encoding(&mut self, final_chunk: bool) -> bool {
+        let Some(sanitizer) = self.auto_sanitizer.as_ref() else {
+            return true;
+        };
+        // Preserve the one-shot detector's conservative four-byte threshold.
+        // A short UTF-16LE prefix is held rather than guessed, which is what
+        // makes arbitrary chunk boundaries safe.
+        if !final_chunk && self.detection.len() < 4 {
+            return false;
+        }
+        let use_utf16le = looks_like_utf16le(&self.detection);
+        self.ruleset = if use_utf16le {
+            sanitizer.utf16le.clone()
+        } else {
+            sanitizer.utf8.clone()
+        };
+        self.auto_sanitizer = None;
+        true
     }
 
     fn process(&mut self, final_chunk: bool) -> Vec<u8> {
@@ -201,46 +259,71 @@ impl StreamingWindowsPathSanitizer {
             return std::mem::take(&mut self.pending);
         }
         let mut output = Vec::new();
-        while self.cursor < self.pending.len()
-            && (final_chunk
-                || self.pending.len() - self.cursor > self.ruleset.maximum_needle_length)
-        {
-            if let Some(rule) = self
-                .ruleset
-                .rules
-                .iter()
-                .find(|rule| self.rule_matches(rule, final_chunk))
-            {
-                self.previous_input_byte = rule.needle.last().copied();
-                output.extend_from_slice(&rule.replacement);
-                self.cursor += rule.needle.len();
-            } else {
-                let byte = self.pending[self.cursor];
-                self.cursor += 1;
-                self.previous_input_byte = Some(byte);
-                output.push(byte);
+        while self.cursor < self.pending.len() {
+            match self.match_at(final_chunk) {
+                StreamMatch::Replace(rule_index) => {
+                    let rule = &self.ruleset.rules[rule_index];
+                    let last_input_byte = rule.needle.last().copied();
+                    let needle_length = rule.needle.len();
+                    let replacement = rule.replacement.clone();
+                    self.previous_input_byte = last_input_byte;
+                    output.extend_from_slice(&replacement);
+                    self.cursor += needle_length;
+                }
+                StreamMatch::NeedsMore if !final_chunk => break,
+                StreamMatch::NeedsMore | StreamMatch::NoMatch => {
+                    let byte = self.pending[self.cursor];
+                    self.cursor += 1;
+                    self.previous_input_byte = Some(byte);
+                    output.push(byte);
+                }
             }
         }
         self.compact_pending();
         output
     }
 
-    fn rule_matches(&self, rule: &ReplacementRule, final_chunk: bool) -> bool {
+    fn match_at(&self, final_chunk: bool) -> StreamMatch {
         let pending = &self.pending[self.cursor..];
-        if pending.len() < rule.needle.len()
-            || !pending[..rule.needle.len()].eq_ignore_ascii_case(&rule.needle)
-            || self
-                .previous_input_byte
-                .is_some_and(is_path_continuation_byte)
+        if self
+            .previous_input_byte
+            .is_some_and(is_path_continuation_byte)
         {
-            return false;
+            return StreamMatch::NoMatch;
         }
-        if !rule.requires_after_boundary {
-            return true;
+
+        let mut needs_more = false;
+        let mut matched = None;
+        for (rule_index, rule) in self.ruleset.rules.iter().enumerate() {
+            let compared = pending.len().min(rule.needle.len());
+            if compared == 0 || !pending[..compared].eq_ignore_ascii_case(&rule.needle[..compared])
+            {
+                continue;
+            }
+            if pending.len() < rule.needle.len() {
+                needs_more = true;
+                continue;
+            }
+            if rule.requires_after_boundary {
+                match pending.get(rule.needle.len()) {
+                    Some(byte) if is_path_continuation_byte(*byte) => continue,
+                    None if !final_chunk => {
+                        needs_more = true;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            if matched.is_none() {
+                matched = Some(rule_index);
+            }
         }
-        match pending.get(rule.needle.len()) {
-            Some(byte) => !is_path_continuation_byte(*byte),
-            None => final_chunk,
+        if needs_more {
+            StreamMatch::NeedsMore
+        } else if let Some(rule_index) = matched {
+            StreamMatch::Replace(rule_index)
+        } else {
+            StreamMatch::NoMatch
         }
     }
 

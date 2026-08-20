@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +44,11 @@ pub struct ParsedCommandLine {
     pub raw_input: String,
     pub command_name_word: Option<ParsedWord>,
     pub argument_words: Vec<ParsedWord>,
+    /// Assignment words retain their quote/expansion parts for the executor.
+    /// This is parser-local metadata and is intentionally absent from the AST
+    /// wire shape so existing consumers continue to receive the same contract.
+    #[serde(skip)]
+    pub(crate) assignment_words: Vec<ParsedWord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +69,439 @@ impl ParsedWord {
     pub fn raw_text(&self) -> String {
         self.parts.iter().map(|part| part.text.as_str()).collect()
     }
+
+    /// Returns whether this word needs the bounded shell expansion path.
+    /// Ordinary quoted text and escaped dollars remain on the legacy path.
+    pub(crate) fn has_expansion_syntax(&self) -> bool {
+        self.parts.iter().any(|part| {
+            part.is_expandable
+                && (part.text.contains('$')
+                    || part.text.contains('`')
+                    || (!part.is_quoted && part.text.chars().any(is_glob_metacharacter)))
+        })
+    }
+}
+
+impl ParsedCommandLine {
+    pub(crate) fn requires_shell_expansion(&self) -> bool {
+        !self.assignments.is_empty()
+            || self
+                .command_name_word
+                .as_ref()
+                .is_some_and(ParsedWord::has_expansion_syntax)
+            || self
+                .argument_words
+                .iter()
+                .any(ParsedWord::has_expansion_syntax)
+            || self
+                .redirections
+                .iter()
+                .any(|redirection| redirection.target_word.has_expansion_syntax())
+    }
+}
+
+/// Per-script shell state. It is deliberately runtime-neutral: the pipeline
+/// executor owns it for one request and no host process state is consulted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShellState {
+    pub(crate) current_directory: String,
+    pub(crate) environment: BTreeMap<String, String>,
+    pub(crate) last_status: i32,
+}
+
+impl ShellState {
+    pub(crate) fn new(current_directory: &str, environment: BTreeMap<String, String>) -> Self {
+        Self {
+            current_directory: current_directory.to_string(),
+            environment,
+            last_status: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExpandedAssignment {
+    pub(crate) name: String,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExpandedRedirection {
+    pub(crate) fd: Option<u32>,
+    pub(crate) operation: ParsedRedirectionOperator,
+    pub(crate) target: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExpandedCommandLine {
+    pub(crate) command_name: String,
+    pub(crate) arguments: Vec<String>,
+    pub(crate) assignments: Vec<ExpandedAssignment>,
+    pub(crate) redirections: Vec<ExpandedRedirection>,
+    pub(crate) is_assignment_only: bool,
+    pub(crate) environment: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellExpansionError {
+    Unsupported(&'static str),
+    Limit,
+}
+
+impl fmt::Display for ShellExpansionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsupported(form) => {
+                write!(formatter, "shell: unsupported expansion form: {form}")
+            }
+            Self::Limit => formatter.write_str("shell: expansion exceeds the native limit"),
+        }
+    }
+}
+
+impl std::error::Error for ShellExpansionError {}
+
+const MAX_EXPANDED_WORD_BYTES: usize = 64 * 1024;
+const MAX_EXPANDED_COMMAND_BYTES: usize = 1024 * 1024;
+const MAX_EXPANDED_FIELDS: usize = 4096;
+
+/// Expands one parsed command using only scalar parameters supported by this
+/// native slice. Assignment values are expanded before the command and are
+/// visible in the command's temporary environment.
+pub(crate) fn expand_command(
+    command: &ParsedCommandLine,
+    environment: &BTreeMap<String, String>,
+    last_status: i32,
+) -> Result<ExpandedCommandLine, ShellExpansionError> {
+    let mut command_environment = environment.clone();
+    let mut assignments = Vec::with_capacity(command.assignments.len());
+    let mut expanded_bytes = 0usize;
+
+    for (index, assignment) in command.assignments.iter().enumerate() {
+        let value_word = command
+            .assignment_words
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| raw_value_word(&assignment.value));
+        let value = expand_assignment_value(&value_word, &command_environment, last_status)?;
+        expanded_bytes = expanded_bytes.saturating_add(value.len());
+        if expanded_bytes > MAX_EXPANDED_COMMAND_BYTES {
+            return Err(ShellExpansionError::Limit);
+        }
+        command_environment.insert(assignment.name.clone(), value.clone());
+        assignments.push(ExpandedAssignment {
+            name: assignment.name.clone(),
+            value,
+        });
+    }
+
+    let command_name = match &command.command_name_word {
+        Some(word) => {
+            single_expanded_word(word, &command_environment, last_status, "command name")?
+        }
+        None => ":".to_string(),
+    };
+
+    let mut arguments = Vec::new();
+    expanded_bytes = expanded_bytes.saturating_add(command_name.len());
+    if expanded_bytes > MAX_EXPANDED_COMMAND_BYTES {
+        return Err(ShellExpansionError::Limit);
+    }
+    for word in &command.argument_words {
+        let fields = expand_word(word, &command_environment, last_status, true)?;
+        expanded_bytes = expanded_bytes.saturating_add(
+            fields
+                .iter()
+                .map(String::len)
+                .sum::<usize>()
+                .saturating_add(fields.len()),
+        );
+        if expanded_bytes > MAX_EXPANDED_COMMAND_BYTES {
+            return Err(ShellExpansionError::Limit);
+        }
+        arguments.extend(fields);
+        if arguments.len() > MAX_EXPANDED_FIELDS {
+            return Err(ShellExpansionError::Limit);
+        }
+    }
+
+    let mut redirections = Vec::with_capacity(command.redirections.len());
+    for redirection in &command.redirections {
+        let target = single_expanded_word(
+            &redirection.target_word,
+            &command_environment,
+            last_status,
+            "redirection target",
+        )?;
+        redirections.push(ExpandedRedirection {
+            fd: redirection.fd,
+            operation: redirection.operation,
+            target,
+        });
+    }
+
+    Ok(ExpandedCommandLine {
+        command_name,
+        arguments,
+        assignments,
+        redirections,
+        is_assignment_only: command.is_assignment_only,
+        environment: command_environment,
+    })
+}
+
+fn raw_value_word(value: &str) -> ParsedWord {
+    if value.is_empty() {
+        return ParsedWord {
+            parts: Vec::new(),
+            has_explicit_empty_quoted_fragment: false,
+        };
+    }
+    ParsedWord {
+        parts: vec![ParsedWordPart {
+            text: value.to_string(),
+            is_expandable: true,
+            is_quoted: false,
+        }],
+        has_explicit_empty_quoted_fragment: false,
+    }
+}
+
+fn expand_assignment_value(
+    word: &ParsedWord,
+    environment: &BTreeMap<String, String>,
+    last_status: i32,
+) -> Result<String, ShellExpansionError> {
+    let fields = expand_word(word, environment, last_status, false)?;
+    Ok(fields.into_iter().next().unwrap_or_default())
+}
+
+fn single_expanded_word(
+    word: &ParsedWord,
+    environment: &BTreeMap<String, String>,
+    last_status: i32,
+    kind: &'static str,
+) -> Result<String, ShellExpansionError> {
+    let fields = expand_word(word, environment, last_status, true)?;
+    if fields.len() != 1 {
+        return Err(ShellExpansionError::Unsupported(kind));
+    }
+    Ok(fields.into_iter().next().unwrap_or_default())
+}
+
+fn expand_word(
+    word: &ParsedWord,
+    environment: &BTreeMap<String, String>,
+    last_status: i32,
+    field_splitting: bool,
+) -> Result<Vec<String>, ShellExpansionError> {
+    let mut builder = FieldBuilder::default();
+    for part in &word.parts {
+        if part.is_expandable {
+            append_expandable_text(
+                &part.text,
+                part.is_quoted,
+                environment,
+                last_status,
+                field_splitting,
+                &mut builder,
+            )?;
+        } else {
+            builder.append_literal(&part.text)?;
+        }
+    }
+    builder.finish(word.has_explicit_empty_quoted_fragment)
+}
+
+#[derive(Default)]
+struct FieldBuilder {
+    fields: Vec<String>,
+    current: String,
+    current_started: bool,
+    forced_empty: bool,
+    bytes: usize,
+}
+
+impl FieldBuilder {
+    fn charge(&mut self, bytes: usize) -> Result<(), ShellExpansionError> {
+        self.bytes = self.bytes.saturating_add(bytes);
+        if self.bytes > MAX_EXPANDED_WORD_BYTES {
+            return Err(ShellExpansionError::Limit);
+        }
+        Ok(())
+    }
+
+    fn append_literal(&mut self, text: &str) -> Result<(), ShellExpansionError> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        self.charge(text.len())?;
+        self.current.push_str(text);
+        self.current_started = true;
+        Ok(())
+    }
+
+    fn append_expansion(
+        &mut self,
+        value: &str,
+        quoted: bool,
+        field_splitting: bool,
+    ) -> Result<(), ShellExpansionError> {
+        if quoted || !field_splitting {
+            if value.is_empty() && quoted {
+                self.forced_empty = true;
+            }
+            return self.append_literal(value);
+        }
+        if value.chars().any(is_glob_metacharacter) {
+            return Err(ShellExpansionError::Unsupported("globbing"));
+        }
+
+        for character in value.chars() {
+            if is_field_separator(character) {
+                self.finish_current()?;
+            } else {
+                self.charge(character.len_utf8())?;
+                self.current.push(character);
+                self.current_started = true;
+            }
+        }
+        Ok(())
+    }
+
+    fn finish_current(&mut self) -> Result<(), ShellExpansionError> {
+        if !self.current_started {
+            return Ok(());
+        }
+        if self.fields.len() >= MAX_EXPANDED_FIELDS {
+            return Err(ShellExpansionError::Limit);
+        }
+        self.fields.push(std::mem::take(&mut self.current));
+        self.current_started = false;
+        Ok(())
+    }
+
+    fn finish(mut self, explicit_empty: bool) -> Result<Vec<String>, ShellExpansionError> {
+        self.finish_current()?;
+        if self.fields.is_empty() && (explicit_empty || self.forced_empty) {
+            self.fields.push(String::new());
+        }
+        Ok(self.fields)
+    }
+}
+
+fn is_field_separator(character: char) -> bool {
+    matches!(character, ' ' | '\t' | '\n' | '\r')
+}
+
+fn is_glob_metacharacter(character: char) -> bool {
+    matches!(character, '*' | '?' | '[')
+}
+
+fn append_expandable_text(
+    text: &str,
+    quoted: bool,
+    environment: &BTreeMap<String, String>,
+    last_status: i32,
+    field_splitting: bool,
+    builder: &mut FieldBuilder,
+) -> Result<(), ShellExpansionError> {
+    let characters: Vec<char> = text.chars().collect();
+    let mut literal = String::new();
+    let mut index = 0;
+
+    while index < characters.len() {
+        let character = characters[index];
+        if !quoted && field_splitting && is_glob_metacharacter(character) {
+            return Err(ShellExpansionError::Unsupported("globbing"));
+        }
+        if character == '`' {
+            return Err(ShellExpansionError::Unsupported("command substitution"));
+        }
+        if character != '$' {
+            literal.push(character);
+            index += 1;
+            continue;
+        }
+
+        if !literal.is_empty() {
+            builder.append_literal(&literal)?;
+            literal.clear();
+        }
+        if index + 1 >= characters.len() {
+            builder.append_literal("$")?;
+            index += 1;
+            continue;
+        }
+
+        let next = characters[index + 1];
+        match next {
+            '?' => {
+                builder.append_expansion(&last_status.to_string(), quoted, field_splitting)?;
+                index += 2;
+            }
+            '(' => {
+                return Err(ShellExpansionError::Unsupported("command substitution"));
+            }
+            '{' => {
+                let Some(close_offset) = characters[index + 2..]
+                    .iter()
+                    .position(|character| *character == '}')
+                else {
+                    return Err(ShellExpansionError::Unsupported("malformed parameter"));
+                };
+                let close = index + 2 + close_offset;
+                let name: String = characters[index + 2..close].iter().collect();
+                if !is_parameter_name(&name) {
+                    return Err(ShellExpansionError::Unsupported("parameter operator"));
+                }
+                let value = environment.get(&name).map(String::as_str).unwrap_or("");
+                builder.append_expansion(value, quoted, field_splitting)?;
+                index = close + 1;
+            }
+            '$' | '0'..='9' | '@' | '*' | '#' | '!' | '-' => {
+                return Err(ShellExpansionError::Unsupported("special parameter"));
+            }
+            character if is_parameter_name_start(character) => {
+                let mut end = index + 2;
+                while end < characters.len() && is_parameter_name_continue(characters[end]) {
+                    end += 1;
+                }
+                let name: String = characters[index + 1..end].iter().collect();
+                let value = environment.get(&name).map(String::as_str).unwrap_or("");
+                builder.append_expansion(value, quoted, field_splitting)?;
+                index = end;
+            }
+            _ => {
+                // A dollar followed by ordinary punctuation is a literal dollar
+                // in this bounded grammar. Recognized special/unsupported forms
+                // above fail closed instead of being silently reinterpreted.
+                builder.append_literal("$")?;
+                index += 1;
+            }
+        }
+    }
+
+    if !literal.is_empty() {
+        builder.append_literal(&literal)?;
+    }
+    Ok(())
+}
+
+fn is_parameter_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    is_parameter_name_start(first) && characters.all(is_parameter_name_continue)
+}
+
+fn is_parameter_name_start(character: char) -> bool {
+    character == '_' || character.is_ascii_alphabetic()
+}
+
+fn is_parameter_name_continue(character: char) -> bool {
+    character == '_' || character.is_ascii_alphanumeric()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -568,6 +1007,7 @@ fn parse_command(
     }
 
     let mut assignments = Vec::new();
+    let mut assignment_words = Vec::new();
     let mut word_index = 0;
     while word_index < words.len() {
         let raw = words[word_index].raw_text();
@@ -578,6 +1018,7 @@ fn parse_command(
             name: name.to_string(),
             value: value.to_string(),
         });
+        assignment_words.push(assignment_value_word(&words[word_index]));
         word_index += 1;
     }
 
@@ -608,9 +1049,36 @@ fn parse_command(
             raw_input: raw_input.to_string(),
             command_name_word,
             argument_words,
+            assignment_words,
         },
         cursor,
     ))
+}
+
+fn assignment_value_word(word: &ParsedWord) -> ParsedWord {
+    let mut builder = WordBuilder::default();
+    let mut after_equals = false;
+    for part in &word.parts {
+        if part.text.is_empty() {
+            if after_equals {
+                builder.append("", part.is_expandable, part.is_quoted);
+            }
+            continue;
+        }
+        for character in part.text.chars() {
+            if !after_equals {
+                if character == '=' {
+                    after_equals = true;
+                }
+            } else {
+                builder.append(character.to_string(), part.is_expandable, part.is_quoted);
+            }
+        }
+    }
+    builder.take().unwrap_or(ParsedWord {
+        parts: Vec::new(),
+        has_explicit_empty_quoted_fragment: false,
+    })
 }
 
 fn split_assignment(value: &str) -> Option<(&str, &str)> {

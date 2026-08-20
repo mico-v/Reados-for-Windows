@@ -15,7 +15,7 @@ namespace ReadOS.Msp.Hosting.Tests.Native;
 public sealed class MspNativeBackedCommandTests
 {
     [Fact]
-    public void Constructor_restricts_v1_to_pwd_and_echo_and_rejects_null_dependencies()
+    public void Constructor_accepts_canonical_read_only_commands_and_rejects_null_dependencies()
     {
         using var provider = Provider(new RecordingAdapter());
 
@@ -23,10 +23,8 @@ public sealed class MspNativeBackedCommandTests
             new MspNativeBackedCommand(null!, provider));
         Assert.Throws<ArgumentNullException>(() =>
             new MspNativeBackedCommand(new EchoCommand(), null!));
-        Assert.Throws<ArgumentException>(() =>
-            new MspNativeBackedCommand(new LsCommand(), provider));
-        Assert.Throws<ArgumentException>(() =>
-            new MspNativeBackedCommand(new CatCommand(), provider));
+        _ = new MspNativeBackedCommand(new LsCommand(), provider);
+        _ = new MspNativeBackedCommand(new CatCommand(), provider);
         Assert.Throws<ArgumentException>(() =>
             new MspNativeBackedCommand(new HelpCommand(new MspCommandRegistry()), provider));
     }
@@ -691,7 +689,7 @@ public sealed class MspNativeBackedCommandTests
     }
 
     [Fact]
-    public async Task Registry_adoption_rejects_uppercase_and_leaves_ls_on_managed_runtime()
+    public async Task Explicit_pwd_echo_registry_keeps_unadopted_commands_managed()
     {
         var adapter = new RecordingAdapter
         {

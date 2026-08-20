@@ -11,8 +11,13 @@ Semantic references used for this slice:
 - `Spec/AgentBridge/ExecCommandProfile.md`
 - `Conformance/Fixtures/MSPV1LinuxCommandLayer.*.json`
 - the public Swift MSPCore, MSPShellLanguage, MSPShellExpansion, MSPShell, and
-  MSPPOSIXCore interfaces
+  MSPPOSIXCore interfaces, when available as external review evidence
 
+The 2026-08-18 local source package explicitly excludes Mac/Swift implementation
+source and contains only `MSP/Implementations/Swift/Sources/Tools`. Therefore
+those Swift paths are provenance/design references, not locally inspectable source
+evidence; the committed ReadOS snapshot and available Spec/Conformance inputs are
+the clean-checkout test boundary.
 The Rust source does not copy Swift implementation code. Default tests consume
 the attributed, committed snapshot under `../../conformance/msp-upstream` so a
 clean ReadOS checkout does not depend on a nested clone. The local `../../MSP`
@@ -25,6 +30,14 @@ upstream source or fixture material.
 The JSON C ABI in this crate is an internal ReadOS SDK boundary. It is not the
 agent-facing MSP protocol. Agent-facing `exec_command` remains a `cmd` request
 with plain terminal-text output as required by the upstream profile.
+
+`native/msp-ffi` is a separate ReadOS-owned public C ABI wrapper around the
+portable core. It is not the internal `reados-msp-native/1` adapter and is not a
+claim of upstream `msp-ffi` source parity. Its release contract is recorded in
+`native/msp-ffi/release-metadata.json`: a reproducible x86_64 release DLL with
+29 exports, the versioned `msp_ffi.h` header, a recorded SHA-256, and static MSVC
+CRT verification. It is an optional distribution artifact only; the default
+ReadOS package and app smoke do not load it.
 
 ## `windows_workspacefs_read_v1`
 
@@ -110,9 +123,15 @@ managed total), a passing native binary/FFI gate, and a zero-warning/zero-error
 solution build. The registry candidate release DLL SHA256 is
 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`.
 
-Package automation copies `msp_core.dll` plus license/NOTICE/provenance and rejects
-raw `MSP/`, `.git`, credentials/private state, PDBs, and dynamic CRT markers. The
-latest completed no-skip package gate is `0.1.0-native-command-registry-verified`.
+Package automation copies `msp_core.dll` plus license/NOTICE/provenance and
+rejects raw `MSP/`, `.git`, credentials/private state, source files, linker
+outputs, PDBs, and dynamic CRT markers. With the explicit
+`-IncludePublicMspFfi` option it additionally builds from
+`native/msp-ffi/Cargo.toml`, verifies the 29-export public DLL/header/hash/static
+CRT contract, and copies only `msp_ffi.dll` plus `include/msp_ffi.h`. The
+optional public artifact is not part of the existing core DLL or app smoke
+path. The latest completed no-skip package gate is
+`0.1.0-native-command-registry-verified`.
 Staged FFI and packaged-process smoke verify `LengthDelimitedV2` 2.0, 532 ZIP
 entries, `RawMSP`/PDB/`.git` counts of zero, five native commands all exiting 0,
 and one managed audit for each of the three proxied results, with cleanup and

@@ -58,6 +58,14 @@ public sealed record MspNativeExecSessionRequest
     /// </summary>
     public string? WorkspaceRoot { get; init; }
 
+    /// <summary>
+    /// Optional environment entries for a process-mode exec. The map is
+    /// host-authorized input and is never copied into a session result, audit
+    /// record, or model-visible terminal envelope. Shell mode and
+    /// write_stdin continuations omit this field from the wire request.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Environment { get; init; }
+
     /// <summary>0 for a new exec; the retained session id for write_stdin.</summary>
     public ulong SessionId { get; init; }
 
@@ -123,6 +131,15 @@ public static class MspNativeExecSessionLimits
 
     /// <summary>Maximum character length of one process-mode argument.</summary>
     public const int MaximumArgumentCharacters = 32 * 1024;
+
+    /// <summary>Maximum number of process-mode environment entries.</summary>
+    public const int MaximumProcessEnvironmentEntries = 64;
+
+    /// <summary>
+    /// Maximum UTF-8 byte length of one process-mode environment name and value
+    /// combined, matching the native process boundary.
+    /// </summary>
+    public const int MaximumProcessEnvironmentEntryBytes = 8192;
 }
 
 internal sealed record MspNativeExecSessionRequestWire
@@ -138,6 +155,8 @@ internal sealed record MspNativeExecSessionRequestWire
     public string? Program { get; init; }
 
     public string[]? Arguments { get; init; }
+
+    public IReadOnlyDictionary<string, string>? Environment { get; init; }
 
     public string? WorkspaceRoot { get; init; }
 

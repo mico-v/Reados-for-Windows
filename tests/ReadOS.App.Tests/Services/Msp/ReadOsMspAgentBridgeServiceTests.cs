@@ -1,5 +1,7 @@
 using ReadOS.App.Models;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Hosting.Native;
+using ReadOS.Msp.Hosting.Runtime;
 
 namespace ReadOS.App.Tests.Services.Msp;
 
@@ -122,5 +124,115 @@ public sealed class ReadOsMspAgentBridgeServiceTests
         Assert.DoesNotContain(new string('x', 5001), report);
         Assert.Contains(new string('y', 2000) + "...", report);
         Assert.DoesNotContain(new string('y', 2001), report);
+    }
+
+    [Fact]
+    public void ParseJsonDispatch_maps_shell_exec_to_hosting_request()
+    {
+        var service = new ReadOsMspAgentBridgeService();
+
+        var dispatch = service.ParseJsonDispatch(
+            "exec_command",
+            "{\"cmd\":\"echo json\",\"workdir\":\"/documents\",\"yield_time_ms\":250,\"max_output_tokens\":64}");
+
+        Assert.Equal("exec_command", dispatch.Operation);
+        Assert.True(dispatch.IsExec);
+        Assert.False(dispatch.IsStdin);
+        Assert.NotNull(dispatch.ExecRequest);
+        Assert.Null(dispatch.StdinRequest);
+        Assert.Equal(MspExecSessionMode.Shell, dispatch.ExecRequest!.Mode);
+        Assert.Equal("echo json", dispatch.ExecRequest.CommandText);
+        Assert.Equal("/documents", dispatch.ExecRequest.WorkingDirectory);
+        Assert.Equal(250, dispatch.ExecRequest.YieldTimeMs);
+        Assert.Equal(64, dispatch.ExecRequest.MaxOutputTokens);
+    }
+
+    [Fact]
+    public void ParseJsonDispatch_maps_process_exec_and_environment_to_hosting_request()
+    {
+        var service = new ReadOsMspAgentBridgeService();
+
+        var dispatch = service.ParseJsonDispatch(
+            "exec_command",
+            "{\"mode\":\"process\",\"program\":\"C:\\\\tools\\\\runner.exe\",\"arguments\":[\"--flag\",\"value\"],\"workspaceRoot\":\"C:\\\\workspace\",\"environment\":{\"MSP_TEST_VALUE\":\"bounded\"}}");
+
+        var request = Assert.IsType<MspExecSessionRequest>(dispatch.ExecRequest);
+        Assert.Equal(MspExecSessionMode.Process, request.Mode);
+        Assert.Equal(@"C:\tools\runner.exe", request.Program);
+        Assert.Equal(new[] { "--flag", "value" }, request.Arguments);
+        Assert.Equal(@"C:\workspace", request.WorkspaceRoot);
+        Assert.Equal("bounded", request.Environment!["MSP_TEST_VALUE"]);
+    }
+
+    [Fact]
+    public void ParseJsonDispatch_maps_stdin_poll_and_continuation_to_typed_requests()
+    {
+        var service = new ReadOsMspAgentBridgeService();
+
+        var poll = service.ParseJsonDispatch(
+            "write_stdin",
+            "{\"session_id\":42,\"yield_time_ms\":500}");
+        var continuation = service.ParseJsonDispatch(
+            "write_stdin",
+            "{\"sessionId\":42,\"chars\":\"next\\n\",\"maxOutputTokens\":32}");
+
+        Assert.True(poll.IsStdin);
+        Assert.Null(poll.ExecRequest);
+        Assert.Equal(42UL, poll.StdinRequest!.SessionId);
+        Assert.Null(poll.StdinRequest.Chars);
+        Assert.True(poll.StdinRequest.IsPoll);
+        Assert.Equal(500, poll.StdinRequest.YieldTimeMs);
+
+        Assert.Equal(42UL, continuation.Stdin!.SessionId);
+        Assert.Equal("next\n", continuation.Stdin.Chars);
+        Assert.False(continuation.Stdin.IsPoll);
+        Assert.Equal(32, continuation.Stdin.MaxOutputTokens);
+    }
+
+    [Fact]
+    public void ParseJsonDispatch_rejects_unknown_duplicate_and_out_of_range_arguments()
+    {
+        var service = new ReadOsMspAgentBridgeService();
+
+        var unknown = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch(
+                "exec_command",
+                "{\"cmd\":\"echo\",\"secret\":\"private\"}"));
+        Assert.Contains("unsupported", unknown.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private", unknown.ToString(), StringComparison.Ordinal);
+
+        var duplicate = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch(
+                "exec_command",
+                "{\"cmd\":\"echo one\",\"command\":\"echo two\"}"));
+        Assert.Contains("duplicate", duplicate.Message, StringComparison.OrdinalIgnoreCase);
+
+        var negative = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch(
+                "write_stdin",
+                "{\"session_id\":42,\"max_output_tokens\":-1}"));
+        Assert.Contains("non-negative", negative.Message, StringComparison.OrdinalIgnoreCase);
+
+        var oversizedChars = new string('x', MspNativeExecSessionLimits.MaximumWriteStdinChars + 1);
+        var oversized = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch(
+                "write_stdin",
+                "{\"session_id\":42,\"chars\":\"" + oversizedChars + "\"}"));
+        Assert.Contains("maximum", oversized.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("xxx", oversized.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParseJsonDispatch_rejects_non_object_json_and_unknown_operation()
+    {
+        var service = new ReadOsMspAgentBridgeService();
+
+        var nonObject = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch("exec_command", "[]"));
+        Assert.Contains("JSON object", nonObject.Message, StringComparison.OrdinalIgnoreCase);
+
+        var unknownOperation = Assert.Throws<ArgumentException>(() =>
+            service.ParseJsonDispatch("other", "{}"));
+        Assert.Contains("not supported", unknownOperation.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

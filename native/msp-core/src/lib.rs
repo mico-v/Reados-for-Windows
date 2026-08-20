@@ -1,14 +1,28 @@
 mod abi_v2;
 mod byte_stream;
+pub mod chat_package;
+pub mod chat_store;
 mod command_core;
 mod composite_workspace;
 mod contract;
+#[allow(dead_code)]
+mod external_runner;
+mod git;
+mod node_launch_plan;
+mod node_vfs;
 mod output_sanitizer;
 mod pipeline;
 pub mod process;
+pub mod python_broker_protocol;
+pub use python_broker_protocol::*;
+#[allow(dead_code)]
+mod python_launch_plan;
+pub use python_launch_plan::*;
 mod runtime;
+mod sed;
 mod session;
 mod shell;
+pub mod verified_bundle;
 mod workspace_callback;
 mod workspace_capabilities;
 mod workspace_fs;
@@ -16,6 +30,21 @@ mod workspace_invoke;
 mod workspace_path;
 mod workspace_trash;
 
+pub use chat_package::{
+    open_chat_package, parse_chat_manifest, parse_chat_manifest_with_limits, parse_chat_timeline,
+    parse_chat_timeline_with_limits, reopen_chat_package, validate_chat_package,
+    validate_chat_package_with_limits, ChatArtifactReference, ChatBlobReference, ChatManifest,
+    ChatPackage, ChatPackageDiagnostic, ChatPackageEntries, ChatPackageError, ChatPackageLimits,
+    ChatPackageSnapshot, ChatTimelineEvent, CHAT_MANIFEST_PATH, CHAT_PACKAGE_FORMAT,
+    CHAT_PACKAGE_SCHEMA_VERSION, CHAT_TIMELINE_PATH, DEFAULT_CHAT_MAX_ARTIFACTS,
+    DEFAULT_CHAT_MAX_ARTIFACT_BYTES, DEFAULT_CHAT_MAX_BLOBS, DEFAULT_CHAT_MAX_BLOB_BYTES,
+    DEFAULT_CHAT_MAX_EVENTS, DEFAULT_CHAT_MAX_EVENT_BYTES, DEFAULT_CHAT_MAX_MANIFEST_BYTES,
+    DEFAULT_CHAT_MAX_PACKAGE_BYTES, DEFAULT_CHAT_MAX_PATH_BYTES, DEFAULT_CHAT_MAX_TIMELINE_BYTES,
+};
+pub use chat_store::{
+    ChatPackageStorage, ChatPackageStore, ChatStorageError, InMemoryChatPackageStorage,
+    WorkspaceChatPackageStorage,
+};
 pub use composite_workspace::{
     CompositeReadOnlyWorkspace, CompositeWritableWorkspace, EmptyReadOnlyWorkspace, WorkspaceMount,
     WritableWorkspaceMount,
@@ -26,6 +55,28 @@ pub use contract::{
     MspShellParseResult, MspWorkspacePathRequest, MspWorkspacePathResult,
     INTERNAL_CONTRACT_VERSION,
 };
+pub use git::{
+    execute_git_command, execute_git_command_on_repository, GitCommit, GitRepository,
+    GitRepositoryError, GitStatusEntry, GIT_MAX_ARGUMENTS, GIT_MAX_ARGUMENT_BYTES,
+    GIT_MAX_COMMAND_BYTES, GIT_MAX_COMMITS, GIT_MAX_ENTRIES, GIT_MAX_LOG_COUNT,
+    GIT_MAX_OUTPUT_BYTES, GIT_MAX_PATH_BYTES, GIT_MAX_SUBJECT_BYTES, GIT_VIRTUAL_VERSION,
+};
+pub use node_launch_plan::{
+    NodeAddonsPolicy, NodeHostPathPolicy, NodeLaunchBounds, NodeLaunchBoundsDimension,
+    NodeLaunchPlan, NodeLaunchPlanError, NodeLaunchPlanRequest, NodeLaunchPolicy,
+    NodeScratchPolicy, NodeVfsBounds, NodeVfsBoundsDimension, NODE_CHILD_EXECUTABLE_RELATIVE_PATH,
+    NODE_LAUNCH_MAX_ARGUMENTS, NODE_LAUNCH_MAX_ARGUMENT_BYTES, NODE_LAUNCH_MAX_CWD_BYTES,
+    NODE_LAUNCH_MAX_ENVIRONMENT_BYTES, NODE_LAUNCH_MAX_ENVIRONMENT_ENTRIES,
+    NODE_LAUNCH_MAX_ENVIRONMENT_ENTRY_BYTES, NODE_NODE_ENTRYPOINT, NODE_NO_ADDONS_ARGUMENT,
+    NODE_PRELOAD_ENTRYPOINT, NODE_PRELOAD_RELATIVE_PATH, NODE_RUNTIME_ENTRYPOINT, NODE_RUNTIME_ID,
+};
+pub use node_vfs::{
+    normalize_virtual_path as normalize_node_virtual_path, NodeVfsCancellation,
+    NodeVfsCancellationToken, NodeVfsDirectoryEntry, NodeVfsErrorCode, NodeVfsFileInfo,
+    NodeVfsFileKind, NodeVfsHost, NodeVfsRequest, NodeVfsResponse, NODE_VFS_MAX_DIRECTORY_ENTRIES,
+    NODE_VFS_MAX_ENTRY_NAME_BYTES, NODE_VFS_MAX_PATH_BYTES, NODE_VFS_MAX_READ_BYTES,
+    NODE_VFS_MAX_REQUEST_BYTES, NODE_VFS_MAX_RESPONSE_BYTES,
+};
 pub use output_sanitizer::{StreamingWindowsPathSanitizer, WindowsPathSanitizer};
 pub use runtime::execute_request;
 pub use shell::{
@@ -33,13 +84,21 @@ pub use shell::{
     ParsedListOperator, ParsedPipeOperator, ParsedRedirection, ParsedRedirectionOperator,
     ParsedShellScript, ParsedWord, ParsedWordPart, ShellParseError, ShellParseErrorKind,
 };
+pub use verified_bundle::{
+    current_pe_machine, current_rid, parse_verified_bundle_manifest, verify_bundle,
+    verify_bundle_with_policy, PeMachine, VerifiedBundle, VerifiedBundleError, VerifiedBundleFile,
+    VerifiedBundleLimits, VerifiedBundleManifest, VerifiedBundleManifestFile, VerifiedBundlePolicy,
+    DEFAULT_VERIFIED_BUNDLE_MAX_FILES, DEFAULT_VERIFIED_BUNDLE_MAX_MANIFEST_BYTES,
+    DEFAULT_VERIFIED_BUNDLE_MAX_TOTAL_BYTES, VERIFIED_BUNDLE_SCHEMA_VERSION,
+};
 pub use workspace_callback::{
     CallbackReadOnlyWorkspace, MspWorkspaceHostV1, MspWorkspaceRequestV1,
 };
 pub use workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 pub use workspace_fs::{
     ReadOnlyWorkspaceFileSystem, WindowsLocalReadOnlyWorkspace, WindowsLocalWritableWorkspace,
-    WorkspaceDirectoryEntry, WorkspaceFileInfo, WorkspaceFileType, WritableWorkspaceFileSystem,
+    WorkspaceDirectoryEntry, WorkspaceFileInfo, WorkspaceFileType, WorkspaceUsageInfo,
+    WritableWorkspaceFileSystem,
 };
 pub use workspace_path::{
     normalize as normalize_workspace_path, VirtualPath, WorkspacePathError, WorkspacePathPolicy,

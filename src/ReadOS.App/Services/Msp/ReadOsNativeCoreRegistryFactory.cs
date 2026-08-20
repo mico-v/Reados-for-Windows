@@ -6,7 +6,7 @@ namespace ReadOS.App.Services.Msp;
 
 internal sealed class ReadOsNativeCoreRegistryFactory
 {
-    private static readonly string[] NativeCommandNames = ["pwd", "echo"];
+    private static readonly string[] NativeCommandNames = ["pwd", "echo", "ls", "cat"];
 
     private readonly IMspNativeAdapterProvider nativeAdapterProvider;
 

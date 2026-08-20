@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "reados-public-msp-ffi-multiarch",
+  "status": "blocked",
+  "reviewed_on": "2026-08-19",
+  "source": {
+    "manifest_path": "native/msp-ffi/Cargo.toml",
+    "header_path": "native/msp-ffi/include/msp_ffi.h",
+    "export_definition_path": "native/msp-ffi/exports/msp_ffi.def",
+    "metadata_path": "native/msp-ffi/release-metadata.json",
+    "reference_revision": "982baa54e9093e39f828d8827be6c75aed7502ff"
+  },
+  "targets": [
+    {
+      "runtime": "win-x64",
+      "rust_target": "x86_64-pc-windows-msvc",
+      "machine": "AMD64",
+      "machine_value": "0x8664",
+      "optional_magic": "0x20B",
+      "dll_path": "native/msp-ffi/target/release/msp_ffi.dll",
+      "status": "available",
+      "hashes": {
+        "algorithm": "SHA-256",
+        "dll": "259a8f41778cd9aa8029604cdf59a6cc0b41224d4a1830af051c6cd20bddb8c8",
+        "manifest": "e8633052c720f2650aa6e5563d68d47533f4520867182b933ce521d6bf016b64",
+        "header": "3fbb028a349402723196b29fad1f2296418887353a80869b87a71c1bb936904e",
+        "export_definition": "3ff764f9b044271fd79a0ad7512c6613f8b03520f09d6be173cd7358d60c79b9"
+      },
+      "observed_commands": [
+        "rustup target list --installed",
+        "pwsh -NoProfile -File scripts/verify-msp-ffi-release.ps1 -DllPath native/msp-ffi/target/release/msp_ffi.dll"
+      ],
+      "expected_build_command": "cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml --target x86_64-pc-windows-msvc"
+    },
+    {
+      "runtime": "win-x86",
+      "rust_target": "i686-pc-windows-msvc",
+      "machine": "I386",
+      "machine_value": "0x014C",
+      "optional_magic": "0x10B",
+      "dll_path": "native/msp-ffi/target/i686-pc-windows-msvc/release/msp_ffi.dll",
+      "status": "blocked",
+      "hashes": {
+        "algorithm": "SHA-256",
+        "dll": null,
+        "manifest": "e8633052c720f2650aa6e5563d68d47533f4520867182b933ce521d6bf016b64",
+        "header": "3fbb028a349402723196b29fad1f2296418887353a80869b87a71c1bb936904e",
+        "export_definition": "3ff764f9b044271fd79a0ad7512c6613f8b03520f09d6be173cd7358d60c79b9"
+      },
+      "missing_commands": [
+        "rustup target add i686-pc-windows-msvc"
+      ],
+      "missing_paths": [
+        "native/msp-ffi/target/i686-pc-windows-msvc/release/msp_ffi.dll"
+      ],
+      "expected_build_command": "cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml --target i686-pc-windows-msvc"
+    },
+    {
+      "runtime": "win-arm64",
+      "rust_target": "aarch64-pc-windows-msvc",
+      "machine": "ARM64",
+      "machine_value": "0xAA64",
+      "optional_magic": "0x20B",
+      "dll_path": "native/msp-ffi/target/aarch64-pc-windows-msvc/release/msp_ffi.dll",
+      "status": "blocked",
+      "hashes": {
+        "algorithm": "SHA-256",
+        "dll": null,
+        "manifest": "e8633052c720f2650aa6e5563d68d47533f4520867182b933ce521d6bf016b64",
+        "header": "3fbb028a349402723196b29fad1f2296418887353a80869b87a71c1bb936904e",
+        "export_definition": "3ff764f9b044271fd79a0ad7512c6613f8b03520f09d6be173cd7358d60c79b9"
+      },
+      "missing_commands": [
+        "rustup target add aarch64-pc-windows-msvc"
+      ],
+      "missing_paths": [
+        "native/msp-ffi/target/aarch64-pc-windows-msvc/release/msp_ffi.dll"
+      ],
+      "expected_build_command": "cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml --target aarch64-pc-windows-msvc"
+    }
+  ],
+  "missing_commands": [
+    "rustup target add i686-pc-windows-msvc",
+    "rustup target add aarch64-pc-windows-msvc"
+  ],
+  "missing_paths": [
+    "native/msp-ffi/target/i686-pc-windows-msvc/release/msp_ffi.dll",
+    "native/msp-ffi/target/aarch64-pc-windows-msvc/release/msp_ffi.dll"
+  ],
+  "validator": "scripts/verify-msp-ffi-multiarch.ps1",
+  "validation_policy": "blocked is an honest evidence result, not a passing multiarch gate; no DLL hash is recorded for a target whose toolchain or artifact is unavailable, and no target-device execution is claimed."
+}

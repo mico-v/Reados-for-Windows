@@ -172,7 +172,15 @@ function Invoke-MspV1 {
         throw "msp_execute_json returned a null pointer during the v1 compatibility smoke."
     }
     try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringUTF8($responsePointer)
+        $bytes = [System.Collections.Generic.List[byte]]::new()
+        for ($offset = 0; ; $offset++) {
+            $byte = [Runtime.InteropServices.Marshal]::ReadByte($responsePointer, $offset)
+            if ($byte -eq 0) {
+                break
+            }
+            $bytes.Add([byte] $byte)
+        }
+        return $strictUtf8.GetString($bytes.ToArray())
     }
     finally {
         $nativeSmokeType::FreeString($responsePointer)
@@ -194,7 +202,7 @@ function Assert-RegistryBehavior {
         [string] $ExpectedActor
     )
 
-    $expectedHelp = ":`ncat`necho`nfalse`nhelp`nls`npwd`ntrue`n"
+    $expectedHelp = ":`nbasename`ncat`ncd`ncommand`ncp`ncreate`ndelete`ndf`ndirname`ndu`necho`nenv`nfalse`nfind`ngrep`nhead`nhelp`nls`nmkdir`nmv`npathchk`nprintf`npwd`nreadlink`nrealpath`nrename`nrm`nsed`nstat`ntail`ntouch`ntrue`ntype`nwc`nwhich`n"
     $expectedHelpBase64 = [Convert]::ToBase64String(
         $strictUtf8.GetBytes($expectedHelp))
     $helpResponse = $HelpResponseJson | ConvertFrom-Json

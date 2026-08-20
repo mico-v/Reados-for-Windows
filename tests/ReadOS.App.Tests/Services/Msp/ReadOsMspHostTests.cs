@@ -91,7 +91,7 @@ public sealed class ReadOsMspHostTests
     }
 
     [Fact]
-    public async Task Host_runtime_factory_protects_pwd_and_echo_as_lazy_native_owned_commands()
+    public async Task Host_runtime_factory_protects_pwd_echo_ls_and_cat_as_lazy_native_owned_commands()
     {
         var workspace = CreateWorkspace(out var document);
         var dependencies = CreateHostDependencies(workspace, document);
@@ -103,13 +103,13 @@ public sealed class ReadOsMspHostTests
             provider,
             ownsNativeAdapterProvider: true);
 
-        foreach (var commandName in new[] { "pwd", "PWD", "echo", "EcHo" })
+        foreach (var commandName in new[] { "pwd", "PWD", "echo", "EcHo", "ls", "LS", "cat", "CAT" })
         {
             Assert.True(hostRuntime.Composition.Registry.TryGet(commandName, out var command));
             Assert.IsType<MspNativeBackedCommand>(command);
         }
 
-        foreach (var commandName in new[] { "ls", "cat", "help", "artifact", "workflow", "workspace" })
+        foreach (var commandName in new[] { "help", "artifact", "workflow", "workspace" })
         {
             Assert.True(hostRuntime.Composition.Registry.TryGet(commandName, out var command));
             Assert.IsNotType<MspNativeBackedCommand>(command);
@@ -132,6 +132,10 @@ public sealed class ReadOsMspHostTests
     [InlineData("PWD")]
     [InlineData("echo")]
     [InlineData("EcHo")]
+    [InlineData("ls")]
+    [InlineData("LS")]
+    [InlineData("cat")]
+    [InlineData("CAT")]
     public void Native_core_registry_rejects_host_overrides_of_protected_commands(
         string commandName)
     {

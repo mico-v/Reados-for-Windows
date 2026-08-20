@@ -1,9 +1,11 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml.Media.Imaging;
 using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Models;
 
 namespace ReadOS.App.Tests.Services.Msp;
@@ -275,6 +277,47 @@ public sealed class ReadOsVirtualWorkspaceTests
         Assert.Null(await virtualWorkspace.TryReadTextAsync("/artifacts/report.md"));
         Assert.Null(await virtualWorkspace.TryReadTextAsync("/artifacts/report.md.manifest.json"));
         Assert.True(workspaceStore.SaveCount > 0);
+    }
+
+    [Fact]
+    public async Task Native_callback_projection_exposes_virtual_listing_and_bytes_only()
+    {
+        var workspace = new WorkspaceState();
+        workspace.Artifacts.Add(new WorkspaceArtifact
+        {
+            Path = "/artifacts/report.md",
+            Content = "# Report\n",
+            MediaType = "text/markdown"
+        });
+        var virtualWorkspace = new ReadOsVirtualWorkspace(
+            new TestWorkspaceStore(workspace),
+            new TestPdfDocumentService(),
+            () => workspace);
+
+        var entries = await virtualWorkspace.ListDirectoryAsync("/artifacts");
+        var entry = Assert.Single(entries, item => item.Name == "report.md");
+        var stat = await virtualWorkspace.StatAsync("/artifacts/report.md");
+        var bytes = await virtualWorkspace.ReadFileRangeAsync(
+            "/artifacts/report.md",
+            offset: 0,
+            length: 1024);
+        var expected = Encoding.UTF8.GetBytes("# Report\n");
+
+        Assert.Equal(MspNativeWorkspaceFileType.RegularFile, entry.Info.FileType);
+        Assert.Equal((ulong)expected.Length, entry.Info.SizeBytes);
+        Assert.Equal(MspNativeWorkspaceFileType.RegularFile, stat.FileType);
+        Assert.Equal(expected, bytes.ToArray());
+        Assert.DoesNotContain("V:\\ReadOS-Test", string.Join("|", entries.Select(item => item.Name)), StringComparison.Ordinal);
+
+        var hidden = await Assert.ThrowsAsync<MspNativeWorkspaceException>(async () =>
+            await virtualWorkspace.StatAsync("/.msp/secret"));
+        Assert.Equal(MspNativeWorkspaceErrorKind.HiddenPath, hidden.ErrorKind);
+        var missing = await Assert.ThrowsAsync<MspNativeWorkspaceException>(async () =>
+            await virtualWorkspace.StatAsync("/missing.txt"));
+        Assert.Equal(MspNativeWorkspaceErrorKind.NotFound, missing.ErrorKind);
+        var physical = await Assert.ThrowsAsync<MspNativeWorkspaceException>(async () =>
+            await virtualWorkspace.StatAsync(@"V:\\ReadOS-Test\\secret.txt"));
+        Assert.DoesNotContain(@"V:\\ReadOS-Test", physical.ToString(), StringComparison.Ordinal);
     }
 
     private sealed class TestWorkspaceStore : IWorkspaceStore

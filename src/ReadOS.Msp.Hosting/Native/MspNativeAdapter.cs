@@ -280,6 +280,7 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             CreateExecSessionRequest(request));
         ValidateContractVersion(wireResult.ContractVersion, MspNativeOperation.ExecSession);
         ValidateExecSessionResponse(wireResult);
+        EnsureExecSessionResponseIsNotDisclosed(wireResult, request.WorkspaceRoot);
 
         if (!wireResult.Ok)
         {
@@ -974,6 +975,8 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             }
         }
 
+        ValidateProcessEnvironment(request.Environment);
+
         if (request.WorkspaceRoot is null ||
             !IsFullyQualifiedWindowsHostPath(request.WorkspaceRoot))
         {
@@ -981,6 +984,94 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
                 "A process-mode exec session requires a fully-qualified Windows host workspace root.",
                 nameof(request));
         }
+    }
+
+    private static void ValidateProcessEnvironment(
+        IReadOnlyDictionary<string, string>? environment)
+    {
+        if (environment is null)
+        {
+            return;
+        }
+
+        if (environment.Count > MspNativeExecSessionLimits.MaximumProcessEnvironmentEntries)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(environment),
+                $"Process-mode exec sessions support at most {MspNativeExecSessionLimits.MaximumProcessEnvironmentEntries} environment entries.");
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in environment)
+        {
+            var key = entry.Key;
+            var value = entry.Value;
+            if (key is null || value is null || key.Length == 0 || key.Contains('=') ||
+                ContainsControlCharacter(key) || ContainsControlCharacter(value))
+            {
+                throw new ArgumentException(
+                    "Process-mode exec session environment names and values must be non-empty, printable text; names must not contain '='.",
+                    nameof(environment));
+            }
+
+            if (IsMandatoryProcessEnvironmentName(key))
+            {
+                throw new ArgumentException(
+                    "Process-mode exec session environment cannot override mandatory names.",
+                    nameof(environment));
+            }
+
+            int entryBytes;
+            try
+            {
+                entryBytes = checked(StrictUtf8.GetByteCount(key) + StrictUtf8.GetByteCount(value));
+            }
+            catch (EncoderFallbackException)
+            {
+                throw new ArgumentException(
+                    "Process-mode exec session environment names and values must be valid UTF-8 text.",
+                    nameof(environment));
+            }
+
+            if (entryBytes > MspNativeExecSessionLimits.MaximumProcessEnvironmentEntryBytes)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(environment),
+                    $"Process-mode exec session environment entries must not exceed {MspNativeExecSessionLimits.MaximumProcessEnvironmentEntryBytes} UTF-8 bytes combined.");
+            }
+
+            if (!names.Add(ToAsciiLower(key)))
+            {
+                throw new ArgumentException(
+                    "Process-mode exec session environment names must be unique case-insensitively.",
+                    nameof(environment));
+            }
+        }
+    }
+
+    private static bool ContainsControlCharacter(string value)
+    {
+        return value.Any(char.IsControl);
+    }
+
+    private static bool IsMandatoryProcessEnvironmentName(string key)
+    {
+        var normalized = ToAsciiLower(key);
+        return normalized is "systemroot" or "path" or "pwd";
+    }
+
+    private static string ToAsciiLower(string value)
+    {
+        var normalized = value.ToCharArray();
+        for (var index = 0; index < normalized.Length; index++)
+        {
+            if (normalized[index] is >= 'A' and <= 'Z')
+            {
+                normalized[index] = (char)(normalized[index] + ('a' - 'A'));
+            }
+        }
+
+        return new string(normalized);
     }
 
     private static MspNativeExecSessionRequestWire CreateExecSessionRequest(
@@ -994,6 +1085,9 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             CommandText = request.CommandText,
             Program = request.Program,
             Arguments = request.Arguments?.ToArray(),
+            Environment = request.SessionId == 0 && request.Mode == MspExecSessionMode.Process
+                ? request.Environment
+                : null,
             WorkspaceRoot = request.WorkspaceRoot,
             SessionId = request.SessionId,
             WorkingDirectory = request.WorkingDirectory,
@@ -1036,6 +1130,33 @@ public sealed class MspNativeAdapter : IMspNativeAdapter, IMspNativeRuntimeInfoP
             response.Error.Message is null)
         {
             throw InvalidResponse(operation);
+        }
+    }
+
+    private static void EnsureExecSessionResponseIsNotDisclosed(
+        MspNativeExecSessionResponseWire response,
+        string? workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            return;
+        }
+
+        var markers = GetHostPathMarkers(workspaceRoot);
+        foreach (var value in new[]
+        {
+            response.TerminalText,
+            response.Error?.Code,
+            response.Error?.Message
+        })
+        {
+            if (value is not null && markers.Any(marker =>
+                    value.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw MspNativeAdapterException.Create(
+                    MspNativeFailureKind.HostPathDisclosure,
+                    MspNativeOperation.ExecSession);
+            }
         }
     }
 

@@ -92,6 +92,15 @@ public sealed class MspNativeCommandRouteClassifier
                 "Use quoting and whitespace that both runtime parsers interpret identically.");
         }
 
+        if (canonicalCommandName == "ls" && managedArguments.Count > 1)
+        {
+            return Reject(
+                MspNativeCommandRouteDecisionKind.UnsupportedShellForm,
+                "msp.native.route.unsupported_arguments",
+                "The native ls route accepts at most one virtual path operand.",
+                "Run canonical ls with zero or one virtual path; use the managed command surface for other forms.");
+        }
+
         return new MspNativeCommandRouteDecision
         {
             Kind = MspNativeCommandRouteDecisionKind.ExecuteNative,
@@ -122,7 +131,7 @@ public sealed class MspNativeCommandRouteClassifier
             MspNativeCommandRouteDecisionKind.UnsupportedShellForm,
             "msp.native.route.unsupported_shell_form",
             "This native command route accepts one simple command without pipelines, lists, assignments, negation, or redirection.",
-            "Run a single canonical pwd or echo command; keep compound workflows in the managed command surface.");
+            "Run a single canonical pwd, echo, ls, or cat command; keep compound workflows in the managed command surface.");
     }
 
     private static MspNativeCommandRouteDecision Reject(

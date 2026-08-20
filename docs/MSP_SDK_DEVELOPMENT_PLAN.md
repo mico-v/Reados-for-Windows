@@ -29,15 +29,15 @@ The runtime-neutral MSP layer is Rust-first. `native/msp-core` owns, in staged f
 
 ## Upstream Reference Boundary
 
-The root `MSP/` directory is a nested, local-only Apache-2.0 upstream reference input. T95 uses:
+The root `MSP/` directory is a nested, local-only Apache-2.0 source-package/reference input. T95 uses:
 
 - `MSP/Spec` for portable behavior, security, WorkspaceFS, command, audit, AgentBridge, and profile contracts;
-- `MSP/Conformance` for fixtures, inventories, oracles, and executable behavior evidence;
-- `MSP/Implementations/Swift/Sources/MSPCore` for runtime-neutral command/workspace/policy/audit semantics;
-- `MSP/Implementations/Swift/Sources/MSPShell` for shell execution behavior;
-- `MSP/Implementations/Swift/Sources/MSPPOSIXCore` for the portable command-profile reference.
+- the available `MSP/Conformance` fixtures and reference outputs for observable behavior;
+- the committed `conformance/msp-upstream/` snapshot for the clean ReadOS test boundary.
 
-`MSP/Implementations/Windows` currently contains only `.gitkeep`. It is not a usable Windows implementation. ReadOS therefore implements the Windows-compatible general runtime in `native/msp-core` and reaches it through a stable .NET adapter.
+The 2026-08-18 Windows source package includes a Cargo workspace with 24 crates and two examples. It is not a ReadOS source subtree and must not be copied or wrapped wholesale. Its `SOURCE-PACKAGE-README.md` explicitly excludes the Mac/Swift implementation source; only `MSP/Implementations/Swift/Sources/Tools` is present in this checkout. The previously documented Swift MSPCore/MSPShell/MSPPOSIXCore paths therefore cannot be treated as locally inspectable implementation evidence.
+
+The Windows package includes source under `MSP/Implementations/Windows`, but the documented parity inventory runner, generated `Conformance/Inventory/WindowsSwiftParity` report, and several release-gate Python dependencies are absent. The source inventory and full Windows release evidence are consequently `blocked`, not passed. See the versioned [Windows capability manifest](../conformance/msp-upstream/windows-capability-manifest.json) for the exact workspace-member map, drift records, evidence commands, and missing paths.
 
 The local `MSP/` checkout is not a ReadOS runtime dependency, parent-repository source tree, CI prerequisite, or package payload. Never add the raw checkout to ReadOS history or package output. If code, fixtures, or documentation are copied or derived, record the source revision/snapshot, local modifications, Apache-2.0 license, NOTICE obligations, and downstream provenance beside the distributed derivative.
 
@@ -76,6 +76,8 @@ tests/
   ReadOS.App.Tests/
 MSP/                    local reference checkout only; absent from Git/package output
 ```
+
+The target package shape also has an optional public native FFI artifact. `native/msp-ffi` is built from its own `Cargo.toml` only for `package-windows.ps1 -IncludePublicMspFfi`; `scripts/verify-msp-ffi-release.ps1` verifies the recorded header/DLL/manifest hashes, the 29-export PE contract, and static MSVC CRT before `msp_ffi.dll` and `include/msp_ffi.h` enter the staged package. It is separate from the internal `reados-msp-native/1` adapter, is not loaded by the app smoke, and does not make a full upstream `msp-ffi` parity claim.
 
 The Hosting project split is complete and separately tested. Do not create another package merely to move code: T95 should first establish upstream compatibility, the Rust Windows core, and the stable managed adapter while document/PDF/chat/workflow behavior remains in the C# app domain.
 
@@ -169,6 +171,20 @@ ReadOS also exposes `ExecuteApprovedStreamingAsync(...)` to replay an operator-a
 
 `native_command_core_registry_v1` is complete: Rust `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace hard-coded dispatch without changing output bytes, exit codes, diagnostics, audit evidence, fixtures, ABI behavior, or product routing. `native_mixed_workspace_read_v1` is complete: ABI v2 operation 4 (`WORKSPACE_INVOKE`) defines the lifetime-safe callback/handle boundary that bridges the app-owned virtual workspace into Rust (`CallbackReadOnlyWorkspace` + composite), with raw P/Invoke, native handles, and native-library paths still confined to the Hosting `Native` adapter rather than App/domain code.
 
+### Verified native runtime capability records
+
+`ReadOS.Msp.Hosting.Native` now has an evidence-only capability contract for
+future Python, Node, and Git registration. A record becomes `Verified` only
+when a verifier-marked bundle identity matches the expected bundle id and
+manifest SHA-256, the explicit target RID and PE machine match, scratch mode is
+explicit, executable resolution is `BundleOnly`, and network access is
+explicitly `Disabled`. Missing, mismatched, or unverified bundles and omitted
+or unsafe policies remain `Blocked` with stable reason codes and
+`IsUsable == false`. This contract does not load or launch a runtime and does
+not change the MSP command registry; process launch, package installation, and
+product/UI adoption remain deferred. See
+[MSP_NATIVE_RUNTIME_REGISTRATION.md](MSP_NATIVE_RUNTIME_REGISTRATION.md).
+
 ## Phase 3: Policy And Mutating Commands
 
 Status: implemented for the current command pack.
@@ -244,9 +260,9 @@ Current verified foundation:
 Still incomplete:
 
 - product execution through Rust beyond the bounded canonical-lowercase `pwd`/`echo` slice;
-- pipelines/redirection execution and file redirections through the writable WorkspaceFS are complete; expansion, broader command conformance, and model-facing exec sessions remain;
-- `exec_command`/`write_stdin` sessions, controlled processes, and Windows ConPTY/Job Object cleanup;
-- native UTF-16LE process-output sanitization and ConPTY session integration (external processes run through exec_command/write_stdin with stdin continuation and kill-on-expiry) are implemented; Debian PTY oracle conformance and broader product adoption remain;
+- pipelines/redirection execution and file redirections through the writable WorkspaceFS are implemented; expansion and broader command conformance remain;
+- the model-facing shell `exec_command`/`write_stdin` session path is implemented; process mode is wired through ConPTY with stdin continuation and wall-clock termination during bounded reads/writes only for the in-crate allowlisted `msp_pty_test_child`, so general external-process support and full MSP parity remain incomplete;
+- native UTF-16LE process-output sanitization and the managed/native ConPTY session boundary are implemented; Debian PTY oracle conformance, a reviewed production executable policy, and broader product adoption remain;
 - a managed/write surface and product migration over the writable WorkspaceFS/trash (the Rust writable core and hidden trash exist; product writes/removes are not yet routed through them).
 
 ### Completed adoption gate: `native_pwd_echo_adoption_v1`
@@ -282,7 +298,7 @@ Current limitations are explicit: the synchronous v1 FFI cannot interrupt work a
 - Direct fixed-local-NTFS reads, `VirtualPath`, path sanitization, ABI v2 negotiation/ownership, and managed policy/audit authority are preserved.
 - Product `ls`/`cat` are NOT migrated; direct, virtual, and mixed read semantics are proven by Rust unit tests (93 total), managed adapter tests, and a real release-DLL differential test (in-memory virtual workspace + `/media` mount through the real DLL).
 
-The `native_stream_core_v1` slice (bounded byte-stream primitives: `MspDataReader`, `BoundedBytePipe`, `MspWorkspaceFileReader`, mirroring `MSPCommandStream.swift`), the mutable WorkspaceFS/trash slice (`mutable_workspace_write_v1` TOCTOU-safe writes + `recoverable_workspace_trash_v1` hidden `.msp/trash`), and the pipelines/redirection slice are complete, and the model-facing exec sessions slice (`exec_command`/`write_stdin`) are complete, and the Windows ConPTY/Job Object process backend + UTF-16LE sanitizer slice is complete, and the ConPTY session integration slice is complete. The next dependency-ordered slice is Debian PTY oracle conformance and broader product adoption. These are separate review and release gates, not one migration PR.
+The `native_stream_core_v1` slice (bounded byte-stream primitives: `MspDataReader`, `BoundedBytePipe`, `MspWorkspaceFileReader`, mirroring `MSPCommandStream.swift`), the mutable WorkspaceFS/trash slice (`mutable_workspace_write_v1` TOCTOU-safe writes + `recoverable_workspace_trash_v1` hidden `.msp/trash`), and the pipelines/redirection slice are complete. The model-facing shell exec-session path (`exec_command`/`write_stdin`) is implemented, and the Windows ConPTY/Job Object process backend + UTF-16LE sanitizer are wired through the managed boundary as a bounded process-mode integration slice for the in-crate allowlisted `msp_pty_test_child`; reads/writes enforce the wall-clock budget, but this is not a general external-process catalog or full MSP parity claim. The next dependency-ordered slice is Debian PTY oracle conformance, followed by a reviewed production executable policy and broader product adoption. These are separate review and release gates, not one migration PR.
 
 ### Compatibility Matrix
 
@@ -301,7 +317,7 @@ Maintain a versioned matrix with one row per adopted feature or command and thes
 
 | Stage | Status | Deliverable | Required evidence |
 | --- | --- | --- | --- |
-| 0. Reference inventory | complete for the selected snapshot | Selected Spec/Profile/Conformance/Swift source map and provenance ledger | Reference revision/snapshot recorded; Windows placeholder confirmed; package exclusion and NOTICE rules reviewed. |
+| 0. Reference inventory | blocked for full source/release evidence; local package inventory captured | Selected Spec/Profile/Conformance inputs, the 26-member Windows workspace map, license/provenance records, and source/document drift are recorded in the capability manifest; missing Swift source, inventory runner/report, oracle harness, and release-gate dependencies remain explicitly blocked. |
 | 1. MSPCore parity | partial | Rust WorkspaceFS, command/result/stream, policy, audit, and diagnostic core | The read-only handle-based WorkspaceFS slice and selected built-ins pass; mutable FS, streams/sessions, and broader parity remain. |
 | 2. Shell/POSIXCore compatibility | partial | MSPShell semantics plus explicit Windows-compatible MSPPOSIXCore subset | Selected six-case command snapshot and AST coverage pass; expansion, execution graphs, and broader fixtures remain. |
 | 3. Stable .NET adapter | partial | Managed/native lifecycle and full execution translation | Length-delimited ABI v2, fail-closed negotiation, isolated complete-v1 fallback, allocator/free ownership, operation caps, runtime evidence, real-DLL tests, and bounded `pwd`/`echo` product translation pass; streaming and broader translation remain. |

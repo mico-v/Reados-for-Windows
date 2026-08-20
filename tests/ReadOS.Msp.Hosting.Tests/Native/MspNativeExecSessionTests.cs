@@ -34,6 +34,7 @@ public sealed class MspNativeExecSessionTests
         Assert.False(result.Running);
         Assert.Equal("hello session\n", result.TerminalText);
         Assert.Null(result.Error);
+        Assert.DoesNotContain("secret-value", JsonSerializer.Serialize(result));
 
         using var request = JsonDocument.Parse(transport.LastRequestJson);
         Assert.Equal(MspNativeContract.Version, request.RootElement.GetProperty("contractVersion").GetString());
@@ -62,6 +63,11 @@ public sealed class MspNativeExecSessionTests
             Mode = MspExecSessionMode.Process,
             Program = "C:\\tools\\runner.exe",
             Arguments = new[] { "--flag", "value" },
+            Environment = new Dictionary<string, string>
+            {
+                ["MSP_TEST_VALUE"] = "secret-value",
+                ["MSP_TEST_OTHER"] = "safe"
+            },
             WorkspaceRoot = "C:\\workspace"
         });
 
@@ -76,12 +82,26 @@ public sealed class MspNativeExecSessionTests
                     .EnumerateArray()
                     .Select(argument => argument.GetString())
                     .ToArray());
+            Assert.Equal(
+                "secret-value",
+                request.RootElement.GetProperty("environment")
+                    .GetProperty("MSP_TEST_VALUE")
+                    .GetString());
+            Assert.Equal(
+                "safe",
+                request.RootElement.GetProperty("environment")
+                    .GetProperty("MSP_TEST_OTHER")
+                    .GetString());
             Assert.False(request.RootElement.TryGetProperty("commandText", out _));
         }
 
         adapter.ExecSession(new MspNativeExecSessionRequest
         {
-            CommandText = "echo hi"
+            CommandText = "echo hi",
+            Environment = new Dictionary<string, string>
+            {
+                ["SHOULD_NOT_BE_SENT"] = "shell-secret"
+            }
         });
 
         using (var request = JsonDocument.Parse(transport.LastRequestJson))
@@ -89,6 +109,7 @@ public sealed class MspNativeExecSessionTests
             Assert.False(request.RootElement.TryGetProperty("mode", out _));
             Assert.False(request.RootElement.TryGetProperty("program", out _));
             Assert.False(request.RootElement.TryGetProperty("arguments", out _));
+            Assert.False(request.RootElement.TryGetProperty("environment", out _));
             Assert.False(request.RootElement.TryGetProperty("workspaceRoot", out _));
         }
     }
@@ -126,6 +147,109 @@ public sealed class MspNativeExecSessionTests
                 Program = "C:\\tools\\runner.exe",
                 WorkspaceRoot = "relative\\workspace"
             }));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Process_mode_rejects_environment_entry_count_before_invoking()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var environment = Enumerable.Range(
+                0,
+                MspNativeExecSessionLimits.MaximumProcessEnvironmentEntries + 1)
+            .ToDictionary(index => $"MSP_{index}", index => index.ToString());
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.ExecSession(ProcessRequest(environment)));
+
+        Assert.Contains(
+            MspNativeExecSessionLimits.MaximumProcessEnvironmentEntries.ToString(),
+            exception.Message);
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Process_mode_rejects_oversized_environment_entry_before_invoking()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+        var secret = new string('s', MspNativeExecSessionLimits.MaximumProcessEnvironmentEntryBytes);
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.ExecSession(ProcessRequest(new Dictionary<string, string>
+            {
+                ["MSP_SECRET"] = secret
+            })));
+
+        Assert.DoesNotContain(secret, exception.ToString());
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Theory]
+    [InlineData("", "value")]
+    [InlineData("BAD=NAME", "value")]
+    [InlineData("BAD\0NAME", "value")]
+    [InlineData("BAD\nNAME", "value")]
+    [InlineData("GOOD", "bad\0value")]
+    [InlineData("GOOD", "bad\nvalue")]
+    public void Process_mode_rejects_invalid_environment_names_and_values(
+        string key,
+        string value)
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ExecSession(ProcessRequest(new Dictionary<string, string>
+            {
+                [key] = value
+            })));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Theory]
+    [InlineData("SystemRoot")]
+    [InlineData("systemroot")]
+    [InlineData("PATH")]
+    [InlineData("path")]
+    [InlineData("PWD")]
+    [InlineData("pwd")]
+    public void Process_mode_rejects_reserved_mandatory_environment_names(string key)
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ExecSession(ProcessRequest(new Dictionary<string, string>
+            {
+                [key] = "value"
+            })));
+        Assert.Null(transport.LastOperation);
+    }
+
+    [Fact]
+    public void Process_mode_rejects_case_insensitive_duplicate_environment_names()
+    {
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        Assert.Throws<ArgumentException>(() =>
+            adapter.ExecSession(ProcessRequest(new Dictionary<string, string>
+            {
+                ["MSP_DUPLICATE"] = "one",
+                ["msp_duplicate"] = "two"
+            })));
         Assert.Null(transport.LastOperation);
     }
 
@@ -355,6 +479,43 @@ public sealed class MspNativeExecSessionTests
     }
 
     [Fact]
+    public void Exec_rejects_terminal_host_workspace_root_disclosure()
+    {
+        const string workspaceRoot = @"V:\private\reados-workspace";
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(
+                terminalText: workspaceRoot + "\\secret.txt\n"),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        var exception = Assert.Throws<MspNativeAdapterException>(() =>
+            adapter.ExecSession(ProcessRequest(workspaceRoot: workspaceRoot)));
+
+        Assert.Equal(MspNativeFailureKind.HostPathDisclosure, exception.FailureKind);
+        Assert.False(exception.ToString().Contains(workspaceRoot, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Exec_rejects_error_host_workspace_root_disclosure()
+    {
+        const string workspaceRoot = @"V:\private\reados-workspace";
+        var transport = new FakeTransport(
+            (_, _) => ExecResult(
+                ok: false,
+                terminalText: "process failed\n",
+                errorCode: "msp.process.spawn",
+                errorMessage: "failed at " + workspaceRoot),
+            ExecSessionsRuntimeInfo());
+        using var adapter = new MspNativeAdapter(transport);
+
+        var exception = Assert.Throws<MspNativeAdapterException>(() =>
+            adapter.ExecSession(ProcessRequest(workspaceRoot: workspaceRoot)));
+
+        Assert.Equal(MspNativeFailureKind.HostPathDisclosure, exception.FailureKind);
+        Assert.False(exception.ToString().Contains(workspaceRoot, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Exec_rejects_closed_response_without_exit_code()
     {
         var response = Json(new Dictionary<string, object?>
@@ -423,6 +584,19 @@ public sealed class MspNativeExecSessionTests
             }));
 
         Assert.Equal(MspNativeFailureKind.InvalidResponse, exception.FailureKind);
+    }
+
+    private static MspNativeExecSessionRequest ProcessRequest(
+        IReadOnlyDictionary<string, string>? environment = null,
+        string workspaceRoot = "C:\\workspace")
+    {
+        return new MspNativeExecSessionRequest
+        {
+            Mode = MspExecSessionMode.Process,
+            Program = "C:\\tools\\runner.exe",
+            WorkspaceRoot = workspaceRoot,
+            Environment = environment
+        };
     }
 
     private static MspNativeRuntimeInfo ExecSessionsRuntimeInfo()

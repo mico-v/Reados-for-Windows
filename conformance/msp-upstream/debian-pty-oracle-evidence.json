@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "msp-debian12-pty-oracle-availability",
+  "status": "blocked",
+  "reviewed_on": "2026-08-19",
+  "source": {
+    "spec_paths": [
+      "MSP/Spec/AgentBridge/ExecCommandProfile.md",
+      "MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md",
+      "MSP/Conformance/ReferenceOutputs/MSPV1Debian12Oracle/README.md"
+    ],
+    "reference_revision": "982baa54e9093e39f828d8827be6c75aed7502ff"
+  },
+  "fixture": {
+    "path": "MSP/Conformance/ReferenceOutputs/MSPV1Debian12Oracle/pty-cases.json",
+    "artifact_kind": "msp-debian12-pty-oracle",
+    "expected_case_count": 157,
+    "sha256": "68bf0761851c43d18ed58772b9f4aeeffc3bcf399bece31476dbc9107b549422",
+    "status": "available",
+    "missing_paths": []
+  },
+  "runner": {
+    "status": "blocked",
+    "required_paths": [
+      "MSP/Conformance/Scripts/run_debian12_pty_oracle.py",
+      "MSP/Conformance/Scripts/run_debian12_pty_oracle_container.sh",
+      "MSP/Conformance/Scripts/verify_debian12_pty_oracle_report.py",
+      "MSP/Package.swift",
+      "MSP/Tests/Swift/Integration/ModelShellProxy/Conformance"
+    ],
+    "missing_paths": [
+      "MSP/Conformance/Scripts/run_debian12_pty_oracle.py",
+      "MSP/Conformance/Scripts/run_debian12_pty_oracle_container.sh",
+      "MSP/Conformance/Scripts/verify_debian12_pty_oracle_report.py",
+      "MSP/Package.swift",
+      "MSP/Tests/Swift/Integration/ModelShellProxy/Conformance"
+    ],
+    "commands": [
+      "MSP_RUN_DEBIAN12_PTY_ORACLE=1 MSP_DEBIAN12_PTY_ORACLE_BACKEND=linux-external MSP_DEBIAN12_PTY_ORACLE_REQUIRE_LINUX=1 swift test --filter ModelShellProxyDebian12PTYOracleConformanceTests/testMSPV1Debian12PTYOracleConformanceRunner",
+      "MSP_DEBIAN12_PTY_ORACLE_RUNNER=<custom-linux-runner> python3 MSP/Conformance/Scripts/run_debian12_pty_oracle.py",
+      "MSP/Conformance/Scripts/run_debian12_pty_oracle_container.sh",
+      "python3 MSP/Conformance/Scripts/verify_debian12_pty_oracle_report.py --report .build/msp-conformance/debian12-pty-linux-report.json --require-zero-failures --require-linux-runner --require-all-fixture-cases --require-python-pty-cases --expected-case-count 157"
+    ],
+    "report_path": ".build/msp-conformance/debian12-pty-linux-report.json"
+  },
+  "execution_host": {
+    "status": "blocked",
+    "required": true,
+    "requirement": "The linux-external backend must execute all fixture cases on Linux/Debian 12 or bookworm and produce a report accepted by --require-linux-runner; a Windows or macOS PTY smoke run is not equivalent.",
+    "availability_checks": [
+      "swift --version",
+      "docker --version",
+      "podman --version",
+      "wsl.exe --list --quiet",
+      "wsl.exe -d Debian -- cat /etc/os-release"
+    ],
+    "missing_commands": [
+      "swift --version",
+      "docker --version",
+      "podman --version",
+      "wsl.exe -d Debian -- cat /etc/os-release",
+      "MSP_DEBIAN12_PTY_ORACLE_RUNNER=<custom-linux-runner>"
+    ],
+    "observed_commands": [
+      "wsl.exe --list --quiet"
+    ],
+    "observed_results": [
+      "archlinux"
+    ],
+    "report_path": ".build/msp-conformance/debian12-pty-linux-report.json",
+    "missing_paths": [
+      ".build/msp-conformance/debian12-pty-linux-report.json"
+    ]
+  },
+  "missing_paths": [
+    "MSP/Conformance/Scripts/run_debian12_pty_oracle.py",
+    "MSP/Conformance/Scripts/run_debian12_pty_oracle_container.sh",
+    "MSP/Conformance/Scripts/verify_debian12_pty_oracle_report.py",
+    "MSP/Package.swift",
+    "MSP/Tests/Swift/Integration/ModelShellProxy/Conformance",
+    ".build/msp-conformance/debian12-pty-linux-report.json"
+  ],
+  "missing_commands": [
+    "swift --version",
+    "docker --version",
+    "podman --version",
+    "wsl.exe -d Debian -- cat /etc/os-release",
+    "MSP_DEBIAN12_PTY_ORACLE_RUNNER=<custom-linux-runner>"
+  ],
+  "expected_output_policy": "The validator reads the fixture's expected byte fields and never creates, rewrites, or substitutes expected output. A missing or invalid fixture is blocked, not synthesized.",
+  "validator": "scripts/verify-debian-pty-oracle.ps1",
+  "validation_policy": "blocked is an honest evidence result, not a passing conformance result"
+}

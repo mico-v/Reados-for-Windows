@@ -220,7 +220,7 @@ MSP/                   local reference checkout only; absent from Git/package ou
 
 The Hosting project boundary is established. Grow it only with host-neutral contracts and services that are covered by separate tests. Keep document/PDF/chat adapters, provider credential storage, workspace persistence, and observable WinUI state in `ReadOS.App`. T95 must preserve this ownership boundary while moving runtime-neutral behavior behind a stable .NET-to-Rust adapter.
 
-The root `MSP/` repository is a nested, local-only upstream design/conformance input, not a ReadOS source subtree, CI dependency, runtime input, parent Git payload, or package payload. Its `Implementations/Windows` directory currently contains only `.gitkeep`; ReadOS implements the Windows-compatible Rust core in `native/msp-core`. Raw `MSP/` content must not enter ReadOS package output. Copied or derived Apache-2.0 code/fixtures require NOTICE, modification, and source-provenance records in the ReadOS distribution surface that contains them.
+The root `MSP/` repository is a nested, local-only Apache-2.0 source-package/reference input, not a ReadOS source subtree, CI dependency, runtime input, parent Git payload, or package payload. Its 2026-08-18 Windows source package contains a 24-crate/two-example Cargo workspace, while `SOURCE-PACKAGE-README.md` excludes Mac/Swift implementation source; this checkout contains only `Implementations/Swift/Sources/Tools`. The documented parity inventory runner/report and required release-gate Python dependencies are absent, so the versioned [Windows capability manifest](conformance/msp-upstream/windows-capability-manifest.json) records source inventory and full upstream release evidence as `blocked`. Raw `MSP/` content must not enter ReadOS package output. Copied or derived Apache-2.0 code/fixtures require NOTICE, modification, and source-provenance records in the ReadOS distribution surface that contains them.
 
 ## Architecture Principles
 
@@ -231,7 +231,7 @@ The root `MSP/` repository is a nested, local-only upstream design/conformance i
 - The virtual workspace is the canonical agent read model.
 - Mutating commands must declare side effects before execution and pass policy.
 - Generated outputs should become artifacts with paths, media types, provenance, and previews.
-- Runtime-neutral behavior should be compared against `MSP/Spec`, `MSP/Conformance`, and the Swift `MSPCore`, `MSPShell`, and `MSPPOSIXCore` implementation before and during Rust implementation.
+- Runtime-neutral behavior should be compared against `MSP/Spec`, available `MSP/Conformance` fixtures/reference outputs, and the committed `conformance/msp-upstream/` snapshots. Swift implementation paths cited by older plan text are not present in this source package; do not claim local Swift-source evidence that the checkout cannot provide.
 - ReadOS integrates the Rust core through a stable .NET adapter; domain commands and UI services do not call an unstable FFI surface directly.
 - Provider secrets must remain outside virtual workspace JSON, exports, audit, transcript, artifacts, adapter payloads, and conformance inputs.
 - Upstream reference use must remain traceable and license-correct; the local `MSP/` checkout is never a ReadOS package payload.
@@ -331,8 +331,8 @@ Current status: `workflow summary current|<session-id>` creates a workflow-level
 
 Status: in progress as T95.
 
-- Treat local `MSP/Spec`, `MSP/Conformance`, and Swift `MSPCore`/`MSPShell`/`MSPPOSIXCore` as upstream behavior references.
-- Implement a Windows-compatible runtime-neutral MSP core in Rust under `native/msp-core`; do not wait for `MSP/Implementations/Windows`, which is currently only a placeholder.
+- Treat local `MSP/Spec`, available `MSP/Conformance` fixtures/reference outputs, and committed `conformance/msp-upstream/` snapshots as upstream behavior references; the Windows source package is a read-only inventory input, not a ReadOS dependency.
+- Implement a Windows-compatible runtime-neutral MSP core in Rust under `native/msp-core`; the local Windows source package is available for capability inventory, but missing upstream parity/release tooling remains blocked and does not become a ReadOS build dependency.
 - Connect the Rust core to ReadOS through a stable .NET adapter while retaining document/PDF/chat/workflow behavior in app/domain code.
 - Run applicable upstream conformance cases plus ReadOS compatibility tests, documenting deliberate Windows/platform deviations.
 - Exclude the raw local `MSP/` repository from ReadOS packages and maintain Apache-2.0 NOTICE/provenance for copied or derived material.
@@ -351,7 +351,7 @@ T95 compatibility gates:
 
 | Stage | Compatibility focus | Acceptance gate |
 | --- | --- | --- |
-| 0. Reference inventory | `MSP/Spec`, `MSP/Conformance`, Swift MSPCore/Shell/POSIXCore, license and Windows placeholder state | Versioned inventory maps each selected upstream contract/fixture/source to `reference`, `adapt`, `defer`, or `Windows deviation`; package exclusion and NOTICE/provenance rules are automated or reviewable. |
+| 0. Reference inventory | `MSP/Spec`, `MSP/Conformance`, the Windows source-package workspace, license, provenance, and release-tool availability | The versioned capability manifest maps the 26 workspace members and selected capabilities; package exclusion and NOTICE/provenance rules are reviewable; missing inventory/release runners remain explicitly `blocked`. |
 | 1. Rust core semantics | WorkspaceFS paths, commands/results/streams, policy, audit, diagnostics | Rust tests pass the selected MSPCore conformance cases without host-path leakage and document every intentional deviation. |
 | 2. Shell and command profile | MSPShell parsing/execution plus an explicit MSPPOSIXCore command subset on Windows | Per-feature/command matrix records `conformant`, `partial`, `deferred`, or `not applicable`; applicable upstream fixtures pass in CI. |
 | 3. Stable .NET adapter | Request, streaming, cancellation, result, policy/audit, workspace, and artifact interop | Managed adapter contract tests and C#-vs-Rust differential tests pass; ReadOS business services depend only on the adapter, never raw FFI. |

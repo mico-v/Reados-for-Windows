@@ -1,6 +1,6 @@
 use crate::byte_stream::{MspByteReader, MspByteWriter, StreamError};
 use crate::contract::{MspCommandResult, MspDiagnostic};
-use crate::workspace_fs::ReadOnlyWorkspaceFileSystem;
+use crate::workspace_fs::{ReadOnlyWorkspaceFileSystem, WritableWorkspaceFileSystem};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -70,23 +70,95 @@ impl<'a> Invocation<'a> {
     }
 }
 
-/// The intentionally small, read-only execution context for this native slice.
+/// The intentionally small execution context for this native slice.
+#[allow(dead_code)]
 pub(crate) struct Context<'a> {
     current_directory: &'a str,
     workspace: Option<&'a dyn ReadOnlyWorkspaceFileSystem>,
+    writable_workspace: Option<&'a dyn WritableWorkspaceFileSystem>,
+    environment: BTreeMap<String, String>,
+    last_status: i32,
     registry: &'a Registry,
 }
 
+#[allow(dead_code)]
 impl<'a> Context<'a> {
     pub(crate) fn new(
         current_directory: &'a str,
         workspace: Option<&'a dyn ReadOnlyWorkspaceFileSystem>,
         registry: &'a Registry,
     ) -> Self {
+        Self::new_with_writable_and_environment(
+            current_directory,
+            workspace,
+            None,
+            BTreeMap::new(),
+            0,
+            registry,
+        )
+    }
+
+    pub(crate) fn new_with_writable(
+        current_directory: &'a str,
+        workspace: Option<&'a dyn ReadOnlyWorkspaceFileSystem>,
+        writable_workspace: Option<&'a dyn WritableWorkspaceFileSystem>,
+        registry: &'a Registry,
+    ) -> Self {
+        Self::new_with_writable_and_environment(
+            current_directory,
+            workspace,
+            writable_workspace,
+            BTreeMap::new(),
+            0,
+            registry,
+        )
+    }
+
+    pub(crate) fn new_with_writable_and_environment(
+        current_directory: &'a str,
+        workspace: Option<&'a dyn ReadOnlyWorkspaceFileSystem>,
+        writable_workspace: Option<&'a dyn WritableWorkspaceFileSystem>,
+        environment: BTreeMap<String, String>,
+        last_status: i32,
+        registry: &'a Registry,
+    ) -> Self {
         Self {
             current_directory,
             workspace,
+            writable_workspace,
+            environment,
+            last_status,
             registry,
+        }
+    }
+
+    /// Creates the per-command view used by the shell executor. Workspace and
+    /// registry references remain shared while assignment state is isolated to
+    /// this invocation.
+    pub(crate) fn with_shell_state(
+        &self,
+        environment: BTreeMap<String, String>,
+        last_status: i32,
+    ) -> Self {
+        self.with_shell_state_at(environment, last_status, self.current_directory)
+    }
+
+    /// Creates a per-stage view with both assignment and virtual-directory state
+    /// isolated from the request context. The directory is borrowed from the
+    /// executor's shell state and never crosses the host filesystem boundary.
+    pub(crate) fn with_shell_state_at(
+        &self,
+        environment: BTreeMap<String, String>,
+        last_status: i32,
+        current_directory: &'a str,
+    ) -> Self {
+        Self {
+            current_directory,
+            workspace: self.workspace,
+            writable_workspace: self.writable_workspace,
+            environment,
+            last_status,
+            registry: self.registry,
         }
     }
 
@@ -96,6 +168,26 @@ impl<'a> Context<'a> {
 
     pub(crate) fn workspace(&self) -> Option<&dyn ReadOnlyWorkspaceFileSystem> {
         self.workspace
+    }
+
+    pub(crate) fn writable_workspace(&self) -> Option<&dyn WritableWorkspaceFileSystem> {
+        self.writable_workspace
+    }
+
+    pub(crate) fn environment(&self) -> &BTreeMap<String, String> {
+        &self.environment
+    }
+
+    pub(crate) fn last_status(&self) -> i32 {
+        self.last_status
+    }
+
+    pub(crate) fn environment_value(&self, name: &str) -> Option<&str> {
+        self.environment.get(name).map(String::as_str)
+    }
+
+    pub(crate) fn command(&self, name: &str) -> Option<&dyn Command> {
+        self.registry.command(name)
     }
 
     pub(crate) fn available_command_names(
@@ -389,7 +481,12 @@ mod tests {
 
     #[test]
     fn current_command_names_and_colon_are_valid() {
-        for name in [":", "cat", "echo", "false", "help", "ls", "pwd", "true"] {
+        for name in [
+            ":", "basename", "cat", "cd", "command", "cp", "create", "delete", "df", "dirname",
+            "du", "echo", "env", "false", "find", "grep", "head", "help", "ls", "mkdir", "mv",
+            "pathchk", "printf", "pwd", "readlink", "realpath", "rename", "rm", "sed", "stat",
+            "tail", "touch", "true", "type", "wc", "which",
+        ] {
             assert_eq!(validate_command_name(name), Ok(()), "{name}");
         }
     }

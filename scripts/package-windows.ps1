@@ -14,7 +14,10 @@ param(
 
     [switch] $SkipSmoke,
 
-    [switch] $StopExisting
+    [switch] $StopExisting,
+
+    [Alias("IncludeMspFfi", "IncludePublicFfi")]
+    [switch] $IncludePublicMspFfi
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +42,12 @@ $solutionPath = Join-Path $repoRoot "ReadOS.sln"
 $projectPath = Join-Path $repoRoot "src\ReadOS.App\ReadOS.App.csproj"
 $nativeRoot = Join-Path $repoRoot "native\msp-core"
 $nativeDllPath = Join-Path $nativeRoot "target\release\msp_core.dll"
+$publicMspFfiRoot = Join-Path $repoRoot "native\msp-ffi"
+$publicMspFfiManifestPath = Join-Path $publicMspFfiRoot "Cargo.toml"
+$publicMspFfiDllPath = Join-Path $publicMspFfiRoot "target\release\msp_ffi.dll"
+$publicMspFfiHeaderPath = Join-Path $publicMspFfiRoot "include\msp_ffi.h"
+$publicMspFfiExportDefinitionPath = Join-Path $publicMspFfiRoot "exports\msp_ffi.def"
+$publicMspFfiMetadataPath = Join-Path $publicMspFfiRoot "release-metadata.json"
 $testProjectPaths = @(
     (Join-Path $repoRoot "tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj"),
     (Join-Path $repoRoot "tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj"),
@@ -161,6 +170,53 @@ try {
     }
     & (Join-Path $repoRoot "scripts\verify-msp-native-binary.ps1") `
         -DllPath $nativeDllPath
+
+    if ($IncludePublicMspFfi) {
+        $previousRustFlags = $env:RUSTFLAGS
+        try {
+            $env:CARGO_INCREMENTAL = "0"
+            $staticMspFfiFlags = "-C target-feature=+crt-static -C link-arg=/Brepro"
+            if (-not [string]::IsNullOrWhiteSpace($previousRustFlags)) {
+                $staticMspFfiFlags = "$previousRustFlags $staticMspFfiFlags"
+            }
+            $env:RUSTFLAGS = $staticMspFfiFlags
+
+            Write-Host "Verifying the public MSP FFI crate..."
+            if (-not $SkipTests) {
+                Invoke-NativeCommand -FilePath $cargo -ArgumentList @(
+                    "test",
+                    "--manifest-path", $publicMspFfiManifestPath,
+                    "--locked"
+                )
+            }
+            Write-Host "Building the public MSP FFI release DLL..."
+            Invoke-NativeCommand -FilePath $cargo -ArgumentList @(
+                "build",
+                "--release",
+                "--manifest-path", $publicMspFfiManifestPath,
+                "--locked"
+            )
+        }
+        finally {
+            if ($null -eq $previousRustFlags) {
+                Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:RUSTFLAGS = $previousRustFlags
+            }
+        }
+
+        if (-not (Test-Path -LiteralPath $publicMspFfiDllPath -PathType Leaf)) {
+            throw "Public MSP FFI release DLL was not produced: $publicMspFfiDllPath"
+        }
+        & (Join-Path $repoRoot "scripts\verify-msp-ffi-release.ps1") `
+            -DllPath $publicMspFfiDllPath `
+            -ManifestPath $publicMspFfiManifestPath `
+            -HeaderPath $publicMspFfiHeaderPath `
+            -ExportDefinitionPath $publicMspFfiExportDefinitionPath `
+            -MetadataPath $publicMspFfiMetadataPath
+    }
+
     $env:READOS_MSP_NATIVE_DLL = $nativeDllPath
 
     if (-not $SkipTests) {
@@ -214,6 +270,14 @@ finally {
 New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
 Copy-Item -Path (Join-Path $publishRoot "*") -Destination $packageRoot -Recurse -Force
 Copy-Item -LiteralPath $nativeDllPath -Destination (Join-Path $packageRoot "msp_core.dll") -Force
+if ($IncludePublicMspFfi) {
+    Copy-Item -LiteralPath $publicMspFfiDllPath -Destination (Join-Path $packageRoot "msp_ffi.dll") -Force
+    $publicMspFfiIncludeRoot = Join-Path $packageRoot "include"
+    New-Item -ItemType Directory -Force -Path $publicMspFfiIncludeRoot | Out-Null
+    Copy-Item -LiteralPath $publicMspFfiHeaderPath `
+        -Destination (Join-Path $publicMspFfiIncludeRoot "msp_ffi.h") `
+        -Force
+}
 
 $nativeLicenseRoot = Join-Path $packageRoot "licenses\msp-upstream"
 New-Item -ItemType Directory -Force -Path $nativeLicenseRoot | Out-Null
@@ -227,6 +291,15 @@ Copy-Item -LiteralPath (Join-Path $nativeRoot "UPSTREAM_MSP.md") `
     -Destination (Join-Path $nativeLicenseRoot "SOURCE-PROVENANCE.md") `
     -Force
 
+$publicMspFfiReleaseNote = ""
+if ($IncludePublicMspFfi) {
+    $publicMspFfiMetadata = Get-Content -LiteralPath $publicMspFfiMetadataPath -Raw | ConvertFrom-Json
+    $publicMspFfiReleaseNote = @"
+Public MSP FFI: msp_ffi.dll (29 exports, header ABI $($publicMspFfiMetadata.abi_version)/$($publicMspFfiMetadata.header_version), SHA-256 $($publicMspFfiMetadata.hashes.dll), static MSVC CRT; opt-in via -IncludePublicMspFfi)
+Public MSP FFI header: include\msp_ffi.h
+"@
+}
+
 $releaseNotes = @"
 ReadOS Windows Release
 Version: $Version
@@ -234,7 +307,7 @@ Runtime: $Runtime
 Configuration: $Configuration
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")
 Native MSP: msp_core.dll (ABI 2.0, JSON reados-msp-native/1, static MSVC CRT)
-
+$publicMspFfiReleaseNote
 Start:
   Run ReadOS.App.exe
 
@@ -252,7 +325,8 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination (Join-Path
 & (Join-Path $repoRoot "scripts\verify-windows-package.ps1") `
     -PackageRoot $packageRoot `
     -ArtifactsRoot $artifactsRoot `
-    -RequireNativeMsp
+    -RequireNativeMsp `
+    -RequirePublicMspFfi:$IncludePublicMspFfi
 
 if (-not $SkipSmoke) {
     Write-Host "Running the staged native MSP ABI smoke..."

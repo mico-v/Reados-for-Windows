@@ -20,9 +20,11 @@ use crate::command_core::{CommandPack, Context, Registry, RegistryError};
 use crate::contract::{
     unix_time_milliseconds, validate_contract_version, INTERNAL_CONTRACT_VERSION,
 };
-use crate::output_sanitizer::WindowsPathSanitizer;
+use crate::output_sanitizer::{StreamingWindowsPathSanitizer, WindowsPathSanitizer};
 use crate::pipeline::execute_script;
-use crate::process::{ProcessBackend, ProcessError, ProcessExit, ProcessSpec};
+use crate::process::{
+    validate_environment_entries, ProcessBackend, ProcessError, ProcessExit, ProcessSpec,
+};
 use crate::runtime::{ReadOsCoreCommandPack, MAX_COMMAND_STDOUT_BYTES};
 use crate::shell::{parse, ParsedShellScript};
 use crate::workspace_fs::{
@@ -318,6 +320,7 @@ fn exec_command_session_shell(request: &MspExecSessionRequest) -> MspExecSession
                 accumulated: Vec::new(),
                 running: false,
                 sanitizer: None,
+                pending_cr: false,
             },
             now_ms,
         );
@@ -371,21 +374,41 @@ fn exec_command_session_process(request: &MspExecSessionRequest) -> MspExecSessi
             }
             cwd
         }
-        Err(error) => {
-            let message = error.to_string();
+        Err(_error) => {
+            let message = "invalid process working directory";
             return closed_error(
                 0,
                 "msp.workspace.invalid_path",
-                &message,
-                with_trailing_newline(&message),
+                message,
+                with_trailing_newline(message),
                 Some(2),
             );
         }
     };
 
+    if let Err(error) = validate_environment_entries(
+        &request
+            .environment
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>(),
+    ) {
+        let message = error.to_string();
+        return closed_error(
+            0,
+            "msp.process.environment_bounds",
+            &message,
+            with_trailing_newline(&message),
+            Some(1),
+        );
+    }
+
     let mut spec = ProcessSpec::new(program);
     for argument in &request.arguments {
         spec = spec.argument(argument.clone());
+    }
+    for (key, value) in &request.environment {
+        spec = spec.environment(key.clone(), value.clone());
     }
     // The ConPTY backend bounds argv and the command line; a hard wall-clock
     // budget of at least 30 s applies regardless of the per-read yield.
@@ -414,7 +437,8 @@ fn exec_command_session_process(request: &MspExecSessionRequest) -> MspExecSessi
     };
 
     let now_ms = unix_time_milliseconds();
-    let sanitizer = WindowsPathSanitizer::new([workspace_root.as_str()]);
+    let sanitizer =
+        StreamingWindowsPathSanitizer::new(WindowsPathSanitizer::new([workspace_root.as_str()]));
     with_registry(|registry| {
         registry.insert(
             SessionRecord {
@@ -431,6 +455,7 @@ fn exec_command_session_process(request: &MspExecSessionRequest) -> MspExecSessi
                 accumulated: Vec::new(),
                 running: true,
                 sanitizer: Some(sanitizer),
+                pending_cr: false,
             },
             now_ms,
         );
@@ -527,11 +552,16 @@ fn execute_session_command(
             ))
         }
     };
-    let context = Context::new(
+    let context = Context::new_with_writable_and_environment(
         working_directory,
         writable
             .as_ref()
             .map(|workspace| workspace as &dyn ReadOnlyWorkspaceFileSystem),
+        writable
+            .as_ref()
+            .map(|workspace| workspace as &dyn WritableWorkspaceFileSystem),
+        request.environment.clone(),
+        0,
         registry,
     );
     let pipeline_result = execute_script(
@@ -798,9 +828,13 @@ struct SessionRecord {
     accumulated: Vec<u8>,
     /// True while a process-mode child is still running.
     running: bool,
-    /// Sanitizer built from the session's workspace root; applied to every
-    /// child chunk before it can enter an envelope.
-    sanitizer: Option<WindowsPathSanitizer>,
+    /// Stateful sanitizer built from the session's workspace root; applied to
+    /// every child chunk before it can enter an envelope. It is flushed at EOF
+    /// so a root held at the final chunk is never lost or emitted raw.
+    sanitizer: Option<StreamingWindowsPathSanitizer>,
+    /// A trailing CR is held so CRLF split across process read chunks still
+    /// normalizes to one LF without changing lone-CR or EOF behavior.
+    pending_cr: bool,
 }
 
 impl SessionRecord {
@@ -812,9 +846,9 @@ impl SessionRecord {
     /// path sanitization, and returns the new chunk's text (also normalized and
     /// sanitized) for a running-response envelope.
     fn append_output(&mut self, chunk: Vec<u8>) -> String {
-        let normalized = normalize_crlf(chunk);
-        let sanitized = match &self.sanitizer {
-            Some(sanitizer) => sanitizer.sanitize(&normalized),
+        let normalized = self.normalize_crlf_chunk(chunk);
+        let sanitized = match &mut self.sanitizer {
+            Some(sanitizer) => sanitizer.append(&normalized),
             None => normalized,
         };
         self.accumulated.extend_from_slice(&sanitized);
@@ -826,6 +860,20 @@ impl SessionRecord {
     /// exactly like a completed shell record from here on. Returns whether the
     /// accumulated text was truncated by `max_output_tokens`.
     fn finalize_process(&mut self, exit: ProcessExit, max_output_tokens: Option<i64>) -> bool {
+        // Resolve both a trailing CR and a sanitizer candidate held at EOF
+        // before converting the accumulated byte stream to model text.
+        let trailing_cr = self.finish_crlf_chunk();
+        if !trailing_cr.is_empty() {
+            let sanitized = match &mut self.sanitizer {
+                Some(sanitizer) => sanitizer.append(&trailing_cr),
+                None => trailing_cr,
+            };
+            self.accumulated.extend_from_slice(&sanitized);
+        }
+        if let Some(sanitizer) = &mut self.sanitizer {
+            self.accumulated.extend_from_slice(&sanitizer.flush());
+        }
+
         self.running = false;
         self.process = None;
         self.exit_code = Some(exit.exit_code as i32);
@@ -835,24 +883,46 @@ impl SessionRecord {
         self.truncated = truncated;
         truncated
     }
-}
 
-/// Normalizes CRLF line endings to LF, matching `pty-cases.json`.
-fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
-    if !data.contains(&b'\r') {
-        return data;
+    fn normalize_crlf_chunk(&mut self, data: Vec<u8>) -> Vec<u8> {
+        let mut output = Vec::with_capacity(data.len());
+        let mut index = 0;
+        if self.pending_cr {
+            self.pending_cr = false;
+            if data.first() == Some(&b'\n') {
+                output.push(b'\n');
+                index = 1;
+            } else {
+                output.push(b'\r');
+            }
+        }
+        while index < data.len() {
+            let byte = data[index];
+            index += 1;
+            if byte == b'\r' {
+                if data.get(index) == Some(&b'\n') {
+                    output.push(b'\n');
+                    index += 1;
+                } else if index == data.len() {
+                    self.pending_cr = true;
+                } else {
+                    output.push(byte);
+                }
+            } else {
+                output.push(byte);
+            }
+        }
+        output
     }
-    let mut output = Vec::with_capacity(data.len());
-    let mut iter = data.into_iter().peekable();
-    while let Some(byte) = iter.next() {
-        if byte == b'\r' && iter.peek() == Some(&b'\n') {
-            output.push(b'\n');
-            iter.next();
+
+    fn finish_crlf_chunk(&mut self) -> Vec<u8> {
+        if self.pending_cr {
+            self.pending_cr = false;
+            vec![b'\r']
         } else {
-            output.push(byte);
+            Vec::new()
         }
     }
-    output
 }
 
 /// A bounded, expiring registry of completed sessions, keyed by [`SessionId`].
@@ -1111,6 +1181,7 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     /// Serializes tests that touch the process-global session registry so the
@@ -1213,6 +1284,7 @@ mod tests {
             accumulated: Vec::new(),
             running: false,
             sanitizer: None,
+            pending_cr: false,
         }
     }
 
@@ -1603,6 +1675,159 @@ mod tests {
             let closed = parse_result(process_poll_json(id, ""));
             assert!(!closed.running);
         }
+    }
+
+    #[test]
+    fn process_mode_propagates_bounded_environment_without_exposing_values() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        let captured = Arc::new(Mutex::new(None::<ProcessSpec>));
+        let captured_by_factory = Arc::clone(&captured);
+        set_process_spawn_factory(Box::new(move |spec, _| {
+            *captured_by_factory.lock().unwrap() = Some(spec.clone());
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![b"environment-ready\r\n".to_vec()],
+                exit: Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                }),
+                written: Vec::new(),
+            }))
+        }));
+
+        let secret = "session-secret-value";
+        let host_path = r"C:\Users\private\ReadOS\workspace\secret.txt";
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": r"C:\ReadOS\child.exe",
+            "workspaceRoot": r"C:\ReadOS\workspace",
+            "workingDirectory": "/",
+            "environment": {
+                "MSP_TEST_VALUE": secret,
+                "MSP_TEST_HOST_HINT": host_path
+            }
+        });
+        let response = exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap();
+        let response_text = String::from_utf8(response).unwrap();
+        let result: MspExecSessionResult = serde_json::from_str(&response_text).unwrap();
+        assert!(result.ok);
+        assert_eq!(result.terminal_text, "environment-ready\n");
+
+        let spec = captured
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("factory must see spec");
+        assert_eq!(
+            spec.environment,
+            vec![
+                ("MSP_TEST_HOST_HINT".to_string(), host_path.to_string()),
+                ("MSP_TEST_VALUE".to_string(), secret.to_string()),
+            ]
+        );
+        assert!(!response_text.contains(secret));
+        assert!(!response_text.contains(host_path));
+
+        let oversized = "x".repeat(8193);
+        let oversized_request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": r"C:\ReadOS\child.exe",
+            "workspaceRoot": r"C:\ReadOS\workspace",
+            "environment": {"MSP_TOO_LARGE": oversized.clone()}
+        });
+        let oversized_result = parse_result(
+            exec_session_json_bytes(&serde_json::to_vec(&oversized_request).unwrap()).unwrap(),
+        );
+        assert!(!oversized_result.ok);
+        assert_eq!(
+            oversized_result.error.as_ref().unwrap().code,
+            "msp.process.environment_bounds"
+        );
+        assert_eq!(
+            oversized_result.error.as_ref().unwrap().message,
+            "process request exceeds its bounds"
+        );
+        assert!(!serde_json::to_string(&oversized_result)
+            .unwrap()
+            .contains(&oversized));
+    }
+
+    #[test]
+    fn process_mode_sanitizes_a_host_path_split_across_output_chunks() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        let root = r"C:\ReadOS\workspace";
+        let split = root.len() / 2;
+        let first = format!("prefix {0}", &root[..split]);
+        let second = format!("{0}\\docs\r\n", &root[split..]);
+        set_process_spawn_factory(Box::new(move |_, _| {
+            Ok(Box::new(ScriptedProcess {
+                reads: vec![first.clone().into_bytes(), second.clone().into_bytes()],
+                exit: Some(ProcessExit {
+                    exit_code: 0,
+                    terminated: false,
+                }),
+                written: Vec::new(),
+            }))
+        }));
+
+        let exec = parse_result(process_exec_json(r"C:\ReadOS\child.exe", root, &[]));
+        assert!(exec.ok);
+        assert!(exec.running, "the first chunk must leave the process live");
+        assert!(!exec.terminal_text.contains(root));
+
+        let completed = parse_result(process_poll_json(exec.session_id, ""));
+        assert!(completed.ok);
+        assert!(!completed.running);
+        assert_eq!(completed.terminal_text, "prefix /docs\n");
+        assert!(!completed.terminal_text.contains(root));
+    }
+
+    #[test]
+    fn process_validation_and_spawn_errors_are_path_free() {
+        let _guard = TEST_GLOBAL_LOCK.lock().unwrap();
+        let invalid_working_directory = "C:/Users/private/ReadOS/workspace";
+        let request = json!({
+            "contractVersion": INTERNAL_CONTRACT_VERSION,
+            "kind": "exec",
+            "mode": "process",
+            "program": r"C:\ReadOS\child.exe",
+            "workspaceRoot": r"C:\ReadOS\workspace",
+            "workingDirectory": invalid_working_directory
+        });
+        let invalid =
+            parse_result(exec_session_json_bytes(&serde_json::to_vec(&request).unwrap()).unwrap());
+        assert!(!invalid.ok);
+        assert_eq!(
+            invalid.error.as_ref().unwrap().code,
+            "msp.workspace.invalid_path"
+        );
+        assert_eq!(
+            invalid.error.as_ref().unwrap().message,
+            "invalid process working directory"
+        );
+        let invalid_json = serde_json::to_string(&invalid).unwrap();
+        assert!(!invalid_json.contains(invalid_working_directory));
+
+        let rejected_program = r"C:\Users\private\ReadOS\missing.exe";
+        set_process_spawn_factory(Box::new(move |_, _| {
+            Err(ProcessError::NotFound(rejected_program.to_string()))
+        }));
+        let spawn = parse_result(process_exec_json(
+            r"C:\ReadOS\child.exe",
+            r"C:\ReadOS\workspace",
+            &[],
+        ));
+        assert!(!spawn.ok);
+        assert_eq!(spawn.error.as_ref().unwrap().code, "msp.process.spawn");
+        assert_eq!(
+            spawn.error.as_ref().unwrap().message,
+            "program was not found"
+        );
+        let spawn_json = serde_json::to_string(&spawn).unwrap();
+        assert!(!spawn_json.contains(rejected_program));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::git::GitRepository;
 use crate::workspace_capabilities::{WorkspaceReadCapabilities, WorkspaceWriteCapabilities};
 use crate::workspace_path::{VirtualPath, WorkspacePathError, WorkspacePathPolicy};
 
@@ -26,6 +27,16 @@ pub struct WorkspaceFileInfo {
 pub struct WorkspaceDirectoryEntry {
     pub name: String,
     pub info: WorkspaceFileInfo,
+}
+
+/// Provider-owned filesystem capacity information for the virtual `df`
+/// command. Values are bytes and must describe only the provider's exposed
+/// namespace, never the native process host volume.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceUsageInfo {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
 }
 
 /// Backend-neutral read surface for the first WorkspaceFS slice.
@@ -61,6 +72,28 @@ pub trait ReadOnlyWorkspaceFileSystem: Send + Sync {
         offset: u64,
         length: usize,
     ) -> Result<Vec<u8>, WorkspacePathError>;
+
+    /// Returns a caller-owned, immutable virtual Git snapshot for the
+    /// repository containing `current_directory`.
+    ///
+    /// The default is repository absence. Implementations must not discover
+    /// repositories by probing host paths here; they should return metadata from
+    /// their already-authorized virtual workspace model.
+    fn git_repository(
+        &self,
+        _current_directory: &VirtualPath,
+    ) -> Result<Option<GitRepository>, WorkspacePathError> {
+        Ok(None)
+    }
+
+    /// Returns provider-owned capacity metadata for `path`.
+    ///
+    /// Backends that cannot truthfully report capacity must leave this method
+    /// at its stable unsupported default. In particular, callers must never
+    /// substitute native host disk probing for this operation.
+    fn usage(&self, path: &VirtualPath) -> Result<WorkspaceUsageInfo, WorkspacePathError> {
+        Err(WorkspacePathError::Unsupported(path.to_string()))
+    }
 }
 
 /// Backend-neutral writable surface layered on the read-only WorkspaceFS.
@@ -70,7 +103,18 @@ pub trait ReadOnlyWorkspaceFileSystem: Send + Sync {
 /// never leak host paths into results or errors.
 pub trait WritableWorkspaceFileSystem: ReadOnlyWorkspaceFileSystem {
     fn write_capabilities_at(&self, _path: &VirtualPath) -> WorkspaceWriteCapabilities {
-        WorkspaceWriteCapabilities::ALL
+        // Keep the default compatible with backends that predate directory
+        // creation. Backends that implement `create_directory` must advertise
+        // `CREATE_DIRECTORY` explicitly.
+        WorkspaceWriteCapabilities::LEGACY_ALL
+    }
+
+    fn create_directory(
+        &self,
+        path: &VirtualPath,
+        _create_parent_directories: bool,
+    ) -> Result<(), WorkspacePathError> {
+        Err(WorkspacePathError::Unsupported(path.to_string()))
     }
 
     fn create_file(
@@ -372,6 +416,28 @@ pub(crate) mod windows {
             Ok(file)
         }
 
+        fn open_metadata_target(
+            &self,
+            path: &VirtualPath,
+            operation: &str,
+        ) -> Result<File, WorkspacePathError> {
+            let file = open_handle_with_disposition(
+                &self.target_source(path),
+                FILE_READ_ATTRIBUTES,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                path.as_str(),
+                operation,
+            )?;
+            let root_final = final_path_for_handle(&self.root_handle, "/", operation)?;
+            let target_final = final_path_for_handle(&file, path.as_str(), operation)?;
+            if !is_same_or_child_path(&root_final, &target_final) {
+                return Err(WorkspacePathError::AccessDenied(path.to_string()));
+            }
+            self.authorize_final_relative_components(path, &root_final, &target_final)?;
+            Ok(file)
+        }
+
         fn authorize_final_relative_components(
             &self,
             requested_path: &VirtualPath,
@@ -482,7 +548,7 @@ pub(crate) mod windows {
         }
 
         fn stat(&self, path: &VirtualPath) -> Result<WorkspaceFileInfo, WorkspacePathError> {
-            let file = self.open_target(path, FILE_READ_ATTRIBUTES, "stat")?;
+            let file = self.open_metadata_target(path, "stat")?;
             self.info_from_handle(path, &file, "stat")
         }
 
@@ -847,6 +913,65 @@ pub(crate) mod windows {
     }
 
     impl WritableWorkspaceFileSystem for WindowsLocalWritableWorkspace {
+        fn write_capabilities_at(&self, _path: &VirtualPath) -> WorkspaceWriteCapabilities {
+            WorkspaceWriteCapabilities::ALL
+        }
+
+        fn create_directory(
+            &self,
+            path: &VirtualPath,
+            create_parent_directories: bool,
+        ) -> Result<(), WorkspacePathError> {
+            let path = self.authorize_write_path(path)?;
+            if path == VirtualPath::root() {
+                return if create_parent_directories {
+                    Ok(())
+                } else {
+                    Err(WorkspacePathError::AlreadyExists(path.to_string()))
+                };
+            }
+            let parent = parent_virtual_path(&path)
+                .ok_or_else(|| WorkspacePathError::InvalidPath(path.to_string()))?;
+            let _parent_handle = self
+                .open_parent_for_create(&parent, create_parent_directories, "mkdir")
+                .map_err(|error| remap_to_requested_path(&path, error))?;
+
+            match self.open_for_write(&path, PARENT_WRITE_ACCESS | DELETE, OPEN_EXISTING, "mkdir") {
+                Ok(handle) => {
+                    self.require_directory(&handle, &path, "mkdir")?;
+                    if create_parent_directories {
+                        Ok(())
+                    } else {
+                        Err(WorkspacePathError::AlreadyExists(path.to_string()))
+                    }
+                }
+                Err(WorkspacePathError::NotFound(_)) => {
+                    let created_path = extended_path_units(&self.read.target_source(&path));
+                    if unsafe { CreateDirectoryW(created_path.as_ptr(), ptr::null()) } == 0 {
+                        return Err(map_windows_error(
+                            unsafe { GetLastError() },
+                            path.as_str(),
+                            "mkdir",
+                        ));
+                    }
+                    let handle = open_handle_with_disposition(
+                        &self.read.target_source(&path),
+                        PARENT_WRITE_ACCESS | DELETE,
+                        OPEN_EXISTING,
+                        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                        path.as_str(),
+                        "mkdir",
+                    )?;
+                    if let Err(error) = self.verify_write_handle(&path, &handle, "mkdir") {
+                        let _ = set_delete_on_close(&handle);
+                        return Err(error);
+                    }
+                    self.require_directory(&handle, &path, "mkdir")
+                }
+                Err(error) => Err(error),
+            }
+        }
+
         fn create_file(
             &self,
             path: &VirtualPath,
@@ -1782,6 +1907,35 @@ pub(crate) mod windows {
                 .read_file_range(&new_file, 0, 32)
                 .unwrap()
                 .is_empty());
+        }
+
+        #[test]
+        fn create_directory_handles_existing_parents_and_collisions() {
+            let root = TemporaryDirectory::new("workspace-write-mkdir");
+            let workspace = WindowsLocalWritableWorkspace::open(&root.0).unwrap();
+            let deep = workspace.resolve("/a/b/c", "/").unwrap();
+
+            assert!(matches!(
+                workspace.create_directory(&deep, false),
+                Err(WorkspacePathError::NotFound(path)) if path == "/a/b/c"
+            ));
+            workspace.create_directory(&deep, true).unwrap();
+            assert_eq!(
+                workspace.stat(&deep).unwrap().file_type,
+                WorkspaceFileType::Directory
+            );
+            assert!(matches!(
+                workspace.create_directory(&deep, false),
+                Err(WorkspacePathError::AlreadyExists(path)) if path == "/a/b/c"
+            ));
+            workspace.create_directory(&deep, true).unwrap();
+
+            let file = workspace.resolve("/file", "/").unwrap();
+            workspace.create_file(&file, false, false).unwrap();
+            assert!(matches!(
+                workspace.create_directory(&file, true),
+                Err(WorkspacePathError::NotDirectory(path)) if path == "/file"
+            ));
         }
 
         #[test]

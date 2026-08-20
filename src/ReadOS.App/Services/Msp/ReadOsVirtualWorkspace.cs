@@ -1,12 +1,14 @@
+using System.Text;
 using System.Text.Json;
 using ReadOS.App.Models;
+using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Hosting.Sessions;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Workspace;
 
 namespace ReadOS.App.Services.Msp;
 
-internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
+internal sealed class ReadOsVirtualWorkspace : IMspWorkspace, IMspNativeReadOnlyWorkspace
 {
     private const string ArtifactManifestSuffix = ".manifest.json";
 
@@ -14,6 +16,8 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
     {
         WriteIndented = true
     };
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private readonly IWorkspaceStore workspaceStore;
     private readonly IPdfDocumentService pdfService;
@@ -205,6 +209,112 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         return null;
     }
 
+    public async ValueTask<MspNativeWorkspaceFileInfo> StatAsync(
+        string virtualPath,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeNativePath(virtualPath);
+        var entries = await ListAsync(normalized, cancellationToken);
+        if (entries.Count > 0)
+        {
+            return new MspNativeWorkspaceFileInfo
+            {
+                FileType = MspNativeWorkspaceFileType.Directory
+            };
+        }
+
+        var content = await TryReadTextAsync(normalized, cancellationToken);
+        if (content is not null)
+        {
+            return new MspNativeWorkspaceFileInfo
+            {
+                FileType = MspNativeWorkspaceFileType.RegularFile,
+                SizeBytes = GetUtf8ByteCount(content)
+            };
+        }
+
+        if (await ExistsAsync(normalized, cancellationToken))
+        {
+            return new MspNativeWorkspaceFileInfo
+            {
+                FileType = MspNativeWorkspaceFileType.Directory
+            };
+        }
+
+        throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.NotFound);
+    }
+
+    public async ValueTask<IReadOnlyList<MspNativeWorkspaceDirectoryEntry>> ListDirectoryAsync(
+        string virtualPath,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeNativePath(virtualPath);
+        var entries = await ListAsync(normalized, cancellationToken);
+        if (entries.Count == 0)
+        {
+            // IMspWorkspace intentionally treats a file as an empty listing;
+            // retain that behavior for the managed-compatible ls route.
+            if (await TryReadTextAsync(normalized, cancellationToken) is not null ||
+                await ExistsAsync(normalized, cancellationToken))
+            {
+                return Array.Empty<MspNativeWorkspaceDirectoryEntry>();
+            }
+
+            throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.NotFound);
+        }
+
+        return entries
+            .Select(entry => new MspNativeWorkspaceDirectoryEntry
+            {
+                Name = entry.Name,
+                Info = ToNativeFileInfo(entry)
+            })
+            .ToArray();
+    }
+
+    public async ValueTask<ReadOnlyMemory<byte>> ReadFileRangeAsync(
+        string virtualPath,
+        ulong offset,
+        int length,
+        CancellationToken cancellationToken = default)
+    {
+        if (length < 0 || length > 1024 * 1024)
+        {
+            throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.LimitExceeded);
+        }
+
+        var normalized = NormalizeNativePath(virtualPath);
+        var content = await TryReadTextAsync(normalized, cancellationToken);
+        if (content is null)
+        {
+            if (await ExistsAsync(normalized, cancellationToken))
+            {
+                throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.IsDirectory);
+            }
+
+            throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.NotFound);
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = StrictUtf8.GetBytes(content);
+        }
+        catch (EncoderFallbackException)
+        {
+            throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.Io);
+        }
+
+        if (offset >= (ulong)bytes.Length || length == 0)
+        {
+            return ReadOnlyMemory<byte>.Empty;
+        }
+
+        var start = checked((int)offset);
+        var count = Math.Min(length, bytes.Length - start);
+        return bytes.AsMemory(start, count).ToArray();
+    }
+
     public ValueTask WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
     {
         return WriteTextAsync(path, content, artifact: null, cancellationToken);
@@ -295,6 +405,42 @@ internal sealed class ReadOsVirtualWorkspace : IMspWorkspace
         workspace.Artifacts.Remove(artifact);
         await workspaceStore.SaveAsync(workspace, cancellationToken);
         return true;
+    }
+
+    private string NormalizeNativePath(string path)
+    {
+        var normalized = NormalizePath(path);
+        if (normalized
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Any(component => string.Equals(component, ".msp", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new MspNativeWorkspaceException(MspNativeWorkspaceErrorKind.HiddenPath);
+        }
+
+        return normalized;
+    }
+
+    private static ulong? GetUtf8ByteCount(string content)
+    {
+        try
+        {
+            return checked((ulong)StrictUtf8.GetByteCount(content));
+        }
+        catch (EncoderFallbackException)
+        {
+            return null;
+        }
+    }
+
+    private static MspNativeWorkspaceFileInfo ToNativeFileInfo(MspWorkspaceEntry entry)
+    {
+        return new MspNativeWorkspaceFileInfo
+        {
+            FileType = entry.IsDirectory
+                ? MspNativeWorkspaceFileType.Directory
+                : MspNativeWorkspaceFileType.RegularFile,
+            SizeBytes = entry.SizeBytes is long size && size >= 0 ? (ulong)size : null
+        };
     }
 
     private static IReadOnlyList<MspWorkspaceEntry> RootEntries()

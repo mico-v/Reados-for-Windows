@@ -6,7 +6,9 @@ param(
     [Parameter(Mandatory)]
     [string] $ArtifactsRoot,
 
-    [switch] $RequireNativeMsp
+    [switch] $RequireNativeMsp,
+
+    [switch] $RequirePublicMspFfi
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,29 +70,154 @@ Assert-RequiredFile -RelativePath "ReadOS.App.dll"
 Assert-RequiredFile -RelativePath "RELEASE.txt"
 Assert-RequiredFile -RelativePath "README.md"
 
-$forbiddenDirectoryNames = @(".git", "MSP", "credentials")
+$forbiddenDirectoryNames = @(
+    ".git",
+    ".cargo",
+    ".msp",
+    "MSP",
+    "credentials",
+    "private",
+    "state",
+    "source",
+    "sources",
+    "tests",
+    "test",
+    "target",
+    "obj",
+    "bin",
+    "build",
+    "incremental",
+    "src"
+)
 $forbiddenFileNames = @(
     ".env",
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
     "secrets.json",
+    "credentials.json",
+    "private.json",
+    "state.json",
     "workspace.json",
     "reados-package-smoke.success.json",
-    "reados-package-smoke.log.json"
+    "reados-package-smoke.log.json",
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "msp_ffi.def"
 )
+$forbiddenSourceExtensions = @(
+    ".bat",
+    ".bash",
+    ".c",
+    ".cc",
+    ".cmd",
+    ".cpp",
+    ".cxx",
+    ".cs",
+    ".csproj",
+    ".def",
+    ".d",
+    ".fs",
+    ".fsproj",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".ilk",
+    ".lock",
+    ".m",
+    ".mm",
+    ".obj",
+    ".ps1",
+    ".psd1",
+    ".psm1",
+    ".py",
+    ".pyc",
+    ".rlib",
+    ".rmeta",
+    ".rs",
+    ".sh",
+    ".sln",
+    ".swift",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".vb",
+    ".vbproj",
+    ".xaml"
+)
+$forbiddenGeneratedExtensions = @(
+    ".exp",
+    ".lib",
+    ".pdb"
+)
+$allowedPublicFfiHeader = "include\msp_ffi.h"
+$ffiVerifierPath = Join-Path $PSScriptRoot "verify-msp-ffi-release.ps1"
+$ffiRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\native\msp-ffi"))
+$ffiManifestPath = Join-Path $ffiRoot "Cargo.toml"
+$ffiExportDefinitionPath = Join-Path $ffiRoot "exports\msp_ffi.def"
+$ffiMetadataPath = Join-Path $ffiRoot "release-metadata.json"
 
 $forbiddenEntries = Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Where-Object {
     if ($_.PSIsContainer) {
         return $forbiddenDirectoryNames -contains $_.Name
     }
 
+    $relativePath = [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+    $normalizedRelativePath = $relativePath.Replace('/', '\\')
+    if ($RequirePublicMspFfi -and
+        [string]::Equals($normalizedRelativePath, $allowedPublicFfiHeader, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
     return ($forbiddenFileNames -contains $_.Name) -or
-        [string]::Equals($_.Extension, ".pdb", [System.StringComparison]::OrdinalIgnoreCase)
+        ($forbiddenSourceExtensions -contains $_.Extension.ToLowerInvariant()) -or
+        ($forbiddenGeneratedExtensions -contains $_.Extension.ToLowerInvariant()) -or
+        $_.Name -match '(?i)^(?:\.env(?:\..*)?|(?:credentials?|secrets?|private|state|workspace)(?:[._-].*)?)$' -or
+        $_.Name -match '(?i)\.(?:generated|gen|temporary|tmp)(?:[._-]|$)'
 }
 
 if ($forbiddenEntries) {
     $relativePaths = $forbiddenEntries | ForEach-Object {
         [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
     }
-    throw "Windows package contains private or source-only entries: $($relativePaths -join ', ')"
+    throw "Windows package contains private, source-only, or generated entries: $($relativePaths -join ', ')"
+}
+
+$publicMspFfiDllPath = Join-Path $PackageRoot "msp_ffi.dll"
+$publicMspFfiHeaderPath = Join-Path $PackageRoot $allowedPublicFfiHeader
+$publicMspFfiEntries = @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Where-Object {
+    if ($_.PSIsContainer) {
+        return $false
+    }
+
+    return [string]::Equals($_.Name, "msp_ffi.dll", [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($_.Name, "msp_ffi.h", [System.StringComparison]::OrdinalIgnoreCase)
+})
+$unexpectedPublicMspFfiEntries = @($publicMspFfiEntries | Where-Object {
+    $relativePath = [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName).Replace('/', '\\')
+    -not ([string]::Equals($relativePath, "msp_ffi.dll", [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($relativePath, $allowedPublicFfiHeader, [System.StringComparison]::OrdinalIgnoreCase))
+})
+if ($unexpectedPublicMspFfiEntries) {
+    $relativePaths = $unexpectedPublicMspFfiEntries | ForEach-Object {
+        [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+    }
+    throw "Windows package contains a public MSP FFI file at an unapproved path: $($relativePaths -join ', ')"
+}
+
+if ($RequirePublicMspFfi) {
+    Assert-RequiredFile -RelativePath "msp_ffi.dll"
+    Assert-RequiredFile -RelativePath $allowedPublicFfiHeader
+    & $ffiVerifierPath `
+        -DllPath $publicMspFfiDllPath `
+        -ManifestPath $ffiManifestPath `
+        -HeaderPath $publicMspFfiHeaderPath `
+        -ExportDefinitionPath $ffiExportDefinitionPath `
+        -MetadataPath $ffiMetadataPath
+}
+elseif ($publicMspFfiEntries.Count -gt 0) {
+    throw "Windows package contains the optional public MSP FFI without -RequirePublicMspFfi."
 }
 
 if ($RequireNativeMsp) {
@@ -106,3 +233,4 @@ if ($RequireNativeMsp) {
 Write-Host "Windows package content verification passed."
 Write-Host "  Package: $PackageRoot"
 Write-Host "  Native MSP required: $RequireNativeMsp"
+Write-Host "  Public MSP FFI required: $RequirePublicMspFfi"

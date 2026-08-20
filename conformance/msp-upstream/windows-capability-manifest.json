@@ -1,0 +1,892 @@
+{
+  "schema_version": 1,
+  "manifest_kind": "reados-windows-msp-capability-status",
+  "profile": "ReadOS-Windows-MSP-Full-1",
+  "status": "blocked",
+  "reviewed_on": "2026-08-19",
+  "scope": "Inventory the local MSP Windows source package and map its major crates and capabilities to ReadOS targets without copying or depending on raw MSP source.",
+  "status_vocabulary": {
+    "conformant": "The selected evidence passes for the stated scope.",
+    "partial": "A ReadOS-compatible slice exists, but the upstream capability or evidence is broader.",
+    "deferred": "The capability is intentionally outside the current ReadOS implementation slice.",
+    "blocked": "Required source, runner, oracle, or release evidence is missing or cannot be verified from this checkout.",
+    "not_applicable": "The capability remains in an intentionally excluded ReadOS app/domain boundary."
+  },
+  "provenance": {
+    "reference_root": "MSP/",
+    "reference_policy": "local read-only Apache-2.0 reference; never copy raw MSP source into ReadOS",
+    "declared_source_revision": "982baa54e9093e39f828d8827be6c75aed7502ff",
+    "declared_revision_source": "existing ReadOS conformance/provenance records",
+    "revision_verification": "blocked",
+    "revision_verification_missing_paths": [
+      "MSP/.git"
+    ],
+    "source_package_snapshot": "2026-08-18 Windows x64 preview (MSP/SOURCE-PACKAGE-README.md)",
+    "license_paths": [
+      "MSP/LICENSE",
+      "MSP/NOTICE",
+      "conformance/msp-upstream/APACHE-2.0.txt",
+      "conformance/msp-upstream/NOTICE"
+    ],
+    "reados_derivative_provenance": "native/msp-core/UPSTREAM_MSP.md",
+    "raw_reference_must_not_be_tracked_or_packaged": true
+  },
+  "source_inventory": {
+    "source_package_readme": "MSP/SOURCE-PACKAGE-README.md",
+    "source_package_snapshot": "2026-08-18 Windows x64 preview",
+    "windows_workspace_manifest": "MSP/Implementations/Windows/Cargo.toml",
+    "workspace_member_count": 26,
+    "workspace_crate_count": 24,
+    "workspace_example_count": 2,
+    "workspace_members": [
+      { "name": "msp-agent-bridge", "path": "MSP/Implementations/Windows/crates/msp-agent-bridge", "represented_by": "msp-agent-bridge" },
+      { "name": "msp-agent-chat-store", "path": "MSP/Implementations/Windows/crates/msp-agent-chat-store", "represented_by": "msp-agent-chat-store" },
+      { "name": "msp-chat", "path": "MSP/Implementations/Windows/crates/msp-chat", "represented_by": "msp-chat" },
+      { "name": "msp-chat-commands", "path": "MSP/Implementations/Windows/crates/msp-chat-commands", "represented_by": "msp-chat-commands" },
+      { "name": "msp-chat-validator-cli", "path": "MSP/Implementations/Windows/crates/msp-chat-validator-cli", "represented_by": "msp-chat-validator-cli" },
+      { "name": "msp-codex-apply-patch-runtime", "path": "MSP/Implementations/Windows/crates/msp-codex-apply-patch-runtime", "represented_by": "msp-codex-apply-patch-runtime" },
+      { "name": "msp-external-runner", "path": "MSP/Implementations/Windows/crates/msp-external-runner", "represented_by": "msp-external-runner" },
+      { "name": "msp-git", "path": "MSP/Implementations/Windows/crates/msp-git", "represented_by": "msp-git" },
+      { "name": "model-shell-proxy", "path": "MSP/Implementations/Windows/crates/model-shell-proxy", "represented_by": "model-shell-proxy" },
+      { "name": "msp-core", "path": "MSP/Implementations/Windows/crates/msp-core", "represented_by": "msp-core" },
+      { "name": "msp-ffi", "path": "MSP/Implementations/Windows/crates/msp-ffi", "represented_by": "msp-ffi" },
+      { "name": "msp-posix-core", "path": "MSP/Implementations/Windows/crates/msp-posix-core", "represented_by": "msp-posix-core" },
+      { "name": "msp-pty-support", "path": "MSP/Implementations/Windows/crates/msp-pty-support", "represented_by": "msp-pty-support" },
+      { "name": "msp-node-runtime", "path": "MSP/Implementations/Windows/crates/msp-node-runtime", "represented_by": "msp-node-runtime-family" },
+      { "name": "msp-node-native-bridge", "path": "MSP/Implementations/Windows/crates/msp-node-native-bridge", "represented_by": "msp-node-runtime-family" },
+      { "name": "msp-python-broker-protocol", "path": "MSP/Implementations/Windows/crates/msp-python-broker-protocol", "represented_by": "msp-python-runtime-family" },
+      { "name": "msp-python-native-bridge", "path": "MSP/Implementations/Windows/crates/msp-python-native-bridge", "represented_by": "msp-python-runtime-family" },
+      { "name": "msp-python-embedded-runtime", "path": "MSP/Implementations/Windows/crates/msp-python-embedded-runtime", "represented_by": "msp-python-runtime-family" },
+      { "name": "msp-python-runtime", "path": "MSP/Implementations/Windows/crates/msp-python-runtime", "represented_by": "msp-python-runtime-family" },
+      { "name": "msp-request-parity-runner", "path": "MSP/Implementations/Windows/crates/msp-request-parity-runner", "represented_by": "msp-request-parity-runner" },
+      { "name": "msp-shell", "path": "MSP/Implementations/Windows/crates/msp-shell", "represented_by": "msp-shell" },
+      { "name": "msp-shell-expansion", "path": "MSP/Implementations/Windows/crates/msp-shell-expansion", "represented_by": "msp-shell-expansion" },
+      { "name": "msp-shell-language", "path": "MSP/Implementations/Windows/crates/msp-shell-language", "represented_by": "msp-shell-language" },
+      { "name": "msp-windows", "path": "MSP/Implementations/Windows/crates/msp-windows", "represented_by": "msp-windows" },
+      { "name": "msp-playground-windows", "path": "MSP/Implementations/Windows/examples/msp-playground-windows", "represented_by": "bindings-and-demo-hosts" },
+      { "name": "photosorter-windows", "path": "MSP/Implementations/Windows/examples/photosorter-windows", "represented_by": "bindings-and-demo-hosts" }
+    ],
+    "non_workspace_directories": [
+      { "path": "MSP/Implementations/Windows/crates/msp-cli", "reason": "directory has source files but no Cargo.toml; it is not a workspace member" },
+      { "path": "MSP/Implementations/Windows/crates/msp-command-kit", "reason": "directory has source files but no Cargo.toml; it is not a workspace member" },
+      { "path": "MSP/Implementations/Windows/examples/msp-workbench-winui", "reason": "WinUI project/readme directory has no Cargo.toml and is not a Cargo workspace member" }
+    ],
+    "swift_source_surface": {
+      "present_paths": ["MSP/Implementations/Swift/Sources/Tools"],
+      "excluded_paths": [
+        "MSP/Implementations/Swift/Sources/MSPCore",
+        "MSP/Implementations/Swift/Sources/MSPShellLanguage",
+        "MSP/Implementations/Swift/Sources/MSPShellExpansion",
+        "MSP/Implementations/Swift/Sources/MSPShell",
+        "MSP/Implementations/Swift/Sources/MSPPOSIXCore",
+        "MSP/Implementations/Swift/Sources/ModelShellProxy"
+      ],
+      "exclusion_evidence": "MSP/SOURCE-PACKAGE-README.md"
+    },
+    "inventory_runner": {
+      "status": "blocked",
+      "documented_commands": [
+        "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --write-report",
+        "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --check-report",
+        "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"
+      ],
+      "runner_path": "MSP/Conformance/Scripts/windows_swift_parity_inventory.py",
+      "report_path": "MSP/Conformance/Inventory/WindowsSwiftParity",
+      "missing_paths": [
+        "MSP/Conformance/Scripts/windows_swift_parity_inventory.py",
+        "MSP/Conformance/Inventory/WindowsSwiftParity"
+      ]
+    },
+    "release_runner": {
+      "status": "blocked",
+      "wrapper_path": "MSP/scripts/windows/run-release-gate.ps1",
+      "contract_path": "MSP/Conformance/Fixtures/WindowsReleaseGate/windows-release-gate-contract.json",
+      "documented_command": "powershell -NoProfile -ExecutionPolicy Bypass -File MSP/scripts/windows/run-release-gate.ps1",
+      "missing_paths": [
+        "MSP/Conformance/Scripts/run_windows_release_gate.py",
+        "MSP/Conformance/Scripts/windows_release_source_audit.py",
+        "MSP/Conformance/Scripts/check_core100_closure.py",
+        "MSP/Conformance/Scripts/windows_release_gate_support"
+      ]
+    }
+  },
+  "source_drift": [
+    {
+      "id": "swift-source-package-omission",
+      "status": "blocked",
+      "claim_in_existing_docs": "The local reference exposes Swift MSPCore, MSPShell, and MSPPOSIXCore implementation sources for direct inventory and port review.",
+      "observed": "MSP/SOURCE-PACKAGE-README.md explicitly excludes Mac/Swift implementation source; MSP/Implementations/Swift/Sources contains Tools only.",
+      "observed_paths": [
+        "MSP/SOURCE-PACKAGE-README.md",
+        "MSP/Implementations/Windows/README.md",
+        "MSP/Implementations/Windows/PORTING.md",
+        "MSP/Implementations/Swift/Sources/Tools"
+      ],
+      "missing_paths": [
+        "MSP/Implementations/Swift/Sources/MSPCore",
+        "MSP/Implementations/Swift/Sources/MSPShell",
+        "MSP/Implementations/Swift/Sources/MSPPOSIXCore"
+      ],
+      "evidence_command": "Test-Path MSP/Implementations/Swift/Sources/MSPCore; Test-Path MSP/Implementations/Swift/Sources/MSPShell; Test-Path MSP/Implementations/Swift/Sources/MSPPOSIXCore"
+    },
+    {
+      "id": "inventory-runner-and-report-omission",
+      "status": "blocked",
+      "claim_in_existing_docs": "The Windows parity inventory runner writes and checks Conformance/Inventory/WindowsSwiftParity.",
+      "observed": "The documented runner and report directory are absent from the current source package.",
+      "missing_paths": [
+        "MSP/Conformance/Scripts/windows_swift_parity_inventory.py",
+        "MSP/Conformance/Inventory/WindowsSwiftParity"
+      ],
+      "evidence_command": "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --check-report"
+    },
+    {
+      "id": "release-runner-dependency-omission",
+      "status": "blocked",
+      "claim_in_existing_docs": "The Windows release gate can run its source audit, inventory, strict parity, Core100 closure, and support tests.",
+      "observed": "MSP/scripts/windows/run-release-gate.ps1 and the release contract are present, but the Python runner and required Conformance/Scripts dependencies are absent.",
+      "observed_paths": [
+        "MSP/scripts/windows/run-release-gate.ps1",
+        "MSP/Conformance/Fixtures/WindowsReleaseGate/windows-release-gate-contract.json"
+      ],
+      "missing_paths": [
+        "MSP/Conformance/Scripts/run_windows_release_gate.py",
+        "MSP/Conformance/Scripts/windows_release_source_audit.py",
+        "MSP/Conformance/Scripts/check_core100_closure.py",
+        "MSP/Conformance/Scripts/windows_release_gate_support"
+      ],
+      "evidence_command": "powershell -NoProfile -ExecutionPolicy Bypass -File MSP/scripts/windows/run-release-gate.ps1"
+    },
+    {
+      "id": "windows-implementation-document-drift",
+      "status": "blocked",
+      "claim_in_existing_docs": "MSP/Implementations/Windows is only .gitkeep and supplies no Windows implementation.",
+      "observed": "The current source package contains a Windows Cargo workspace with 24 crates and two examples (26 workspace members), plus two source-only crate directories and one non-Cargo WinUI example directory.",
+      "observed_paths": [
+        "MSP/Implementations/Windows/Cargo.toml",
+        "MSP/Implementations/Windows/crates",
+        "MSP/Implementations/Windows/bindings",
+        "MSP/Implementations/Windows/examples"
+      ],
+      "missing_paths": [],
+      "evidence_command": "Get-Content MSP/Implementations/Windows/Cargo.toml -Raw"
+    },
+    {
+      "id": "reference-revision-metadata-omission",
+      "status": "blocked",
+      "claim_in_existing_docs": "The local MSP checkout is directly identified by the declared upstream Git revision.",
+      "observed": "The current MSP directory is a source package without nested Git metadata; the declared revision is retained as provenance but is not independently verified here.",
+      "observed_paths": [
+        "MSP/SOURCE-PACKAGE-README.md"
+      ],
+      "missing_paths": [
+        "MSP/.git"
+      ],
+      "evidence_command": "git -C MSP rev-parse HEAD"
+    },
+    {
+      "id": "windows-conformance-test-placeholders",
+      "status": "blocked",
+      "claim_in_existing_docs": "Windows conformance and oracle tests provide the release evidence.",
+      "observed": "MSP/Implementations/Windows/tests/conformance and tests/oracle are empty directories in this source package; Debian PTY reference output exists but no runnable local oracle harness is present.",
+      "observed_paths": [
+        "MSP/Implementations/Windows/tests/conformance",
+        "MSP/Implementations/Windows/tests/oracle",
+        "MSP/Conformance/ReferenceOutputs/MSPV1Debian12Oracle/pty-cases.json"
+      ],
+      "missing_paths": [
+        "MSP/Implementations/Windows/tests/conformance/*",
+        "MSP/Implementations/Windows/tests/oracle/*"
+      ],
+      "evidence_command": "Get-ChildItem MSP/Implementations/Windows/tests/conformance, MSP/Implementations/Windows/tests/oracle -Force"
+    },
+    {
+      "id": "windows-package-document-claims",
+      "status": "blocked",
+      "claim_in_existing_docs": "MSP/Implementations/Windows/README.md and PORTING.md describe Swift implementation paths and parity/release runners as locally available.",
+      "observed": "The Windows README and porting log are present, but this source package contains only Swift Tools and omits the cited Swift implementation trees, parity inventory runner/report, and release-gate helper dependencies.",
+      "observed_paths": [
+        "MSP/Implementations/Windows/README.md",
+        "MSP/Implementations/Windows/PORTING.md",
+        "MSP/Implementations/Swift/Sources/Tools"
+      ],
+      "missing_paths": [
+        "MSP/Implementations/Swift/Sources/MSPCore",
+        "MSP/Implementations/Swift/Sources/MSPShell",
+        "MSP/Implementations/Swift/Sources/MSPPOSIXCore",
+        "MSP/Conformance/Scripts/windows_swift_parity_inventory.py",
+        "MSP/Conformance/Inventory/WindowsSwiftParity",
+        "MSP/Conformance/Scripts/run_windows_release_gate.py",
+        "MSP/Conformance/Scripts/windows_release_source_audit.py",
+        "MSP/Conformance/Scripts/check_core100_closure.py",
+        "MSP/Conformance/Scripts/windows_release_gate_support"
+      ],
+      "evidence_command": "Get-Content MSP/Implementations/Windows/README.md -TotalCount 45; Get-Content MSP/Implementations/Windows/PORTING.md -TotalCount 30; Get-ChildItem MSP/Implementations/Swift/Sources -Force"
+    }
+  ],
+  "validation": {
+    "validator": "scripts/verify-msp-capability-manifest.ps1",
+    "current_expected_result": "blocked",
+    "last_validation": {
+      "result": "passed",
+      "scope": "deterministic manifest and checkout consistency only",
+      "external_evidence": "blocked and not executed"
+    },
+    "fail_closed_on": [
+      "an evidence item marked available while declaring a missing path",
+      "an unavailable inventory or release runner marked available",
+      "a source/document drift row marked unblocked",
+      "an evidence item with an unknown state or blocked state without missing paths",
+      "workspace members differing from the actual Cargo workspace",
+      "a target path that no longer exists",
+      "raw MSP paths becoming tracked by Git",
+      "license or notice evidence disappearing"
+    ],
+    "focused_commands": [
+      "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-msp-capability-manifest.ps1",
+      "git diff --check"
+    ]
+  },
+  "components": [
+    {
+      "id": "msp-core",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-core"],
+      "reados_targets": ["native/msp-core"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["reference-provenance", "native-abi-v2"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["native/msp-core/Cargo.toml", "native/msp-core/src/contract.rs", "native/msp-core/src/command_core.rs"]
+      },
+      "notes": "ReadOS owns a clean-room Windows-compatible core; this is not raw upstream source parity."
+    },
+    {
+      "id": "msp-windows",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-windows"],
+      "reados_targets": ["native/msp-core/src/workspace_path.rs", "native/msp-core/src/workspace_fs.rs", "native/msp-core/src/workspace_trash.rs"],
+      "decision": "Windows deviation",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-core", "windows-ntfs-policy"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp-native-binary.ps1 -DllPath <release-dll>"],
+        "paths": ["native/msp-core/src/workspace_path.rs", "native/msp-core/src/workspace_fs.rs", "native/msp-core/src/workspace_trash.rs", "native/msp-core/UPSTREAM_MSP.md"]
+      },
+      "notes": "ReadOS uses fixed-local-NTFS handle confinement and virtual paths; product ls/cat migration remains intentionally deferred."
+    },
+    {
+      "id": "msp-posix-core",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-posix-core", "MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.direct-parity-cases.json"],
+      "reados_targets": ["native/msp-core/src/command_core.rs", "native/msp-core/src/runtime.rs"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-core", "windows-workspacefs"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["conformance/msp-upstream/982baa54e9093e39f828d8827be6c75aed7502ff/windows-rust-slice.json", "native/msp-core/src/command_core.rs"]
+      },
+      "notes": "The committed ReadOS snapshot covers six attributed built-in cases; the broader POSIX command pack is not claimed."
+    },
+    {
+      "id": "msp-shell-language",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-language", "MSP/Spec/Commands"],
+      "reados_targets": ["native/msp-core/src/shell.rs"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-core", "native-parser-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore"],
+        "paths": ["native/msp-core/src/shell.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs"]
+      },
+      "notes": "ReadOS retains a conservative routing preflight; unsupported or ambiguous shell shapes fail closed."
+    },
+    {
+      "id": "msp-shell-expansion",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-expansion", "MSP/Spec/Commands"],
+      "reados_targets": [],
+      "decision": "defer",
+      "status": "deferred",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-shell-language", "shell-differential-fixtures"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["cargo test --manifest-path MSP/Implementations/Windows/Cargo.toml --locked -p msp-shell-expansion"],
+        "paths": [],
+        "missing_paths": ["native/msp-core/src/shell_expansion.rs", "MSP/Conformance/Scripts/windows_swift_parity_inventory.py"]
+      },
+      "notes": "No ReadOS expansion target or runnable upstream parity inventory exists in this checkout."
+    },
+    {
+      "id": "msp-shell",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell"],
+      "reados_targets": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-shell-language", "msp-shell-expansion", "msp-core"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked"],
+        "paths": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"]
+      },
+      "notes": "Pipelines, lists, redirection, and bounded streams exist in Rust; broader shell expansion remains outside the adopted slice."
+    },
+    {
+      "id": "model-shell-proxy",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/model-shell-proxy", "MSP/Spec/AgentBridge/ExecCommandProfile.md"],
+      "reados_targets": ["native/msp-core/src/pipeline.rs", "native/msp-core/src/session.rs", "src/ReadOS.Msp.Hosting/Runtime/MspExecSessionHostFacade.cs"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.Hosting",
+      "dependencies": ["msp-core", "msp-shell", "msp-agent-bridge", "msp-external-runner"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore"],
+        "paths": ["native/msp-core/src/pipeline.rs", "native/msp-core/src/session.rs", "src/ReadOS.Msp.Hosting/Runtime/MspExecSessionHostFacade.cs"]
+      },
+      "notes": "ReadOS exposes a managed model-facing facade while keeping runtime read-session projections separate."
+    },
+    {
+      "id": "msp-agent-bridge",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-agent-bridge", "MSP/Spec/AgentBridge"],
+      "reados_targets": ["src/ReadOS.Msp.Hosting/Runtime/IMspExecSessionHost.cs", "src/ReadOS.Msp.Hosting/Runtime/MspExecSessionHostFacade.cs", "src/ReadOS.App/Services/Msp/ReadOsMspAgentBridgeService.cs"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.Hosting",
+      "dependencies": ["model-shell-proxy", "native-adapter-v2"],
+      "evidence": {
+        "state": "available",
+        "commands": ["dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore", "dotnet test tests/ReadOS.App.Tests/ReadOS.App.Tests.csproj --no-restore"],
+        "paths": ["src/ReadOS.Msp.Hosting/Runtime/IMspExecSessionHost.cs", "src/ReadOS.App/Services/Msp/ReadOsMspAgentBridgeService.cs"]
+      },
+      "notes": "The product bridge remains managed and returns model-facing terminal text through the Hosting boundary."
+    },
+    {
+      "id": "msp-pty-support",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-pty-support", "MSP/Spec/AgentBridge/ExecCommandProfile.md"],
+      "reados_targets": ["native/msp-core/src/process.rs", "native/msp-core/tests/pty_process_integration.rs"],
+      "decision": "Windows deviation",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["windows-conpty", "job-object-lifecycle"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked --test pty_process_integration", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["native/msp-core/src/process.rs", "native/msp-core/tests/pty_process_integration.rs"]
+      },
+      "notes": "Windows-gated ConPTY integration exists; Debian PTY oracle conformance is a separate blocked gate."
+    },
+    {
+      "id": "msp-external-runner",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-external-runner", "MSP/Spec/ExternalRunners"],
+      "reados_targets": ["native/msp-core/src/process.rs", "native/msp-core/src/output_sanitizer.rs"],
+      "decision": "Windows deviation",
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-pty-support", "windows-conpty", "output-sanitization"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp-native-binary.ps1 -DllPath <release-dll>"],
+        "paths": ["native/msp-core/src/process.rs", "native/msp-core/src/output_sanitizer.rs"]
+      },
+      "notes": "ReadOS process execution is a bounded ConPTY/Job Object slice, not a claim of all upstream external-runner profiles."
+    },
+    {
+      "id": "msp-ffi",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-ffi", "MSP/Spec/AgentBridge/ToolContracts.md"],
+      "reados_targets": ["native/msp-ffi/Cargo.toml", "native/msp-ffi/include/msp_ffi.h", "native/msp-ffi/release-metadata.json", "scripts/verify-msp-ffi-release.ps1", "scripts/package-windows.ps1"],
+      "decision": "adapt",
+      "status": "partial",
+      "owner": "ReadOS.ReleaseAndSdk",
+      "dependencies": ["msp-core", "public-ffi-contract", "static-crt-verification"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-ffi/Cargo.toml --locked", "cargo build --release --manifest-path native/msp-ffi/Cargo.toml --locked", "pwsh -NoProfile -File scripts/verify-msp-ffi-release.ps1 -DllPath native/msp-ffi/target/release/msp_ffi.dll"],
+        "paths": ["native/msp-ffi/Cargo.toml", "native/msp-ffi/include/msp_ffi.h", "native/msp-ffi/exports/msp_ffi.def", "native/msp-ffi/release-metadata.json", "scripts/verify-msp-ffi-release.ps1"]
+      },
+      "notes": "ReadOS owns a separate public msp_ffi C ABI wrapper with 29 verified exports. It is not the internal reados-msp-native/1 adapter and does not claim upstream source parity. The release DLL and public header are copied only by the explicit -IncludePublicMspFfi package option; raw MSP/source/private state/PDB/linker outputs remain forbidden."
+    },
+    {
+      "id": "msp-chat",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-chat", "MSP/Spec/Chat"],
+      "reados_targets": ["src/ReadOS.App/Services/Msp/ReadOsChatTurnService.cs", "src/ReadOS.App/Services/Msp/ReadOsArtifactService.cs"],
+      "decision": "not applicable",
+      "status": "not_applicable",
+      "owner": "ReadOS.App.Domain",
+      "dependencies": ["ReadOS chat/provider boundary", "artifact provenance"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["dotnet test tests/ReadOS.App.Tests/ReadOS.App.Tests.csproj --no-restore"],
+        "paths": ["src/ReadOS.App/Services/Msp/ReadOsChatTurnService.cs"]
+      },
+      "notes": "ReadOS keeps provider calls, document/chat behavior, and persistence in the app domain; it does not adopt the upstream Rust .chat package as a generic core."
+    },
+    {
+      "id": "msp-chat-commands",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-chat-commands", "MSP/Spec/Chat/CommandTimeline.md"],
+      "reados_targets": ["src/ReadOS.App/Services/Msp/ReadOsMspCommandPackFactory.cs", "src/ReadOS.App/Services/Msp/ReadOsChatTurnService.cs"],
+      "decision": "not applicable",
+      "status": "not_applicable",
+      "owner": "ReadOS.App.Domain",
+      "dependencies": ["msp-chat", "ReadOS command-pack composition"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["dotnet test tests/ReadOS.App.Tests/ReadOS.App.Tests.csproj --no-restore"],
+        "paths": ["src/ReadOS.App/Services/Msp/ReadOsMspCommandPackFactory.cs"]
+      },
+      "notes": "ReadOS command packs are app-owned and do not claim upstream chat-command parity."
+    },
+    {
+      "id": "msp-agent-chat-store",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-agent-chat-store", "MSP/Spec/Chat/ContextAndJournal.md"],
+      "reados_targets": ["src/ReadOS.App/Services/Msp/ReadOsMspSessionStore.cs", "src/ReadOS.App/Services/Msp/ReadOsConversationService.cs"],
+      "decision": "not applicable",
+      "status": "not_applicable",
+      "owner": "ReadOS.App.Domain",
+      "dependencies": ["ReadOS workspace persistence", "session/transcript projections"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["dotnet test tests/ReadOS.App.Tests/ReadOS.App.Tests.csproj --no-restore"],
+        "paths": ["src/ReadOS.App/Services/Msp/ReadOsMspSessionStore.cs", "src/ReadOS.App/Services/Msp/ReadOsConversationService.cs"]
+      },
+      "notes": "ReadOS session/transcript persistence is a product-domain implementation, not a drop-in .chat store."
+    },
+    {
+      "id": "msp-chat-validator-cli",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-chat-validator-cli"],
+      "reados_targets": [],
+      "decision": "not applicable",
+      "status": "not_applicable",
+      "owner": "ReadOS.NotInProfile",
+      "dependencies": ["msp-chat"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "No upstream .chat validator executable is part of the ReadOS Windows package boundary."
+    },
+    {
+      "id": "msp-python-runtime-family",
+      "kind": "upstream-windows-crate-family",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-python-runtime", "MSP/Implementations/Windows/crates/msp-python-embedded-runtime", "MSP/Implementations/Windows/crates/msp-python-native-bridge", "MSP/Implementations/Windows/crates/msp-python-broker-protocol", "MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md"],
+      "reados_targets": [],
+      "decision": "defer",
+      "status": "deferred",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["external-runner-policy", "verified-runtime-bundle", "PTY-oracle"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "Python is explicitly outside the current ReadOS product command path; arbitrary model-authored Python is not enabled."
+    },
+    {
+      "id": "msp-node-runtime-family",
+      "kind": "upstream-windows-crate-family",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-node-runtime", "MSP/Implementations/Windows/crates/msp-node-native-bridge"],
+      "reados_targets": [],
+      "decision": "defer",
+      "status": "deferred",
+      "owner": "ReadOS.NotInProfile",
+      "dependencies": ["external-runner-policy", "verified-runtime-bundle"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "ReadOS has no Node runtime adoption target; the local MSP package's Node bindings remain reference-only."
+    },
+    {
+      "id": "msp-git",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-git"],
+      "reados_targets": [],
+      "decision": "defer",
+      "status": "deferred",
+      "owner": "ReadOS.NotInProfile",
+      "dependencies": ["external-runner-policy", "workspace-write-policy"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "Git-backed workspace behavior is not part of the selected ReadOS profile."
+    },
+    {
+      "id": "msp-codex-apply-patch-runtime",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-codex-apply-patch-runtime"],
+      "reados_targets": [],
+      "decision": "not applicable",
+      "status": "not_applicable",
+      "owner": "ReadOS.NotInProfile",
+      "dependencies": ["workspace-write-policy", "external-runner-policy"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "ReadOS does not expose the upstream apply_patch runtime as a native capability in this slice."
+    },
+    {
+      "id": "msp-request-parity-runner",
+      "kind": "upstream-windows-crate",
+      "workspace_member": true,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-request-parity-runner", "MSP/Conformance/ReferenceOutputs"],
+      "reados_targets": ["conformance/msp-upstream/982baa54e9093e39f828d8827be6c75aed7502ff/windows-rust-slice.json", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"],
+      "decision": "reference",
+      "status": "blocked",
+      "owner": "ReadOS.Conformance",
+      "dependencies": ["swift-source-package", "inventory-runner", "Debian-PTY-oracle"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --check-report", "cargo test --manifest-path MSP/Implementations/Windows/Cargo.toml --locked -p msp-request-parity-runner"],
+        "paths": ["MSP/Conformance/ReferenceOutputs/MSPV1Debian12Oracle/pty-cases.json"],
+        "missing_paths": ["MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity", "MSP/Implementations/Windows/tests/oracle/*"]
+      },
+      "notes": "A committed ReadOS fixture snapshot is available, but it cannot replace the missing upstream inventory/oracle runner."
+    },
+    {
+      "id": "msp-cli-and-command-kit-placeholders",
+      "kind": "filesystem-placeholder",
+      "workspace_member": false,
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-cli", "MSP/Implementations/Windows/crates/msp-command-kit"],
+      "reados_targets": [],
+      "decision": "defer",
+      "status": "blocked",
+      "owner": "ReadOS.Conformance",
+      "dependencies": ["upstream-workspace-definition"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["cargo metadata --manifest-path MSP/Implementations/Windows/Cargo.toml --no-deps --format-version 1"],
+        "paths": [],
+        "missing_paths": ["MSP/Implementations/Windows/crates/msp-cli/Cargo.toml", "MSP/Implementations/Windows/crates/msp-command-kit/Cargo.toml"]
+      },
+      "notes": "Directories exist but are not workspace members and contain no Cargo manifest in this checkout."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "workspacefs-read",
+      "upstream_crates": ["msp-core", "msp-windows"],
+      "upstream_paths": ["MSP/Spec/WorkspaceFS/WorkspaceFSProfile.md"],
+      "reados_targets": ["native/msp-core/src/workspace_fs.rs", "native/msp-core/src/workspace_path.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["windows-ntfs-policy", "native-abi-v2"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["native/msp-core/src/workspace_fs.rs", "native/msp-core/src/workspace_path.rs", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"]
+      },
+      "notes": "Handle-based fixed-local-NTFS reads are verified; the upstream WorkspaceFS surface is broader."
+    },
+    {
+      "id": "workspacefs-write-trash",
+      "upstream_crates": ["msp-core", "msp-windows"],
+      "upstream_paths": ["MSP/Spec/WorkspaceFS/WorkspaceFSProfile.md"],
+      "reados_targets": ["native/msp-core/src/workspace_fs.rs", "native/msp-core/src/workspace_trash.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["workspacefs-read", "managed-write-policy", "product-adoption"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked"],
+        "paths": ["native/msp-core/src/workspace_trash.rs", "native/msp-core/src/workspace_fs.rs"]
+      },
+      "notes": "Rust writable/trash primitives exist, but ReadOS product writes/removes remain managed and are not routed through them."
+    },
+    {
+      "id": "command-profile",
+      "upstream_crates": ["msp-core", "msp-posix-core"],
+      "upstream_paths": ["MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.direct-parity-cases.json", "MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.edge-parity-cases.json"],
+      "reados_targets": ["native/msp-core/src/command_core.rs", "native/msp-core/src/runtime.rs", "conformance/msp-upstream/982baa54e9093e39f828d8827be6c75aed7502ff/windows-rust-slice.json"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["workspacefs-read", "command-registry", "differential-fixtures"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["conformance/msp-upstream/982baa54e9093e39f828d8827be6c75aed7502ff/windows-rust-slice.json", "native/msp-core/src/command_core.rs"]
+      },
+      "notes": "The six-case committed snapshot is evidence for a bounded slice only; it is not full Windows MSP parity."
+    },
+    {
+      "id": "shell-ast-and-execution",
+      "upstream_crates": ["msp-shell-language", "msp-shell"],
+      "upstream_paths": ["MSP/Spec/Commands", "MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md"],
+      "reados_targets": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["command-profile", "bounded-byte-streams"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked"],
+        "paths": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"]
+      },
+      "notes": "Quotes, lists, pipelines, and redirection are represented; expansion and broader grammar remain incomplete."
+    },
+    {
+      "id": "shell-expansion",
+      "upstream_crates": ["msp-shell-expansion"],
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-expansion", "MSP/Spec/Commands"],
+      "reados_targets": [],
+      "status": "deferred",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["shell-ast-and-execution", "inventory-runner", "upstream-swift-source"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"],
+        "paths": [],
+        "missing_paths": ["MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity"]
+      },
+      "notes": "No passing evidence is claimed while the source inventory and complete expansion target are absent."
+    },
+    {
+      "id": "bounded-streams",
+      "upstream_crates": ["msp-core", "model-shell-proxy"],
+      "upstream_paths": ["MSP/Spec/Commands", "MSP/Spec/AgentBridge/ExecCommandProfile.md"],
+      "reados_targets": ["native/msp-core/src/byte_stream.rs", "native/msp-core/src/pipeline.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["command-profile", "workspacefs-read"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked"],
+        "paths": ["native/msp-core/src/byte_stream.rs", "native/msp-core/src/pipeline.rs"]
+      },
+      "notes": "Bounded byte streams and pipeline backpressure primitives exist; broader agent-facing stream parity remains open."
+    },
+    {
+      "id": "exec-sessions",
+      "upstream_crates": ["model-shell-proxy", "msp-agent-bridge"],
+      "upstream_paths": ["MSP/Spec/AgentBridge/ExecCommandProfile.md"],
+      "reados_targets": ["native/msp-core/src/session.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeExecSessionContracts.cs", "src/ReadOS.Msp.Hosting/Runtime/MspExecSessionHostFacade.cs"],
+      "status": "partial",
+      "owner": "ReadOS.Hosting",
+      "dependencies": ["bounded-streams", "native-abi-v2", "windows-conpty"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore"],
+        "paths": ["native/msp-core/src/session.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeExecSessionContracts.cs", "src/ReadOS.Msp.Hosting/Runtime/MspExecSessionHostFacade.cs"]
+      },
+      "notes": "Model-facing exec_command/write_stdin and process-mode retention are implemented; Debian PTY oracle conformance is not."
+    },
+    {
+      "id": "windows-conpty-job-object",
+      "upstream_crates": ["msp-external-runner", "msp-pty-support"],
+      "upstream_paths": ["MSP/Spec/AgentBridge/ExecCommandProfile.md", "MSP/Spec/ExternalRunners"],
+      "reados_targets": ["native/msp-core/src/process.rs", "native/msp-core/tests/pty_process_integration.rs", "src/ReadOS.Msp.Hosting/Native/WindowsMspNativeTransport.cs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["exec-sessions", "output-sanitization", "job-object-lifecycle"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked --test pty_process_integration", ".\\scripts\\verify-msp.ps1"],
+        "paths": ["native/msp-core/src/process.rs", "native/msp-core/tests/pty_process_integration.rs"]
+      },
+      "notes": "Windows-gated integration evidence is available; it does not replace the missing Debian PTY oracle."
+    },
+    {
+      "id": "output-sanitization",
+      "upstream_crates": ["msp-external-runner", "msp-pty-support"],
+      "upstream_paths": ["MSP/Spec/Security", "MSP/Spec/AgentBridge/ExecCommandProfile.md"],
+      "reados_targets": ["native/msp-core/src/output_sanitizer.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs"],
+      "status": "partial",
+      "owner": "ReadOS.Security",
+      "dependencies": ["windows-conpty", "managed-native-adapter"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore"],
+        "paths": ["native/msp-core/src/output_sanitizer.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs"]
+      },
+      "notes": "UTF-8 and UTF-16LE host-path disclosure checks are present; all broader stream sources still require adoption evidence."
+    },
+    {
+      "id": "managed-native-adapter",
+      "upstream_crates": ["msp-ffi", "msp-core"],
+      "upstream_paths": ["MSP/Spec/AgentBridge/ToolContracts.md", "MSP/Spec/Audit"],
+      "reados_targets": ["src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs", "src/ReadOS.Msp.Hosting/Native/MspNativeAbiContracts.cs", "src/ReadOS.Msp.Hosting/Native/WindowsMspNativeTransport.cs"],
+      "status": "partial",
+      "owner": "ReadOS.Hosting.NativeAdapter",
+      "dependencies": ["native-abi-v2", "managed-contract-validation", "output-sanitization"],
+      "evidence": {
+        "state": "available",
+        "commands": ["dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore", ".\\scripts\\verify-msp-native-binary.ps1 -DllPath <release-dll>"],
+        "paths": ["src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs", "src/ReadOS.Msp.Hosting/Native/MspNativeAbiContracts.cs", "src/ReadOS.Msp.Hosting/Native/WindowsMspNativeTransport.cs"]
+      },
+      "notes": "ReadOS owns all P/Invoke, allocation/free, validation, and native lifecycle behavior."
+    },
+    {
+      "id": "chat-package-and-history",
+      "upstream_crates": ["msp-chat", "msp-chat-commands", "msp-agent-chat-store", "msp-chat-validator-cli"],
+      "upstream_paths": ["MSP/Spec/Chat"],
+      "reados_targets": ["src/ReadOS.App/Services/Msp/ReadOsConversationService.cs", "src/ReadOS.App/Services/Msp/ReadOsMspSessionStore.cs", "src/ReadOS.App/Services/Msp/ReadOsArtifactService.cs"],
+      "status": "not_applicable",
+      "owner": "ReadOS.App.Domain",
+      "dependencies": ["ReadOS workspace persistence", "artifact provenance", "provider credential boundary"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["dotnet test tests/ReadOS.App.Tests/ReadOS.App.Tests.csproj --no-restore"],
+        "paths": ["src/ReadOS.App/Services/Msp/ReadOsConversationService.cs", "src/ReadOS.App/Services/Msp/ReadOsMspSessionStore.cs"]
+      },
+      "notes": "ReadOS deliberately keeps PDF/chat/provider/persistence behavior in C# rather than absorbing the generic upstream .chat runtime."
+    },
+    {
+      "id": "controlled-language-runtimes",
+      "upstream_crates": ["msp-python-runtime-family", "msp-node-runtime-family"],
+      "upstream_paths": ["MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md", "MSP/Spec/ExternalRunners"],
+      "reados_targets": [],
+      "status": "deferred",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["windows-conpty-job-object", "verified-runtime-bundles", "external-evidence"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["not applicable or deferred: no ReadOS execution command is claimed"],
+        "paths": []
+      },
+      "notes": "Python and Node are not part of the current ReadOS command path; no runtime bundle or model-authored interpreter claim is made."
+    },
+    {
+      "id": "conformance-inventory",
+      "upstream_crates": ["msp-request-parity-runner"],
+      "upstream_paths": ["MSP/Conformance/Fixtures", "MSP/Conformance/ReferenceOutputs", "MSP/Conformance/Inventory/WindowsSwiftParity"],
+      "reados_targets": ["conformance/msp-upstream/windows-capability-manifest.json", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"],
+      "status": "blocked",
+      "owner": "ReadOS.Conformance",
+      "dependencies": ["upstream-swift-source", "inventory-runner", "Debian-PTY-oracle"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --write-report", "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --check-report", "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"],
+        "paths": ["MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.direct-parity-cases.json", "MSP/Conformance/ReferenceOutputs/MSPV1Debian12Oracle/pty-cases.json"],
+        "missing_paths": ["MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity", "MSP/Implementations/Windows/tests/conformance/*", "MSP/Implementations/Windows/tests/oracle/*"]
+      },
+      "notes": "Do not fabricate a report from the committed ReadOS six-case snapshot."
+    },
+    {
+      "id": "windows-release-gate",
+      "upstream_crates": ["msp-ffi", "msp-request-parity-runner", "msp-external-runner"],
+      "upstream_paths": ["MSP/Conformance/Fixtures/WindowsReleaseGate/windows-release-gate-contract.json", "MSP/scripts/windows/run-release-gate.ps1"],
+      "reados_targets": ["scripts/verify-msp.ps1", "scripts/package-windows.ps1", "scripts/verify-windows-package.ps1"],
+      "status": "blocked",
+      "owner": "ReadOS.Release",
+      "dependencies": ["conformance-inventory", "external-release-evidence", "source-audit-runner"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["powershell -NoProfile -ExecutionPolicy Bypass -File MSP/scripts/windows/run-release-gate.ps1", ".\\scripts\\package-windows.ps1 -StopExisting"],
+        "paths": ["MSP/scripts/windows/run-release-gate.ps1", "MSP/Conformance/Fixtures/WindowsReleaseGate/windows-release-gate-contract.json", "scripts/package-windows.ps1"],
+        "missing_paths": ["MSP/Conformance/Scripts/run_windows_release_gate.py", "MSP/Conformance/Scripts/windows_release_source_audit.py", "MSP/Conformance/Scripts/check_core100_closure.py", "MSP/Conformance/Scripts/windows_release_gate_support"]
+      },
+      "notes": "ReadOS's own ABI/package gate is documented and available, but it cannot be promoted to full upstream Windows release evidence."
+    },
+    {
+      "id": "bindings-and-demo-hosts",
+      "upstream_crates": ["msp-ffi"],
+      "upstream_paths": ["MSP/Implementations/Windows/bindings", "MSP/Implementations/Windows/examples"],
+      "reados_targets": ["src/ReadOS.App", "src/ReadOS.Msp.Hosting"],
+      "status": "not_applicable",
+      "owner": "ReadOS.App",
+      "dependencies": ["managed-native-adapter", "ReadOS WinUI host"],
+      "evidence": {
+        "state": "not_applicable",
+        "commands": ["dotnet build src/ReadOS.App/ReadOS.App.csproj -c Debug --no-restore"],
+        "paths": ["src/ReadOS.App/ReadOS.App.csproj", "src/ReadOS.Msp.Hosting/ReadOS.Msp.Hosting.csproj"]
+      },
+      "notes": "The external MSP C++/.NET/Node bindings and demo hosts are not copied or wrapped as ReadOS product dependencies."
+    },
+    {
+      "id": "public-msp-ffi-multiarch",
+      "upstream_crates": ["msp-ffi"],
+      "upstream_paths": ["MSP/Implementations/Windows/crates/msp-ffi", "MSP/Spec/AgentBridge/ToolContracts.md"],
+      "reados_targets": ["scripts/verify-msp-ffi-multiarch.ps1", "conformance/msp-upstream/msp-ffi-multiarch-evidence.json", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"],
+      "status": "blocked",
+      "owner": "ReadOS.ReleaseAndSdk",
+      "dependencies": ["msp-ffi", "public-ffi-contract", "static-crt-verification"],
+      "evidence": {
+        "state": "blocked",
+        "commands": [
+          "pwsh -NoProfile -File scripts/verify-msp-ffi-multiarch.ps1 -Json",
+          "cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml --target i686-pc-windows-msvc",
+          "cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml --target aarch64-pc-windows-msvc"
+        ],
+        "paths": [
+          "native/msp-ffi/Cargo.toml",
+          "native/msp-ffi/include/msp_ffi.h",
+          "native/msp-ffi/exports/msp_ffi.def",
+          "native/msp-ffi/release-metadata.json",
+          "scripts/verify-msp-ffi-multiarch.ps1",
+          "conformance/msp-upstream/msp-ffi-multiarch-evidence.json",
+          "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"
+        ],
+        "missing_paths": [
+          "native/msp-ffi/target/i686-pc-windows-msvc/release/msp_ffi.dll",
+          "native/msp-ffi/target/aarch64-pc-windows-msvc/release/msp_ffi.dll"
+        ],
+        "missing_commands": [
+          "rustup target add i686-pc-windows-msvc",
+          "rustup target add aarch64-pc-windows-msvc"
+        ]
+      },
+      "notes": "The 2026-08-19 local run observed win-x64 as AMD64 (PE 0x8664) with 29 exports, DLL SHA-256 1be0f771d52027bc83f7330b192263731a89351db49fc7ceb4f8f7ebecde5c4c, header SHA-256 3fbb028a349402723196b29fad1f2296418887353a80869b87a71c1bb936904e, and export-definition SHA-256 3ff764f9b044271fd79a0ad7512c6613f8b03520f09d6be173cd7358d60c79b9. win-x86/i686 and win-arm64/aarch64 remain blocked because the exact rustup target-add commands and target DLL paths are unavailable; no DLL hash is claimed for either blocked target."
+    },
+    {
+      "id": "package-boundary-and-notice",
+      "upstream_crates": ["msp-core", "msp-ffi"],
+      "upstream_paths": ["MSP/LICENSE", "MSP/NOTICE"],
+      "reados_targets": ["conformance/msp-upstream/APACHE-2.0.txt", "conformance/msp-upstream/NOTICE", "native/msp-core/UPSTREAM_MSP.md", "native/msp-ffi/release-metadata.json", "scripts/package-windows.ps1", "scripts/verify-windows-package.ps1", "scripts/verify-msp-ffi-release.ps1"],
+      "status": "partial",
+      "owner": "ReadOS.Release",
+      "dependencies": ["reference-provenance", "managed-native-adapter", "public-ffi-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": [".\\scripts\\verify-windows-package.ps1 -PackageRoot <package-root> -ArtifactsRoot artifacts -RequireNativeMsp", ".\\scripts\\verify-windows-package.ps1 -PackageRoot <package-root> -ArtifactsRoot artifacts -RequireNativeMsp -RequirePublicMspFfi", ".\\scripts\\test-package-verification.ps1", ".\\scripts\\package-windows.ps1 -StopExisting"],
+        "paths": ["conformance/msp-upstream/APACHE-2.0.txt", "conformance/msp-upstream/NOTICE", "native/msp-core/UPSTREAM_MSP.md", "native/msp-ffi/release-metadata.json", "scripts/package-windows.ps1", "scripts/verify-windows-package.ps1", "scripts/verify-msp-ffi-release.ps1"]
+      },
+      "notes": "The default ReadOS package carries msp_core.dll plus license/NOTICE/provenance and does not carry public FFI. With -IncludePublicMspFfi, packaging adds only the verified msp_ffi.dll and include/msp_ffi.h. Both modes reject raw MSP/source/private state/PDB/linker/generated outputs; full upstream release evidence remains blocked."
+    }
+  ]
+}

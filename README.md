@@ -22,6 +22,7 @@ The product direction is maintained in [PRODUCT_GOAL.md](PRODUCT_GOAL.md), and t
 - Provider API keys stored outside workspace JSON and exports with Windows DPAPI (`CurrentUser`), including legacy plaintext migration.
 - Upstream-aligned Rust/Windows MSP core under `native/msp-core`, including byte-safe internal results, shell AST, selected fixture parity, a validated deterministic command registry/pack composition layer, handle-based read-only NTFS WorkspaceFS, path sanitization, static CRT, and a negotiated, length-delimited ABI v2 alongside the temporary internal-v1 compatibility exports.
 - Stable `reados-msp-native/1` Hosting adapter with strict operation-specific limits, host-path disclosure protection, fail-closed ABI negotiation, real release-DLL tests, and bounded product adoption: only canonical lowercase `pwd` and `echo` execute through a shared lazy Rust proxy while managed `MspRuntime` retains parse, policy/approval, dry-run, streaming, terminal-result, and exactly-once product-audit authority.
+- Separate optional public `native/msp-ffi` C ABI release: 29 verified exports, versioned `msp_ffi.h`, reproducible static-MSVC-CRT DLL, recorded release hashes, and no app/runtime dependency. It is included only with `-IncludePublicMspFfi`; the default package and current `msp_core.dll` smoke are unchanged.
 - Three managed test projects under `tests/`.
 
 Verified baseline on 2026-08-12: 69 `ReadOS.Msp.Tests`, 348 `ReadOS.Msp.Hosting.Tests` (including real release-DLL adapter operations; the native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`), 411 `ReadOS.App.Tests` (828 managed tests total under the full verifier), plus 181 Rust tests, native binary/FFI verification, and a zero-warning/zero-error solution build. The candidate release DLL has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, exposes all seven required exports, and uses the static MSVC CRT. ABI v2 reports a 32-byte `2.0` layout, contract `0x324D534F44414552`, capabilities `0x3F` (required `0xF`), and length-delimited request/response buffers that preserve embedded NUL bytes; partial v2 availability or handshake drift fails closed, while complete absence of all three v2 exports alone permits the isolated v1 fallback.
@@ -40,7 +41,7 @@ ReadOS follows this vertical MSP service-host architecture; current work strengt
 6. Agent bridge: a small model-facing boundary such as `exec_command({ "cmd": "pdf search current \"policy\"" })`.
 7. Native core and adapter: a Windows-compatible Rust runtime-neutral core in `native/msp-core`, behavior-aligned with upstream MSP and connected to ReadOS through a stable .NET adapter.
 
-The root `MSP/` directory is a nested, local-only Apache-2.0 reference input, not a ReadOS source tree, CI dependency, runtime, Git payload, or package payload. T95 uses its `Spec/`, `Conformance/`, and Swift `MSPCore`, `MSPShell`, and `MSPPOSIXCore` implementations to define behavior. `MSP/Implementations/Windows` currently contains only `.gitkeep`, so the Windows-compatible implementation belongs in ReadOS `native/msp-core`; it must not be presented as a newly invented minimal JSON protocol. Any copied or derived upstream material must retain the applicable license, NOTICE, modification, and source-provenance records, while the raw `MSP/` reference tree remains excluded from ReadOS packages.
+The root `MSP/` directory is a nested, local-only Apache-2.0 source-package/reference input, not a ReadOS source tree, CI dependency, runtime, Git payload, or package payload. T95 uses the available `Spec/`, `Conformance/`, committed ReadOS snapshots, and the Windows source package only as review/drift inputs. The 2026-08-18 package contains a Windows Cargo workspace with 24 crates and two examples; its `SOURCE-PACKAGE-README.md` excludes Mac/Swift implementation source, and this checkout contains only `Implementations/Swift/Sources/Tools`. The documented Windows parity inventory runner/report and required release-gate Python dependencies are absent, so the versioned [Windows capability manifest](conformance/msp-upstream/windows-capability-manifest.json) records source inventory and full upstream release evidence as `blocked`, not passed. Any copied or derived upstream material must retain the applicable license, NOTICE, modification, and source-provenance records, while the raw `MSP/` reference tree remains excluded from ReadOS packages.
 
 ## Build, Test, And Run
 
@@ -78,6 +79,18 @@ Create a Windows x64 release package:
 .\scripts\package-windows.ps1 -StopExisting
 ```
 
+Include the optional public FFI artifact only when it is explicitly requested:
+
+```powershell
+.\scripts\package-windows.ps1 -StopExisting -IncludePublicMspFfi
+```
+
+The focused package/verifier contract tests can be run with:
+
+```powershell
+.\scripts\test-package-verification.ps1
+```
+
 Packaging runs an isolated hidden-start smoke before creating the ZIP. Its app evidence remains under `artifacts`, while direct native WorkspaceFS `ls`/`cat` uses a separate fixed-local-NTFS temporary root that is removed in `finally`. The same smoke also exercises the staged product host proxy with canonical lowercase `pwd`, `echo ''`, and `echo -n reados-native-proxy`, requiring one managed audit for each result. Use `-SkipSmoke` only when that gate is intentionally deferred.
 
 ## Development Documents
@@ -88,6 +101,7 @@ Packaging runs an isolated hidden-start smoke before creating the ZIP. Its app e
 - [docs/MSP_PLAN.md](docs/MSP_PLAN.md): service architecture and runtime model.
 - [docs/MSP_SDK_DEVELOPMENT_PLAN.md](docs/MSP_SDK_DEVELOPMENT_PLAN.md): upstream-aligned Windows Rust core, .NET adapter, compatibility, conformance, and provenance plan.
 - [docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md](docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md): feature-by-feature upstream evidence, Rust/.NET status, Windows deviations, and the next acceptance gate.
+- [conformance/msp-upstream/windows-capability-manifest.json](conformance/msp-upstream/windows-capability-manifest.json): selected Windows MSP profile inventory, provenance, drift, and blocked-evidence status.
 - [docs/CONTINUOUS_DEVELOPMENT_TARGET_PROMPT.md](docs/CONTINUOUS_DEVELOPMENT_TARGET_PROMPT.md): reusable autonomous-development target for the Rust/Windows MSP migration and remaining product gates.
 - [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md): desktop conversation workbench UI/UX design and implementation status.
 - [docs/MSP_AGENT_COMMAND_LOOP.md](docs/MSP_AGENT_COMMAND_LOOP.md): prompt-injected MSP command loop.

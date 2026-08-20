@@ -14,11 +14,12 @@ use crate::byte_stream::{
 use crate::command_core::{
     run_registered_contained, run_streamed_contained, Command, Context, Invocation, Registry,
 };
-use crate::contract::MspDiagnostic;
+use crate::contract::{MspCommandRuntimeStateChange, MspDiagnostic};
 use crate::runtime::{MAX_COMMAND_STDERR_BYTES, MAX_COMMAND_STDOUT_BYTES};
 use crate::shell::{
-    ParsedCommandPipeline, ParsedListOperator, ParsedPipeOperator, ParsedRedirectionOperator,
-    ParsedShellScript,
+    expand_command, ExpandedCommandLine, ParsedCommandPipeline, ParsedListOperator,
+    ParsedPipeOperator, ParsedRedirectionOperator, ParsedShellScript, ShellExpansionError,
+    ShellState,
 };
 use crate::workspace_fs::{ReadOnlyWorkspaceFileSystem, WritableWorkspaceFileSystem};
 use crate::workspace_path::{VirtualPath, WorkspacePathError};
@@ -33,7 +34,15 @@ pub(crate) struct PipelineResult {
     pub(crate) stdout_data: Vec<u8>,
     pub(crate) stderr_data: Vec<u8>,
     pub(crate) exit_code: i32,
+    pub(crate) state_change: Option<MspCommandRuntimeStateChange>,
     pub(crate) diagnostics: Vec<MspDiagnostic>,
+    pub(crate) command_name: String,
+    pub(crate) arguments: Vec<String>,
+}
+
+struct StageRunResult {
+    exit_code: i32,
+    state_change: Option<MspCommandRuntimeStateChange>,
 }
 
 /// Runs a parsed script against the registry. `standard_input` feeds the first
@@ -50,13 +59,23 @@ pub(crate) fn execute_script(
     let mut stderr_final = BoundedOutputWriter::new(MAX_COMMAND_STDERR_BYTES);
     let mut diagnostics = Vec::new();
     let mut exit_code = 0;
-    let mut previous_exit = 0;
+    let mut shell_state =
+        ShellState::new(context.current_directory(), context.environment().clone());
+    let (initial_command_name, initial_arguments) = script
+        .pipelines
+        .first()
+        .and_then(|pipeline| pipeline.commands.first())
+        .map(|command| (command.command_name.clone(), command.arguments.clone()))
+        .unwrap_or_else(|| (String::new(), Vec::new()));
+    let mut command_name = initial_command_name;
+    let mut arguments = initial_arguments;
+    let mut metadata_recorded = false;
 
     for pipeline in &script.pipelines {
         let gated = match pipeline.leading_operator {
             None | Some(ParsedListOperator::Semicolon) => true,
-            Some(ParsedListOperator::And) => previous_exit == 0,
-            Some(ParsedListOperator::Or) => previous_exit != 0,
+            Some(ParsedListOperator::And) => shell_state.last_status == 0,
+            Some(ParsedListOperator::Or) => shell_state.last_status != 0,
         };
         if !gated {
             continue;
@@ -70,6 +89,10 @@ pub(crate) fn execute_script(
             &mut stdout_final,
             &mut stderr_final,
             &mut diagnostics,
+            &mut shell_state,
+            &mut command_name,
+            &mut arguments,
+            &mut metadata_recorded,
         );
         let exit = if pipeline.is_negated {
             if exit == 0 {
@@ -80,7 +103,7 @@ pub(crate) fn execute_script(
         } else {
             exit
         };
-        previous_exit = exit;
+        shell_state.last_status = exit;
         exit_code = exit;
     }
 
@@ -88,7 +111,16 @@ pub(crate) fn execute_script(
         stdout_data: stdout_final.into_bytes(),
         stderr_data: stderr_final.into_bytes(),
         exit_code,
+        state_change: if shell_state.current_directory != context.current_directory() {
+            Some(MspCommandRuntimeStateChange {
+                current_directory: Some(shell_state.current_directory),
+            })
+        } else {
+            None
+        },
         diagnostics,
+        command_name,
+        arguments,
     }
 }
 
@@ -183,6 +215,10 @@ fn run_pipeline(
     stdout_final: &mut BoundedOutputWriter,
     stderr_final: &mut BoundedOutputWriter,
     diagnostics: &mut Vec<MspDiagnostic>,
+    shell_state: &mut ShellState,
+    command_name: &mut String,
+    arguments: &mut Vec<String>,
+    metadata_recorded: &mut bool,
 ) -> i32 {
     let command_count = pipeline.commands.len();
     if command_count == 0 {
@@ -199,18 +235,53 @@ fn run_pipeline(
             .get(index)
             .copied()
             .unwrap_or(ParsedPipeOperator::Stdout);
+        let expanded =
+            match expand_command(command, &shell_state.environment, shell_state.last_status) {
+                Ok(expanded) => expanded,
+                Err(error) => {
+                    if index == 0 && !*metadata_recorded {
+                        *metadata_recorded = true;
+                    }
+                    let message = expansion_failure_message(error);
+                    let diagnostic = expansion_failure_diagnostic(error);
+                    pipeline_exit = fail_stage(
+                        &mut previous_pipe,
+                        is_last,
+                        &mut *stderr_final,
+                        &message,
+                        diagnostic,
+                        2,
+                        diagnostics,
+                    );
+                    continue;
+                }
+            };
+
+        if index == 0 && !*metadata_recorded {
+            *command_name = expanded.command_name.clone();
+            *arguments = expanded.arguments.clone();
+            *metadata_recorded = true;
+        }
+
+        // An assignment-only simple command updates the shell state for later
+        // list elements. Assignments on a command or inside a pipeline remain
+        // scoped to that command stage.
+        if expanded.is_assignment_only && command_count == 1 {
+            shell_state.environment = expanded.environment.clone();
+        }
+
         let invocation = Invocation::new(
-            &command.command_name,
-            &command.arguments,
+            &expanded.command_name,
+            &expanded.arguments,
             &command.raw_input,
         );
 
         // Registry lookup FIRST: an unknown command fails without creating any
         // redirection target file.
-        let Some(registered_command) = registry.command(&command.command_name) else {
-            let message = format!("{}: command not found", command.command_name);
+        let Some(registered_command) = registry.command(&expanded.command_name) else {
+            let message = format!("{}: command not found", expanded.command_name);
             let mut diagnostic = MspDiagnostic::error("msp.command_not_found", message.clone());
-            diagnostic.target = Some(command.command_name.clone());
+            diagnostic.target = Some(expanded.command_name.clone());
             diagnostic.recovery_hint = Some("Use an enabled MSP command pack command.".to_string());
             diagnostics.push(diagnostic);
             if let Some(mut pipe) = previous_pipe.take() {
@@ -228,7 +299,7 @@ fn run_pipeline(
 
         // Plan redirections; a deferred or unresolvable redirection fails the
         // stage before any file writer is opened.
-        let plan = match plan_redirections(command, context, writable) {
+        let plan = match plan_redirections(&expanded, context, writable) {
             Ok(plan) => plan,
             Err(error) => {
                 let (exit_code, message, diagnostic) =
@@ -363,14 +434,19 @@ fn run_pipeline(
         }
 
         // Run the stage, then close its output sinks.
-        let stage_exit = {
+        let stage_context = context.with_shell_state_at(
+            expanded.environment.clone(),
+            shell_state.last_status,
+            &shell_state.current_directory,
+        );
+        let stage_result = {
             let mut stdin = stdin_source;
             let mut stdout = stdout_sink;
             let mut stderr = stderr_sink;
-            let exit = run_stage_with_sinks(
+            let result = run_stage_with_sinks(
                 registered_command,
                 invocation,
-                context,
+                &stage_context,
                 &mut stdin,
                 &mut stdout,
                 &mut stderr,
@@ -379,7 +455,7 @@ fn run_pipeline(
             let _ = stdout.close_write();
             let _ = stderr.close_write();
             let _ = stdin.close_read();
-            exit
+            result
         };
 
         if let Some(rc) = pipe_rc {
@@ -388,10 +464,29 @@ fn run_pipeline(
             }
         }
 
-        pipeline_exit = stage_exit;
+        if command_count == 1 && stage_result.exit_code == 0 {
+            if let Some(state_change) = stage_result.state_change.as_ref() {
+                apply_state_change(shell_state, state_change);
+            }
+        }
+        pipeline_exit = stage_result.exit_code;
     }
 
     pipeline_exit
+}
+
+fn apply_state_change(shell_state: &mut ShellState, state_change: &MspCommandRuntimeStateChange) {
+    let Some(current_directory) = state_change.current_directory.as_deref() else {
+        return;
+    };
+    let old_directory = shell_state.current_directory.clone();
+    shell_state.current_directory = current_directory.to_string();
+    shell_state
+        .environment
+        .insert("OLDPWD".to_string(), old_directory);
+    shell_state
+        .environment
+        .insert("PWD".to_string(), current_directory.to_string());
 }
 
 /// Dispatches one stage to either the streamed or eager command path and maps
@@ -404,7 +499,7 @@ fn run_stage_with_sinks<'a>(
     stdout: &mut StdoutSink<'a>,
     stderr: &mut StderrSink<'a>,
     diagnostics: &mut Vec<MspDiagnostic>,
-) -> i32 {
+) -> StageRunResult {
     if !registered_command.streams_stdio() {
         let result = run_registered_contained(registered_command, invocation, context);
         return relay_eager_result(
@@ -423,7 +518,10 @@ fn run_stage_with_sinks<'a>(
         Some(stdout as &mut dyn MspByteWriter),
         Some(stderr as &mut dyn MspByteWriter),
     ) {
-        Ok(exit_code) => exit_code,
+        Ok(exit_code) => StageRunResult {
+            exit_code,
+            state_change: None,
+        },
         Err(StreamError::NotStreamed) => {
             let result = run_registered_contained(registered_command, invocation, context);
             relay_eager_result(
@@ -434,12 +532,15 @@ fn run_stage_with_sinks<'a>(
                 diagnostics,
             )
         }
-        Err(error) => map_stream_error(
-            invocation.name(),
-            error,
-            Some(stderr as &mut dyn MspByteWriter),
-            diagnostics,
-        ),
+        Err(error) => StageRunResult {
+            exit_code: map_stream_error(
+                invocation.name(),
+                error,
+                Some(stderr as &mut dyn MspByteWriter),
+                diagnostics,
+            ),
+            state_change: None,
+        },
     }
 }
 
@@ -451,7 +552,7 @@ fn relay_eager_result(
     mut stdout: Option<&mut dyn MspByteWriter>,
     mut stderr: Option<&mut dyn MspByteWriter>,
     diagnostics: &mut Vec<MspDiagnostic>,
-) -> i32 {
+) -> StageRunResult {
     let mut exit_code = result.exit_code;
     if !result.stdout_data.is_empty() {
         if let Some(sink) = stdout.as_mut() {
@@ -468,7 +569,10 @@ fn relay_eager_result(
         }
     }
     diagnostics.extend(result.diagnostics);
-    exit_code
+    StageRunResult {
+        exit_code,
+        state_change: result.state_change,
+    }
 }
 
 /// Maps a `StreamError` from a streamed command onto an exit code.
@@ -540,6 +644,18 @@ fn apply_sink_error(
             *exit_code = 1;
         }
     }
+}
+
+fn expansion_failure_message(error: ShellExpansionError) -> String {
+    error.to_string()
+}
+
+fn expansion_failure_diagnostic(error: ShellExpansionError) -> MspDiagnostic {
+    let mut diagnostic = MspDiagnostic::error("msp.shell.unsupported_expansion", error.to_string());
+    diagnostic.recovery_hint = Some(
+        "Use only scalar $VAR, ${VAR}, and $? expansion in the native shell slice.".to_string(),
+    );
+    diagnostic
 }
 
 /// Records a stage setup failure (unknown redirection, mount error, or path
@@ -622,7 +738,7 @@ fn redirection_setup_failure(
 /// Resolves every redirection on a command into effective stdin/stdout/stderr
 /// bindings, deferring operators this slice does not implement.
 fn plan_redirections(
-    command: &crate::shell::ParsedCommandLine,
+    command: &ExpandedCommandLine,
     context: &Context<'_>,
     writable: Option<&dyn WritableWorkspaceFileSystem>,
 ) -> Result<RedirectionPlan, RedirectionSetupError> {
