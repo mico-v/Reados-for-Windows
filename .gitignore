@@ -22,6 +22,9 @@ AppPackages/
 BundleArtifacts/
 TestResults/
 artifacts/
+!src/ReadOS.Msp.Hosting/
+!src/ReadOS.Msp.Hosting/Artifacts/
+!src/ReadOS.Msp.Hosting/Artifacts/*.cs
 publish/
 target/
 *.appx
