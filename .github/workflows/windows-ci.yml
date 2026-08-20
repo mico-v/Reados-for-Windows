@@ -79,6 +79,26 @@ jobs:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=/Brepro"
         run: cargo build --release --locked --manifest-path native/msp-ffi/Cargo.toml
 
+      - name: Prepare CI-local FFI release metadata
+        shell: pwsh
+        run: |
+          $metadata = Get-Content -Raw -LiteralPath native\msp-ffi\release-metadata.json | ConvertFrom-Json
+          $sha256 = [System.Security.Cryptography.SHA256]::Create()
+          try {
+            function Get-Sha256([string] $path) {
+              $bytes = $sha256.ComputeHash([System.IO.File]::ReadAllBytes($path))
+              return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+            }
+            $metadata.hashes.manifest = Get-Sha256 'native\msp-ffi\Cargo.toml'
+            $metadata.hashes.header = Get-Sha256 'native\msp-ffi\include\msp_ffi.h'
+            $metadata.hashes.export_definition = Get-Sha256 'native\msp-ffi\exports\msp_ffi.def'
+            $metadata.hashes.dll = Get-Sha256 'native\msp-ffi\target\release\msp_ffi.dll'
+          }
+          finally {
+            $sha256.Dispose()
+          }
+          $metadata | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath "$env:RUNNER_TEMP\msp-ffi-release-metadata.json" -Encoding utf8NoBOM
+
       - name: Verify public FFI release contract
         shell: pwsh
         run: >-
@@ -87,7 +107,7 @@ jobs:
           -ManifestPath native\msp-ffi\Cargo.toml
           -HeaderPath native\msp-ffi\include\msp_ffi.h
           -ExportDefinitionPath native\msp-ffi\exports\msp_ffi.def
-          -MetadataPath native\msp-ffi\release-metadata.json
+          -MetadataPath $env:RUNNER_TEMP\msp-ffi-release-metadata.json
 
       - name: Run .NET FFI consumer tests against the verified DLL
         shell: pwsh
