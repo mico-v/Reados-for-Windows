@@ -1,0 +1,12 @@
+[package]
+name = "msp-shell-language"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned, host-shell-free parser and AST boundary for MSP shell syntax."
+repository = "https://github.com/mico-v/reados"
+
+[dependencies]
+base64 = "0.22"
+fancy-regex = "0.18"
+thiserror = "2"

@@ -1,0 +1,14 @@
+[package]
+name = "msp-host-adapter"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "ReadOS-owned contract bridge for the legacy MSP host."
+repository = "https://github.com/mico-v/reados"
+
+[lib]
+name = "msp_host_adapter"
+path = "src/lib.rs"
+
+[dependencies]
+msp-kernel = { path = "../msp-kernel", version = "0.1.0" }

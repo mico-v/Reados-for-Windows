@@ -316,35 +316,46 @@
       "kind": "upstream-windows-crate",
       "workspace_member": true,
       "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-language", "MSP/Spec/Commands"],
-      "reados_targets": ["native/msp-core/src/shell.rs"],
+      "reados_targets": ["native/msp-shell-language", "native/msp-shell-language/src/lib.rs", "native/msp-shell-language/tests/parser_boundary.rs"],
       "decision": "adapt",
       "status": "partial",
       "owner": "ReadOS.NativeCore",
       "dependencies": ["msp-core", "native-parser-contract"],
       "evidence": {
         "state": "available",
-        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore"],
-        "paths": ["native/msp-core/src/shell.rs", "src/ReadOS.Msp.Hosting/Native/MspNativeAdapter.cs"]
+        "commands": ["cargo test --manifest-path native/msp-shell-language/Cargo.toml --locked"],
+        "paths": ["native/msp-shell-language/Cargo.toml", "native/msp-shell-language/src/lib.rs", "native/msp-shell-language/src/parser.rs", "native/msp-shell-language/tests/parser_boundary.rs", "native/msp-shell-language/LICENSE-APACHE-2.0", "native/msp-shell-language/NOTICE"]
       },
-      "notes": "ReadOS retains a conservative routing preflight; unsupported or ambiguous shell shapes fail closed."
+      "upstream_parity_evidence": {
+        "state": "blocked",
+        "commands": ["python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"],
+        "paths": [],
+        "missing_paths": ["MSP/Implementations/Swift/Sources/MSPShellLanguage", "MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity"]
+      },
+      "notes": "ReadOS uses the standalone host-shell-free parser and AST boundary, with parser-boundary tests and retained Apache-2.0/provenance records. The adapted parser evidence does not establish execution support or full upstream parity; unsupported or ambiguous shell shapes still fail closed."
     },
     {
       "id": "msp-shell-expansion",
       "kind": "upstream-windows-crate",
       "workspace_member": true,
       "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-expansion", "MSP/Spec/Commands"],
-      "reados_targets": [],
-      "decision": "defer",
-      "status": "deferred",
+      "reados_targets": ["native/msp-shell-expansion", "native/msp-shell-expansion/src/lib.rs"],
+      "decision": "adapt",
+      "status": "partial",
       "owner": "ReadOS.NativeCore",
       "dependencies": ["msp-shell-language", "shell-differential-fixtures"],
       "evidence": {
-        "state": "blocked",
-        "commands": ["cargo test --manifest-path MSP/Implementations/Windows/Cargo.toml --locked -p msp-shell-expansion"],
-        "paths": [],
-        "missing_paths": ["native/msp-core/src/shell_expansion.rs", "MSP/Conformance/Scripts/windows_swift_parity_inventory.py"]
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-shell-expansion/Cargo.toml --locked"],
+        "paths": ["native/msp-shell-expansion/Cargo.toml", "native/msp-shell-expansion/src/lib.rs", "native/msp-shell-expansion/LICENSE-APACHE", "native/msp-shell-expansion/NOTICE"]
       },
-      "notes": "No ReadOS expansion target or runnable upstream parity inventory exists in this checkout."
+      "upstream_parity_evidence": {
+        "state": "blocked",
+        "commands": ["cargo test --manifest-path MSP/Implementations/Windows/Cargo.toml --locked -p msp-shell-expansion", "python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"],
+        "paths": [],
+        "missing_paths": ["MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity"]
+      },
+      "notes": "ReadOS implements a narrow scalar, quote-aware, non-executing expansion slice with local tests and explicit provenance. Upstream expansion parity remains blocked by the missing Swift/source inventory and broader evaluator evidence; command/process substitution, arithmetic, pathname expansion, field splitting, and runtime resolution remain deferred."
     },
     {
       "id": "msp-shell",
@@ -668,35 +679,70 @@
       "notes": "The six-case committed snapshot is evidence for a bounded slice only; it is not full Windows MSP parity."
     },
     {
+      "id": "reados-kernel-facade",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["owned-kernel-contract", "legacy-adapter-boundary"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-kernel/Cargo.toml --locked", "cargo test --manifest-path native/msp-host-adapter/Cargo.toml --locked"],
+        "paths": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"]
+      },
+      "notes": "ReadOS-authored kernel values, traits, and the contract-only legacy adapter are locally tested. LegacyKernelAdapter maps owned requests/events and returns execution unavailable; this is not copied MSP implementation or execution/backend parity."
+    },
+    {
+      "id": "windows-protocol-contract",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-protocol-windows/Cargo.toml", "native/msp-protocol-windows/src/lib.rs", "native/msp-protocol-windows/src/framing.rs", "native/msp-protocol-windows/NOTICE"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["reados-kernel-facade", "protocol-contract-validation"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-protocol-windows/Cargo.toml --locked"],
+        "paths": ["native/msp-protocol-windows/Cargo.toml", "native/msp-protocol-windows/src/lib.rs", "native/msp-protocol-windows/src/framing.rs", "native/msp-protocol-windows/src/request.rs", "native/msp-protocol-windows/src/response.rs", "native/msp-protocol-windows/NOTICE"]
+      },
+      "notes": "This pure byte-slice JSON framing and DTO contract is ReadOS-authored and locally available; it performs no execution and does not establish Windows API, process, filesystem, backend, or upstream MSP parity."
+    },
+    {
       "id": "shell-ast-and-execution",
       "upstream_crates": ["msp-shell-language", "msp-shell"],
       "upstream_paths": ["MSP/Spec/Commands", "MSP/Spec/Profiles/MSPModelWorkspaceExecutionSDKProfile.md"],
-      "reados_targets": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"],
+      "reados_targets": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs", "native/msp-shell-language", "native/msp-shell-language/src/parser.rs", "native/msp-shell-language/tests/parser_boundary.rs"],
       "status": "partial",
       "owner": "ReadOS.NativeCore",
       "dependencies": ["command-profile", "bounded-byte-streams"],
       "evidence": {
         "state": "available",
-        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked"],
-        "paths": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs"]
+        "commands": ["cargo test --manifest-path native/msp-core/Cargo.toml --locked", "cargo test --manifest-path native/msp-shell-language/Cargo.toml --locked"],
+        "paths": ["native/msp-core/src/shell.rs", "native/msp-core/src/pipeline.rs", "native/msp-shell-language/Cargo.toml", "native/msp-shell-language/src/parser.rs", "native/msp-shell-language/tests/parser_boundary.rs", "native/msp-shell-language/LICENSE-APACHE-2.0", "native/msp-shell-language/NOTICE"]
       },
-      "notes": "Quotes, lists, pipelines, and redirection are represented; expansion and broader grammar remain incomplete."
+      "notes": "The standalone parser supplies local syntax/AST and parser-boundary evidence alongside the existing execution paths. Parsing evidence does not establish execution, broader grammar support, or full upstream parity; expansion and broader grammar remain incomplete."
     },
     {
       "id": "shell-expansion",
       "upstream_crates": ["msp-shell-expansion"],
       "upstream_paths": ["MSP/Implementations/Windows/crates/msp-shell-expansion", "MSP/Spec/Commands"],
-      "reados_targets": [],
-      "status": "deferred",
+      "reados_targets": ["native/msp-shell-expansion", "native/msp-shell-expansion/src/lib.rs"],
+      "status": "partial",
       "owner": "ReadOS.NativeCore",
       "dependencies": ["shell-ast-and-execution", "inventory-runner", "upstream-swift-source"],
       "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-shell-expansion/Cargo.toml --locked"],
+        "paths": ["native/msp-shell-expansion/Cargo.toml", "native/msp-shell-expansion/src/lib.rs", "native/msp-shell-expansion/LICENSE-APACHE", "native/msp-shell-expansion/NOTICE"]
+      },
+      "upstream_parity_evidence": {
         "state": "blocked",
         "commands": ["python -B MSP/Conformance/Scripts/windows_swift_parity_inventory.py --strict --check-report"],
         "paths": [],
         "missing_paths": ["MSP/Conformance/Scripts/windows_swift_parity_inventory.py", "MSP/Conformance/Inventory/WindowsSwiftParity"]
       },
-      "notes": "No passing evidence is claimed while the source inventory and complete expansion target are absent."
+      "notes": "The local ReadOS slice supports scalar, quote-aware, non-executing expansion only. Upstream/full expansion evaluation and parity remain blocked by the unavailable source inventory; no execution, field splitting, pathname lookup, arithmetic, or runtime resolver is claimed."
     },
     {
       "id": "bounded-streams",

@@ -1,0 +1,9 @@
+# ReadOS MSP protocol provenance
+
+This package is ReadOS-owned code authored in this repository. It defines a
+versioned, byte-slice-only protocol boundary over the ReadOS-owned
+`msp-kernel` contracts. It contains no copied upstream MSP implementation and
+has no process, filesystem, Windows API, ABI, or managed-runtime dependency.
+
+The protocol deliberately projects native values into safe wire DTOs. Hosts
+remain responsible for policy, audit, cancellation state, and execution.

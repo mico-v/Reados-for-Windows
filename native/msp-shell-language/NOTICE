@@ -1,0 +1,47 @@
+# ReadOS shell-language provenance
+
+This crate is a ReadOS workspace member at `native/msp-shell-language`. It is a
+standalone parser/AST boundary only: it never invokes PowerShell, `cmd.exe`, a
+POSIX shell, or any other host process, and it has no dependency on the legacy
+MSP Cargo workspace or source paths.
+
+## Upstream source
+
+The Rust implementation in `src/` was copied from the MSP Windows
+implementation's `crates/msp-shell-language` at the migration baseline recorded
+by the repository's conformance snapshot:
+
+- Upstream project: MSP
+- Upstream revision: `982baa54e9093e39f828d8827be6c75aed7502ff`
+- Upstream copyright: Copyright 2026 Nian
+- Upstream license: Apache License 2.0
+- Original source root:
+  `MSP/Implementations/Windows/crates/msp-shell-language/src/`
+- Snapshot license and notice evidence:
+  `conformance/msp-upstream/APACHE-2.0.txt` and
+  `conformance/msp-upstream/NOTICE`
+
+The package-local `LICENSE-APACHE-2.0` is an exact copy of
+`conformance/msp-upstream/APACHE-2.0.txt`, retained here so standalone package
+consumers receive the applicable Apache-2.0 text. This crate distribution does
+not include raw MSP source and does not depend on `MSP/` or an MSP Cargo
+workspace.
+
+The applicable Apache-2.0 text is also retained by the repository at
+`MSP/LICENSE`. This file is a provenance record, not a replacement for the
+license text.
+
+## Adaptation boundary
+
+The copied parser and parsed DTOs are intentionally kept independent of MSP
+runtime, WorkspaceFS, FFI, Swift, and vendor crates. The crate exposes parsing
+and syntax metadata; it does not execute commands or promise execution support
+for pipelines, redirections, lists, compound commands, functions, arithmetic,
+here documents, or process substitution. Consumers must inspect the returned
+AST and choose an explicitly supported execution subset. Forms outside that
+subset are represented for syntax inspection or rejected by the single-command
+facades with `UnsupportedExecutionForm`.
+
+ReadOS-owned packaging metadata, this notice, and the focused boundary tests
+are additions in this workspace. Future source updates must update this map and
+retain the upstream license/provenance record.

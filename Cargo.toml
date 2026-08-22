@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "native/msp-kernel",
+    "native/msp-host-adapter",
+    "native/msp-shell-language",
+    "native/msp-shell-expansion",
+    "native/msp-protocol-windows",
+]
+exclude = [
+    "native/msp-core",
+    "native/msp-ffi",
+]

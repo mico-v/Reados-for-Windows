@@ -1,0 +1,11 @@
+[package]
+name = "msp-shell-expansion"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned, non-executing scalar shell-word expansion and analysis."
+repository = "https://github.com/mico-v/reados"
+
+[dependencies]
+msp-shell-language = { path = "../msp-shell-language", version = "0.1.0" }
+thiserror = "2"

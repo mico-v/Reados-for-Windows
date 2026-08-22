@@ -1,0 +1,12 @@
+msp-shell-expansion NOTICE
+
+This crate is ReadOS-owned code, licensed under Apache-2.0. It is a narrow,
+non-executing migration slice designed for the ReadOS native shell-language
+DTOs. The scalar parameter expansion and quote-preserving segment model were
+implemented for ReadOS from the repository audit of the upstream MSP shell
+expansion crate (MSP/Implementations/Windows/crates/msp-shell-expansion).
+
+No upstream MSP source file is included in this crate. Upstream behavior that
+would require command execution, process substitution, host pathname lookup,
+field splitting, arithmetic evaluation, or a runtime resolver is intentionally
+deferred and reported as unsupported here.
