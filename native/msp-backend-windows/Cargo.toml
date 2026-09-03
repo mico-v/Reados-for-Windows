@@ -1,0 +1,20 @@
+[package]
+name = "msp-backend-windows"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned Windows host adapter for the neutral MSP backend contract."
+publish = false
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "NOTICE", "LICENSE-APACHE-2.0", "src/**"]
+
+[features]
+# These names remain compatibility surfaces. The Windows retained-handle implementation is
+# selected by the target OS, never by a feature flag; non-Windows builds stay fail-closed.
+default = ["read"]
+read = []
+process = []
+
+[dependencies]
+msp-backend = { path = "../msp-backend", version = "0.1.0" }

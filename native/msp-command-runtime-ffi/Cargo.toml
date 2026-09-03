@@ -1,0 +1,55 @@
+[package]
+name = "msp-command-runtime-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned C ABI for deterministic virtual command execution."
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = [
+    "Cargo.toml",
+    "build.rs",
+    "Cargo.lock",
+    "README.md",
+    "NOTICE",
+    "LICENSE-APACHE-2.0",
+    "abi/**",
+    "include/**",
+    "exports/**",
+    "src/**",
+    "tests/**",
+    "android/LICENSE-APACHE-2.0",
+    "android/NOTICE",
+    "android/README.md",
+    "android/settings.gradle.kts",
+    "android/build.gradle.kts",
+    "android/gradle.properties",
+    "android/gradlew",
+    "android/gradlew.bat",
+    "android/gradle/wrapper/**",
+    "android/src/main/**",
+    "android/src/test/**",
+    "android/src/androidTest/**",
+    "android/provider/**",
+    "android/msp-command-runtime-ffi/build.gradle.kts",
+    "android/msp-command-runtime-ffi/consumer-rules.pro",
+    "android/msp-command-runtime-ffi/src/main/AndroidManifest.xml",
+    "android/msp-command-runtime-ffi/src/main/cpp/CMakeLists.txt",
+    "android/msp-command-runtime-ffi/src/main/cpp/msp_command_runtime_ffi_jni.cpp",
+]
+
+[lib]
+name = "msp_command_runtime_ffi"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+
+[dependencies]
+base64 = "0.22"
+msp-backend = { path = "../msp-backend", version = "0.1.0" }
+msp-command-pack = { path = "../msp-command-pack", version = "0.1.0" }
+msp-command-runtime = { path = "../msp-command-runtime", version = "0.1.0" }
+msp-kernel = { path = "../msp-kernel", version = "0.1.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

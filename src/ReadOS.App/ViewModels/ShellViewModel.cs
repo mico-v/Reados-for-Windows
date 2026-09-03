@@ -28,7 +28,7 @@ public enum WorkspaceLayoutMode
     FocusPresenter
 }
 
-public sealed partial class ShellViewModel : ObservableObject
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private const int MaxMspTranscriptEntries = 200;
     private const int MaxPreparedMspCommands = 8;
@@ -92,7 +92,8 @@ public sealed partial class ShellViewModel : ObservableObject
         IPdfDocumentService pdfService,
         IFileDialogService fileDialogService,
         IAiChatService aiChatService,
-        IClipboardService? clipboardService = null)
+        IClipboardService? clipboardService = null,
+        ReadOsPackagedRuntimeFfiRegistration? runtimeFfiRegistration = null)
     {
         this.workspaceStore = workspaceStore;
         this.pdfService = pdfService;
@@ -135,18 +136,22 @@ public sealed partial class ShellViewModel : ObservableObject
         readerLayoutService = new ReadOsReaderLayoutService();
         workflowDraftService = new ReadOsWorkflowDraftService();
         workflowPreparationService = new ReadOsWorkflowPreparationService(artifactService, workflowDraftService);
-        mspHost = new ReadOsMspHost(new ReadOsMspHostDependencies(
-            workspaceStore,
-            pdfService,
-            aiChatService,
-            () => workspace,
-            BuildSettingsFromInputs,
-            () => SelectedDocument,
-            () => attachmentQueueService.Snapshot(PendingAttachments),
-            GetAttachmentTextAsync,
-            QueueMspAttachment,
-            ClearMspAttachments,
-            ApplyMspChatResult));
+        mspHost = new ReadOsMspHost(
+            new ReadOsMspHostDependencies(
+                workspaceStore,
+                pdfService,
+                aiChatService,
+                () => workspace,
+                BuildSettingsFromInputs,
+                () => SelectedDocument,
+                () => attachmentQueueService.Snapshot(PendingAttachments),
+                GetAttachmentTextAsync,
+                QueueMspAttachment,
+                ClearMspAttachments,
+                ApplyMspChatResult,
+                runtimeFfiRegistration?.Adapter),
+            runtimeFfiEchoCommandAdapter: runtimeFfiRegistration?.Adapter,
+            ownsRuntimeFfiEchoCommandAdapter: runtimeFfiRegistration?.Adapter is not null);
 
         LanguageOptions.Add(new LanguageOption { Code = "zh-CN", DisplayName = "中文" });
         LanguageOptions.Add(new LanguageOption { Code = "en-US", DisplayName = "English" });
@@ -3125,6 +3130,12 @@ public sealed partial class ShellViewModel : ObservableObject
         StatusMessage = $"已执行 {commandTexts.Count} 条 MSP 命令。";
         SelectedInspectorTab = InspectorTab.Run;
         return mspAgentBridgeService.BuildExecutionReport(entries);
+    }
+
+    public void Dispose()
+    {
+        mspHost.Dispose();
+        GC.SuppressFinalize(this);
     }
 
 }

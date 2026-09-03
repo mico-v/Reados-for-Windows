@@ -284,18 +284,9 @@ foreach ($sectionName in @("components", "capabilities")) {
     }
 }
 
-Push-Location $repoRoot
-try {
-    $trackedMsp = @(git ls-files -- MSP)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not inspect Git tracking state for MSP/."
-    }
-    if ($trackedMsp.Count -gt 0) {
-        throw "Raw MSP paths are tracked by Git: $($trackedMsp -join ', ')"
-    }
-}
-finally {
-    Pop-Location
+& (Join-Path $repoRoot "scripts\verify-msp-git-boundary.ps1") -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Raw MSP Git boundary validation failed."
 }
 
 $componentCount = @($json.components).Count

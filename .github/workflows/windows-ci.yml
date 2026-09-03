@@ -63,14 +63,62 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deps-
 
+      - name: Verify root Rust workspace gates
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo test --workspace --locked
+          cargo clippy --workspace --all-targets --locked -- --deny warnings
+          cargo package --workspace --list --allow-dirty --locked
+
+      - name: Verify focused Rust package contents
+        shell: pwsh
+        run: .\scripts\verify-msp-crate-packages.ps1
+
+      - name: Exercise fail-closed Windows host adapters
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo test -p msp-backend-windows --all-features --locked
+          cargo clippy -p msp-backend-windows --all-features --all-targets --locked -- --deny warnings
+          cargo check -p msp-backend-windows --all-features --target x86_64-pc-windows-msvc --locked
+
+      - name: Exercise Windows core read-only bridge
+        shell: pwsh
+        run: |
+          cargo test -p msp-backend-windows-core-bridge --all-features --target x86_64-pc-windows-msvc --locked
+          cargo clippy -p msp-backend-windows-core-bridge --all-features --all-targets --locked -- --deny warnings
+          cargo check -p msp-backend-windows-core-bridge --features windows-bridge --target x86_64-pc-windows-msvc --locked
+
       - name: Verify native, managed, and solution gates
         shell: pwsh
         run: .\scripts\verify-msp.ps1
+
+      - name: Verify raw MSP Git boundary
+        shell: pwsh
+        run: .\scripts\verify-msp-git-boundary.ps1
+
+      - name: Run raw MSP Git boundary regression tests
+        shell: pwsh
+        run: .\scripts\test-msp-git-boundary.ps1
 
       - name: Verify capability manifest and source boundary
         if: ${{ hashFiles('MSP/Implementations/Windows/Cargo.toml') != '' }}
         shell: pwsh
         run: .\scripts\verify-msp-capability-manifest.ps1
+
+      - name: Verify command runtime FFI release and consumer smokes
+        shell: pwsh
+        run: .\scripts\verify-msp-command-runtime-ffi.ps1
+
+      - name: Run managed command runtime FFI focused tests
+        shell: pwsh
+        env:
+          READOS_MSP_COMMAND_RUNTIME_FFI_DLL: ${{ github.workspace }}\target\release\msp_command_runtime_ffi.dll
+        run: >-
+          dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj
+          --no-restore --nologo
+          --filter FullyQualifiedName~MspCommandRuntimeFfiAdapterTests
 
       - name: Build public FFI release DLL
         shell: pwsh

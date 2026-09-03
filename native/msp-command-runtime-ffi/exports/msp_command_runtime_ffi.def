@@ -1,0 +1,14 @@
+EXPORTS
+    msp_command_runtime_ffi_abi_version
+    msp_command_runtime_ffi_version_data
+    msp_command_runtime_ffi_runtime_create
+    msp_command_runtime_ffi_runtime_free
+    msp_command_runtime_ffi_workspace_create
+    msp_command_runtime_ffi_workspace_free
+    msp_command_runtime_ffi_workspace_put_file
+    msp_command_runtime_ffi_execute_json
+    msp_command_runtime_ffi_result_exit_code
+    msp_command_runtime_ffi_result_stdout_data
+    msp_command_runtime_ffi_result_stderr_data
+    msp_command_runtime_ffi_result_diagnostic_data
+    msp_command_runtime_ffi_result_free

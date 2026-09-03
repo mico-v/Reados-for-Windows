@@ -6,7 +6,7 @@ namespace ReadOS.App.Tests.Models.ChatUi;
 
 // Verifies the ReadOS-side projection adapter produces a canonical timeline
 // that satisfies the msp.chat-ui.timeline.v1 schema. Mirrors the conformance
-// fixtures under MSP/Implementations/UI/MSPChatUI/Conformance/fixtures/.
+// fixtures under src/ReadOS.Web/MSPChatUI/Conformance/fixtures/.
 
 public sealed class ReadOsChatUiProjectionServiceTests
 {

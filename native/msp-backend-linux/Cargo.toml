@@ -1,0 +1,16 @@
+[package]
+name = "msp-backend-linux"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned Linux openat2-anchored virtual workspace backend."
+publish = false
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "NOTICE", "LICENSE-APACHE-2.0", "src/**"]
+
+[dependencies]
+msp-backend = { path = "../msp-backend", version = "0.1.0" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

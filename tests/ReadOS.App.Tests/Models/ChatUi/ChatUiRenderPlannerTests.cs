@@ -5,7 +5,7 @@ namespace ReadOS.App.Tests.Models.ChatUi;
 // Verifies the canonical render operation planner picks the cheapest operation
 // for each transition. Mirrors Projection/runtime/render-planner.js + the
 // upstream parity checklist under
-// MSP/Implementations/UI/MSPChatUI/Conformance/DefaultParityChecklist.md.
+// src/ReadOS.Web/MSPChatUI/Conformance/DefaultParityChecklist.md.
 
 public sealed class ChatUiRenderPlannerTests
 {

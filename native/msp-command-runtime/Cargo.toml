@@ -1,0 +1,14 @@
+[package]
+name = "msp-command-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned stateless virtual command orchestration boundary."
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "NOTICE", "LICENSE-APACHE-2.0", "src/**", "tests/**"]
+
+[dependencies]
+msp-backend = { path = "../msp-backend", version = "0.1.0" }
+msp-command-pack = { path = "../msp-command-pack", version = "0.1.0" }
+msp-kernel = { path = "../msp-kernel", version = "0.1.0", default-features = false }

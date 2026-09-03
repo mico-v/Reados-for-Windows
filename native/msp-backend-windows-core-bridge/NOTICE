@@ -1,0 +1,5 @@
+Copyright 2026 ReadOS contributors
+
+This package contains ReadOS-authored code for the Windows core workspace bridge. It contains no
+copied MSP implementation and has no public dependency on legacy handles, FFI, managed code, or
+raw MSP source. The authored code is provided under the Apache License, Version 2.0.

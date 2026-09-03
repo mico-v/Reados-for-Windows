@@ -1,186 +1,118 @@
 # ReadOS Product Goal
 
-ReadOS is the vertical application service for Model Shell Proxy (MSP). It should be a real product-shaped host where an AI agent operates through commands, files, policies, audit records, and artifacts rather than through a loose set of one-off tools.
+ReadOS is an MSP-first Windows workbench and reference vertical host for agent-native applications. It proves that an AI agent can operate real product state through a controlled command environment instead of arbitrary shell access or a loose collection of tool calls.
 
-The original PDF reading product remains important, but its role changes: document work becomes the first vertical domain that proves MSP can serve deep application workflows.
+The document/PDF experience is the first vertical domain. It is valuable product functionality, but its larger purpose is to prove the reusable MSP host pattern end to end.
 
 ## Mission
 
-Build the reference vertical service for MSP:
+Build a product-shaped MSP host where:
 
-- expose app state as a stable virtual workspace;
-- expose app capabilities as composable commands;
-- make every agent action inspectable, policy-controlled, replayable, and auditable;
-- turn generated outputs into durable artifacts;
-- provide a usable operator workbench for humans supervising the agent.
+- application data is exposed through a stable virtual workspace;
+- application capabilities are exposed as commands;
+- mutations and external effects require explicit policy and approval;
+- every attempt produces inspectable terminal evidence and audit;
+- outputs become durable artifacts with provenance; and
+- a human operator can supervise, cancel, retry, and review agent work.
 
-## Product Positioning
-
-ReadOS is not a generic chat app, a generic PDF reader, or a raw SDK demo. It is a service workbench for agent-native software.
-
-The target users are:
-
-- builders who need to see how MSP fits into a real application;
-- power users who want agents to work over documents, conversations, and artifacts;
-- future vertical-app teams that need reusable MSP host patterns.
-
-## Core Thesis
-
-MSP should make applications feel like controlled operating environments for agents:
+## Product Thesis
 
 ```text
-Data as files.
+Data as virtual files.
 Actions as commands.
-Permissions as policy.
-Execution as evidence.
-Outputs as artifacts.
+Permissions as host policy.
+Execution as terminal evidence.
+Outputs as durable artifacts.
 ```
 
-The app owns the runtime. The agent receives a small bridge such as `exec_command`, while the service host handles command parsing, dispatch, workspace projection, policy decisions, audit records, and artifact persistence.
+The model receives a small bridge such as `exec_command` and `write_stdin`. It does not receive PowerShell, `cmd.exe`, Bash, Termux, host filesystem paths, provider credentials, or unrestricted process access.
 
-## Design Principles
+## Hybrid Runtime Direction
 
-1. MSP first: every significant capability should have a command/runtime shape, not only a UI button.
-2. Vertical depth before breadth: start with document workflows, then generalize proven patterns.
-3. App-owned workspace: agents see virtual paths, never arbitrary host filesystem paths.
-4. Commands over bespoke tools: app capabilities should compose through shell-like conventions.
-5. Policy before mutation: write, export, delete, and external-call commands must pass explicit policy.
-6. Evidence by default: command results, source paths, page references, and artifacts should be inspectable.
-7. Human supervision: the workbench should expose transcripts, approvals, errors, and rollback points.
-8. Portable core: parser, command protocol, policy/audit schemas, and conformance tests should move toward the native MSP core.
+ReadOS uses a hybrid MSP architecture:
 
-## Core Product Areas
+1. The product host owns policy, approval, sessions, transcripts, audit, artifacts, provider access, and domain services.
+2. A portable Rust command runtime owns deterministic parsing, expansion, virtual command dispatch, binary-safe results, and resource bounds.
+3. Platform backends own safe filesystem, process, PTY, and platform integration.
+4. A small portable builtin command pack operates directly on the virtual workspace.
+5. Complex mature tools such as Git, Python, Node, Toybox, BusyBox, or Termux packages run only through verified and policy-controlled external runtime providers.
 
-### 1. MSP Service Host
+The authoritative architecture and ownership rules are in [docs/MSP_HYBRID_ARCHITECTURE.md](docs/MSP_HYBRID_ARCHITECTURE.md).
 
-The service host coordinates command execution sessions. It owns the command registry, workspace adapter, policy engine, audit sink, artifact store, and agent bridge.
+## Initial Vertical Domain
 
-Near-term shape:
-
-- in-process host inside `ReadOS.App`;
-- session-scoped command transcript;
-- command metadata for read/write/external side effects;
-- approval hooks for mutating commands.
-
-Long-term shape:
-
-- embeddable service library;
-- optional local process boundary;
-- stable JSON protocol for native and .NET callers.
-
-### 2. Virtual Workspace
-
-ReadOS should project domain state into MSP paths:
+The document workbench must support a complete supervised workflow:
 
 ```text
-/
-/settings.json
-/projects/{projectId}/info.json
-/library/{documentId}.json
-/documents/{documentId}/info.json
-/documents/{documentId}/outline.json
-/documents/{documentId}/pages/{page}.txt
-/documents/{documentId}/conversations/{conversationId}.json
-/artifacts/{artifactId}/...
+import document
+→ inspect/select evidence
+→ prepare an MSP command or workflow
+→ approve external or mutating effects
+→ execute with progress and cancellation
+→ persist transcript, audit, artifact, and provenance
+→ restart and recover
+→ navigate lineage back to the source document and page
 ```
 
-The workspace is not just storage. It is the agent's read model, evidence surface, and artifact graph.
+The flagship workflow must work through the same host/runtime boundary used by future vertical applications.
 
-### 3. Command Packs
+## Product Principles
 
-Command packs turn vertical capabilities into runtime vocabulary.
+1. Vertical depth before platform breadth.
+2. Product authority stays above the native runtime.
+3. The virtual workspace is the agent-facing source of truth.
+4. Portable behavior is shared; platform capabilities are explicit.
+5. Builtins implement only safe, useful MSP subsets.
+6. Mature external tools are integrated, not rewritten.
+7. No arbitrary shell string execution.
+8. Capability claims require executable evidence on the target platform.
+9. Security failures are fail-closed and do not disclose host paths or secrets.
+10. A runtime feature is not complete until a product or SDK consumer can use it through the supported boundary.
 
-Initial packs:
+## Product Boundary
 
-- core: `help`, `pwd`, `ls`, `cat`, `echo`;
-- workspace: `workspace info`;
-- library: `library list`;
-- PDF: `pdf inspect`, `pdf text`, `pdf search`;
-- artifact: planned `artifact write`, `artifact list`, `artifact show`;
-- chat/workflow: planned `attach`, `chat ask`, `workflow run`.
+ReadOS owns:
 
-### 4. Policy, Audit, And Evidence
+- the WinUI operator workbench;
+- document/PDF services and workspace persistence;
+- chat/provider integration and credentials;
+- app command packs and named workflows;
+- policy, approval, terminal audit, sessions, transcripts, artifacts, and lineage;
+- packaging and product-level acceptance.
 
-Every command should produce a structured result:
+The portable MSP runtime owns:
 
-- exit code;
-- stdout and stderr;
-- artifacts;
-- audit records;
-- policy decision;
-- source references when available.
+- command parsing and expansion;
+- virtual paths and backend contracts;
+- deterministic command registration and dispatch;
+- bounded binary stdin/stdout/stderr;
+- stable execution results and diagnostics;
+- FFI-safe runtime contracts.
 
-Read-only commands can run freely. Mutating commands should support allow, confirm, and deny modes. External network/model calls should be visible and cancellable.
+Platform adapters own:
 
-### 5. Operator Workbench
-
-The WinUI app becomes the human control plane:
-
-- workspace browser;
-- document/evidence viewer;
-- command transcript;
-- approvals for write-capable commands;
-- artifact preview;
-- settings for providers, models, policy, and prompts.
-
-The reader surface remains useful, but it is now one view inside a broader MSP workbench.
-
-### 6. SDK And Native Runtime
-
-`src/ReadOS.Msp` should mature as the .NET MSP SDK. Stable language-neutral pieces should gradually move into `native/msp-core`:
-
-- command request/result JSON protocol;
-- parser and quoting rules;
-- policy and audit schema;
-- conformance fixtures;
-- FFI boundary for host languages.
-
-Host adapters stay app-specific. The native core should not know about WinUI, PDF libraries, local UI state, or provider secrets.
-
-## Initial Vertical Domain: Documents
-
-Documents are the first domain because they provide real, inspectable work:
-
-- read workspace and library state;
-- inspect PDF metadata, labels, outlines, and current page;
-- search and extract text from page ranges;
-- attach pages or regions to conversations;
-- generate summaries, study notes, outlines, and evidence-backed answers;
-- persist outputs as artifacts.
-
-Document reading remains valuable, but the deeper goal is to validate MSP as the runtime boundary for vertical applications.
-
-## Development Priorities
-
-### Foundation
-
-- Align documentation and naming around MSP service direction.
-- Harden MSP command contracts and tests.
-- Add command metadata for mutability, required capabilities, and output shape.
-- Persist command transcripts and artifacts.
-
-### Service Host
-
-- Introduce a service-facing abstraction around `ReadOsMspHost`.
-- Add session IDs, cancellation, progress events, and approval requests.
-- Replace allow-all policy in app flows with configurable policy.
-
-### Vertical Commands
-
-- Expand document commands beyond inspection.
-- Add write commands for page labels, outline edits, attachments, and artifacts.
-- Add workflow commands that compose document, chat, and artifact operations.
-
-### SDK Extraction
-
-- Stabilize JSON contracts.
-- Add conformance fixtures shared by .NET and Rust.
-- Move runtime-neutral logic into `native/msp-core` only after behavior is proven in the vertical app.
+- safe host workspace binding;
+- process and PTY lifecycle;
+- platform storage APIs;
+- runtime bundle discovery and verification;
+- platform-specific sandbox and resource enforcement.
 
 ## Non-Goals
 
-- Do not expose arbitrary system shell access as MSP.
-- Do not build a generic tool-calling catalog.
-- Do not make PDF reading the final boundary of the project.
-- Do not let agents mutate user data without policy and audit.
-- Do not move app-specific document logic into the native core.
+- Do not recreate a complete POSIX userland.
+- Do not expose arbitrary system shell access to the model.
+- Do not make Termux, PowerShell, Bash, or host `PATH` part of the portable core.
+- Do not move PDF, chat, provider, credential, or UI logic into Rust.
+- Do not claim Windows/Linux/Android parity from compilation alone.
+- Do not keep two native runtime implementations indefinitely.
+
+## Definition of Product Success
+
+ReadOS succeeds when:
+
+- the Windows flagship workflow passes through a stable supported runtime boundary;
+- the portable command runtime is reused unchanged by Windows, Linux, and Android hosts;
+- platform backends truthfully expose different capabilities without changing core semantics;
+- verified external runtime providers can add mature tools without granting arbitrary shell access;
+- the legacy native core is retired after compatibility and package gates pass; and
+- an operator can understand what the agent attempted, what was authorized, what changed, and where every artifact came from.

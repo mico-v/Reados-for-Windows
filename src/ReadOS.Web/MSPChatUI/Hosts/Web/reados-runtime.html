@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReadOS MSP Runtime</title>
+    <script
+      src="../../Renderers/Default/runtime/loader/default-web-loader.js"
+      data-manifest="../../Renderers/Default/renderer.manifest.json"
+      data-autostart="true"></script>
+    <style>
+      body { margin: 0; font: 14px system-ui, sans-serif; background: #f6f7f9; }
+      #runtime-bar { display: flex; gap: 8px; padding: 12px; position: sticky; top: 0; background: #fff; border-bottom: 1px solid #ddd; z-index: 2; }
+      #runtime-command { flex: 1; min-width: 0; }
+      #runtime-cwd { width: 150px; }
+      #runtime-output, #runtime-status { padding: 0 12px; color: #555; }
+      input, button { font: inherit; padding: 7px 9px; }
+    </style>
+  </head>
+  <body>
+    <div id="runtime-bar">
+      <input id="runtime-command" value="pwd" aria-label="MSP virtual command" />
+      <input id="runtime-cwd" value="/workspace" aria-label="MSP virtual cwd" />
+      <button id="runtime-execute" type="button">Run</button>
+    </div>
+    <div id="runtime-status">Starting ReadOS MSP web host…</div>
+    <pre id="runtime-output"></pre>
+    <section id="messages"></section>
+    <script src="/Hosts/Web/reados-runtime-host.js"></script>
+  </body>
+</html>

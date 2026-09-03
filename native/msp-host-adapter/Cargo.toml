@@ -11,4 +11,4 @@ name = "msp_host_adapter"
 path = "src/lib.rs"
 
 [dependencies]
-msp-kernel = { path = "../msp-kernel", version = "0.1.0" }
+msp-kernel = { path = "../msp-kernel", version = "0.1.0", default-features = false }

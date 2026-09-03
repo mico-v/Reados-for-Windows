@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using ReadOS.App.Services;
+using ReadOS.App.Services.Msp;
 using ReadOS.App.ViewModels;
 
 namespace ReadOS.App;
@@ -39,6 +40,8 @@ public partial class App : Application
 
         var services = new ServiceCollection();
 
+        services.AddSingleton(new ReadOsPackagedRuntimeFfiRegistration(
+            ReadOsPackagedRuntimeFfiLoader.TryLoad()));
         services.AddSingleton<IPdfDocumentService, PdfDocumentService>();
         services.AddSingleton<IProviderCredentialStore, WindowsDpapiProviderCredentialStore>();
         services.AddSingleton<IWorkspaceStore, WorkspaceStore>();

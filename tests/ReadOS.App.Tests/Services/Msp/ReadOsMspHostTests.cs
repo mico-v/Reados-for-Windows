@@ -3,6 +3,7 @@ using ReadOS.App.Models;
 using ReadOS.App.Services;
 using ReadOS.App.Services.Msp;
 using ReadOS.Msp.Hosting.Native;
+using ReadOS.Msp.Hosting.Native.RuntimeFfi;
 using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
 using ReadOS.Msp.Policy;
@@ -121,6 +122,46 @@ public sealed class ReadOsMspHostTests
         Assert.True(result.Succeeded, result.Stderr);
         Assert.False(provider.IsAdapterCreated);
         Assert.Equal(0, provider.DisposeCalls);
+
+        hostRuntime.Dispose();
+        hostRuntime.Dispose();
+        Assert.Equal(1, provider.DisposeCalls);
+    }
+
+    [Fact]
+    public async Task Host_runtime_factory_registers_explicit_ffi_echo_only_and_keeps_legacy_routes()
+    {
+        var workspace = CreateWorkspace(out var document);
+        var echoAdapter = new MspCommandRuntimeFfiEchoCommandAdapter(null);
+        var dependencies = CreateHostDependencies(
+            workspace,
+            document,
+            runtimeFfiEchoCommandAdapter: echoAdapter);
+        var provider = new TrackingNativeAdapterProvider();
+        using var hostRuntime = new ReadOsMspHostRuntimeFactory().Create(
+            dependencies,
+            ReadOsMspHost.DefaultSessionId,
+            "reados-agent",
+            provider,
+            ownsNativeAdapterProvider: true);
+
+        Assert.True(hostRuntime.Composition.Registry.TryGet("echo", out var echo));
+        Assert.Same(echoAdapter, echo);
+        foreach (var commandName in new[] { "pwd", "ls", "cat" })
+        {
+            Assert.True(hostRuntime.Composition.Registry.TryGet(commandName, out var command));
+            Assert.IsType<MspNativeBackedCommand>(command);
+        }
+
+        var unavailable = await hostRuntime.CommandHost.ExecuteAsync(
+            hostRuntime.RequestFactory.Create("echo explicitly opted in"));
+
+        Assert.Equal(
+            MspCommandRuntimeFfiEchoCommandAdapter.AdapterUnavailableDiagnosticCode,
+            Assert.Single(unavailable.Diagnostics).Code);
+        Assert.Single(unavailable.AuditRecords);
+        Assert.Equal("echo", unavailable.AuditRecords[0].CommandName);
+        Assert.False(provider.IsAdapterCreated);
 
         hostRuntime.Dispose();
         hostRuntime.Dispose();
@@ -1389,7 +1430,8 @@ public sealed class ReadOsMspHostTests
         Func<IReadOnlyList<ChatAttachment>>? pendingAttachmentsProvider = null,
         Action<ChatAttachment>? attachmentSink = null,
         Action? clearAttachments = null,
-        Action<LibraryItem, ChatConversation>? chatResultSink = null)
+        Action<LibraryItem, ChatConversation>? chatResultSink = null,
+        MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter = null)
     {
         return new ReadOsMspHostDependencies(
             new TestWorkspaceStore(workspace),
@@ -1402,7 +1444,8 @@ public sealed class ReadOsMspHostTests
             _ => Task.FromResult("attachment text"),
             attachmentSink ?? (_ => { }),
             clearAttachments ?? (() => { }),
-            chatResultSink ?? ((_, _) => { }));
+            chatResultSink ?? ((_, _) => { }),
+            runtimeFfiEchoCommandAdapter);
     }
 
     private static ReadOsMspCommandPackFactory CreateCommandPackFactory(

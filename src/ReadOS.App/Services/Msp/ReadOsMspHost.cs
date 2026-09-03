@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using ReadOS.Msp.Hosting.Native;
+using ReadOS.Msp.Hosting.Native.RuntimeFfi;
 using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Models;
 
@@ -13,14 +14,23 @@ public sealed class ReadOsMspHost : IMspCommandHost, IDisposable
     private readonly MspCommandHostFacade commandFacade;
     private readonly ReadOsMspHostRuntime runtimeHost;
 
-    public ReadOsMspHost(ReadOsMspHostDependencies dependencies)
-        : this(dependencies, nativeAdapterProvider: null)
+    public ReadOsMspHost(
+        ReadOsMspHostDependencies dependencies,
+        MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter = null,
+        bool ownsRuntimeFfiEchoCommandAdapter = false)
+        : this(
+            dependencies,
+            nativeAdapterProvider: null,
+            runtimeFfiEchoCommandAdapter,
+            ownsRuntimeFfiEchoCommandAdapter)
     {
     }
 
     internal ReadOsMspHost(
         ReadOsMspHostDependencies dependencies,
-        IMspNativeAdapterProvider? nativeAdapterProvider)
+        IMspNativeAdapterProvider? nativeAdapterProvider,
+        MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter = null,
+        bool ownsRuntimeFfiEchoCommandAdapter = false)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
@@ -28,7 +38,9 @@ public sealed class ReadOsMspHost : IMspCommandHost, IDisposable
             dependencies,
             DefaultSessionId,
             "reados-agent",
-            nativeAdapterProvider);
+            nativeAdapterProvider,
+            runtimeFfiEchoCommandAdapter: runtimeFfiEchoCommandAdapter,
+            ownsRuntimeFfiEchoCommandAdapter: ownsRuntimeFfiEchoCommandAdapter);
         commandHost = runtimeHost.CommandHost;
         commandFacade = new MspCommandHostFacade(
             commandHost,
@@ -43,6 +55,14 @@ public sealed class ReadOsMspHost : IMspCommandHost, IDisposable
     {
         return commandFacade.ExecuteAsync(commandText, actor, cancellationToken);
     }
+
+    /// <summary>
+    /// Host-owned verified provider registry. It only prepares bounded launch
+    /// plans; policy, approval, backend execution, and product audit remain in
+    /// their existing owners.
+    /// </summary>
+    public MspVerifiedRuntimeProviderCatalog RuntimeProviderCatalog =>
+        runtimeHost.RuntimeProviderCatalog;
 
     public ValueTask<MspCommandResult> ExecuteAsync(
         MspCommandRequest request,

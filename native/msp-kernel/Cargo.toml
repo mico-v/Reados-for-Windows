@@ -6,8 +6,12 @@ license = "MIT"
 description = "ReadOS-owned platform-neutral kernel contracts."
 repository = "https://github.com/mico-v/reados"
 
+[features]
+default = ["session-generation"]
+session-generation = ["dep:getrandom"]
+
 [dependencies]
-getrandom = "0.2"
+getrandom = { version = "0.2", optional = true }
 msp-shell-language = { path = "../msp-shell-language", version = "0.1.0" }
 msp-shell-expansion = { path = "../msp-shell-expansion", version = "0.1.0" }
 thiserror = "2"

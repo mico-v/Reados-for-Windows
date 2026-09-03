@@ -1,5 +1,7 @@
 # ReadOS kernel facade provenance
 
+Architecture authority: [MSP_HYBRID_ARCHITECTURE.md](MSP_HYBRID_ARCHITECTURE.md). This document describes the current kernel-facade implementation only.
+
 `native/msp-kernel` and `native/msp-host-adapter` are ReadOS-owned contracts introduced
 for the Phase 0/1 kernel boundary. Their source is authored in this repository and is
 not copied from the upstream MSP workspace or from `MSP/`.
@@ -11,10 +13,23 @@ request and event projection only. `LegacyKernelAdapter` returns
 `KernelError::ExecutionUnavailable` instead of claiming to delegate execution; the
 existing managed control plane and Hosting adapter therefore remain authoritative.
 
-The root workspace contains five new crates: `native/msp-kernel`,
-`native/msp-host-adapter`, `native/msp-shell-language`,
-`native/msp-shell-expansion`, and `native/msp-protocol-windows`. The first two
-define ReadOS-owned kernel and host-adapter contracts. The shell-language crate is a standalone,
+The root workspace contains nine new crates: `native/msp-kernel`, `native/msp-backend`,
+`native/msp-backend-windows`, `native/msp-command-pack`, `native/msp-command-runtime`,
+`native/msp-host-adapter`, `native/msp-shell-language`, `native/msp-shell-expansion`, and
+`native/msp-protocol-windows`. The first five define ReadOS-owned kernel, neutral backend,
+Windows backend adapter, virtual command-pack, and planner-to-registry runtime contracts;
+the host adapter and protocol crates complete the transport boundary. The backend crate is
+deliberately independent of `msp-kernel`:
+its public DTOs use only `String`, `Vec<u8>`, and validated virtual paths, with bounded,
+deterministic in-memory workspace behavior. The Windows backend adapter now has a retained-handle
+host workspace slice: it binds a fixed local NTFS root, verifies final-handle containment and
+hidden/reparse policy for every operation, and exposes only neutral `WorkspaceBackend` DTOs. It
+supports bounded stat/list, binary range reads, and whole-file replace-or-create writes. Process,
+PTY, event streaming, and cancellation remain explicit unsupported contract states, and
+non-Windows builds remain fail-closed. A backend does not authorize writes, bypass approval, or
+produce audit evidence; those policy and audit responsibilities remain above the backend at the
+service/host layer.
+The shell-language crate is a standalone,
 host-shell-free parser/AST boundary with its upstream provenance recorded in
 `native/msp-shell-language/NOTICE`. The protocol crate is a ReadOS-owned,
 pure byte-slice JSON framing and DTO boundary: it validates versioned requests,

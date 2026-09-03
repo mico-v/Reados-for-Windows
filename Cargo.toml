@@ -2,6 +2,16 @@
 resolver = "2"
 members = [
     "native/msp-kernel",
+    "native/msp-backend",
+    "native/msp-backend-windows",
+    "native/msp-backend-windows-core-bridge",
+    "native/msp-backend-linux",
+    "native/msp-process-backend",
+    "native/msp-command-pack",
+    "native/msp-command-runtime",
+    "native/msp-web-host",
+    "native/msp-git-provider",
+    "native/msp-command-runtime-ffi",
     "native/msp-host-adapter",
     "native/msp-shell-language",
     "native/msp-shell-expansion",

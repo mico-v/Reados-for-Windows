@@ -26,6 +26,24 @@ function Invoke-NativeCommand {
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$legacyBoundaryVerifier = Join-Path $repoRoot "scripts\verify-msp-legacy-boundary.ps1"
+& $legacyBoundaryVerifier -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "MSP legacy boundary verification failed."
+}
+
+$runtimeFfiAbiVerifier = Join-Path $repoRoot "scripts\verify-msp-command-runtime-ffi-abi.ps1"
+& $runtimeFfiAbiVerifier -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "MSP command runtime FFI ABI verification failed."
+}
+
+$commandProfileVerifier = Join-Path $repoRoot "scripts\verify-msp-command-profile.ps1"
+& $commandProfileVerifier -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "MSP portable command profile verification failed."
+}
+
 $dotnetCandidates = @(
     (Join-Path $env:ProgramFiles "dotnet\dotnet.exe"),
     ((Get-Command dotnet -ErrorAction SilentlyContinue).Source)
@@ -61,6 +79,10 @@ if (-not $SkipNative) {
     finally {
         Pop-Location
     }
+
+    $runtimeFfiDllPath = Join-Path $repoRoot "target\release\msp_command_runtime_ffi.dll"
+    & (Join-Path $repoRoot "scripts\verify-msp-command-runtime-ffi.ps1") `
+        -DllPath $runtimeFfiDllPath
 
     & (Join-Path $repoRoot "scripts\smoke-msp-native.ps1") -Configuration release
     if (-not $?) {

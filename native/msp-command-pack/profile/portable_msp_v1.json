@@ -1,0 +1,141 @@
+{
+  "profile": "reados-portable-msp-v1",
+  "version": "1.0.0",
+  "purpose": "Deterministic virtual-workspace builtins shared by modular Windows, Linux, and Android hosts.",
+  "effect": "read-only",
+  "common_contract": {
+    "cwd": "non-root canonical virtual path supplied by the host",
+    "inputs": ["explicit virtual paths", "caller-owned binary stdin"],
+    "outputs": "bounded binary stdout/stderr; diagnostics never echo rejected operands, host paths, backend text, or secrets",
+    "host_authority": "no host filesystem, process, PTY, PATH, locale, environment lookup, policy, approval, or audit access",
+    "limits": {
+      "max_arguments": 1024,
+      "max_argument_bytes": 32768,
+      "max_argument_total_bytes": 262144,
+      "max_stdin_bytes": 2097152,
+      "max_output_bytes": 2097152,
+      "max_scan_bytes": 67108864
+    }
+  },
+  "commands": [
+    {
+      "name": "pwd",
+      "options": ["-L", "--logical", "--"],
+      "effects": "returns the supplied virtual cwd",
+      "binary": "UTF-8 path plus newline",
+      "limits": ["max_output_bytes"],
+      "deviations": ["-P/--physical is rejected because a virtual workspace has no host physical cwd"]
+    },
+    {
+      "name": "echo",
+      "options": ["-n", "-e", "-E"],
+      "effects": "joins literal arguments with spaces and optionally interprets the bounded escape set",
+      "binary": "argument bytes are preserved as UTF-8; newline is optional",
+      "limits": ["max_arguments", "max_argument_bytes", "max_output_bytes"],
+      "deviations": ["no shell expansion, locale, or host state"]
+    },
+    {
+      "name": "printf",
+      "options": ["--help", "--version", "--"],
+      "effects": "renders the bounded literal format/conversion subset",
+      "binary": "byte-oriented format output; no Unicode or locale conversion",
+      "limits": ["max_argument_bytes", "max_output_bytes"],
+      "deviations": ["no floating point, dynamic width/precision, locale grouping, or shell expansion"]
+    },
+    {
+      "name": "cat",
+      "options": ["-A", "-b", "-e", "-E", "-n", "-s", "-t", "-T", "-u", "-v", "--show-all", "--number", "--number-nonblank", "--show-ends", "--show-tabs", "--squeeze-blank", "--"],
+      "effects": "reads virtual files or one caller-owned stdin cursor",
+      "binary": "raw file/stdin bytes, including NUL and invalid UTF-8, unless a rendering option is selected",
+      "limits": ["max_output_bytes", "max_scan_bytes"],
+      "deviations": ["no host paths, descriptor reopening, or process substitution"]
+    },
+    {
+      "name": "ls",
+      "options": ["-1", "-a", "-A", "-d", "-f", "-U", "-r", "-R", "-l", "-h", "-S", "--all", "--almost-all", "--directory", "--reverse", "--recursive", "--zero", "--human-readable", "--long", "--sort=name", "--sort=size", "--sort=none", "--"],
+      "effects": "lists deterministic virtual metadata",
+      "binary": "canonical virtual paths and separators; no host path formatting",
+      "limits": ["max_output_bytes", "max_scan_bytes", "max_recursion_depth"],
+      "deviations": ["long, human, time-sort, ownership, inode, and filesystem metadata are rejected when the backend does not provide them"]
+    },
+    {
+      "name": "find",
+      "options": ["-name", "-iname", "-type f", "-type d"],
+      "effects": "metadata-only bounded traversal and literal glob matching",
+      "binary": "canonical virtual path per line",
+      "limits": ["max_pattern_bytes", "max_entries", "max_scan_bytes", "max_recursion_depth", "max_output_bytes"],
+      "deviations": ["-exec, -ok, -delete, -print, -ls, -prune, regexes, symlink following, and actions are rejected"]
+    },
+    {
+      "name": "du",
+      "options": ["-a", "-s", "-b", "--all", "--summarize", "--bytes", "--"],
+      "effects": "reports logical virtual entry sizes from backend metadata",
+      "binary": "decimal byte totals, tab, canonical virtual path",
+      "limits": ["max_entries", "max_scan_bytes", "max_recursion_depth", "max_output_bytes"],
+      "deviations": ["human/block/inode/physical/dereference/ownership/filesystem usage modes are rejected"]
+    },
+    {
+      "name": "head",
+      "options": ["-c", "--bytes=", "-n", "--lines=", "-q", "--quiet", "-v", "--verbose", "-z", "--zero-terminated", "--"],
+      "effects": "returns a bounded byte or line prefix from virtual files/stdin",
+      "binary": "byte mode preserves arbitrary bytes; line mode preserves delimiters",
+      "limits": ["max_scan_bytes", "max_output_bytes"],
+      "deviations": ["signed counts, follow mode, host files, and implicit process streams are rejected"]
+    },
+    {
+      "name": "tail",
+      "options": ["-c", "--bytes=", "-n", "--lines=", "-q", "--quiet", "-v", "--verbose", "-z", "--zero-terminated", "--"],
+      "effects": "returns a bounded byte or line suffix from virtual files/stdin",
+      "binary": "byte mode preserves arbitrary bytes; line mode preserves delimiters",
+      "limits": ["max_scan_bytes", "max_output_bytes"],
+      "deviations": ["follow/watch, signed counts, host files, and process streams are rejected"]
+    },
+    {
+      "name": "wc",
+      "options": ["-l", "--lines", "-w", "--words", "-c", "--bytes", "--"],
+      "effects": "counts lines, ASCII-whitespace words, and bytes",
+      "binary": "counts raw bytes without UTF-8 conversion; output is ASCII decimal text",
+      "limits": ["max_scan_bytes", "max_output_bytes"],
+      "deviations": ["character count, maximum line length, debug, files-from, locale, and host metadata are rejected"]
+    },
+    {
+      "name": "grep",
+      "options": ["-n", "-i", "-v", "-c", "-l", "-q", "-r"],
+      "effects": "searches literal bytes/lines with bounded KMP matching",
+      "binary": "NUL and invalid UTF-8 are matched as bytes; labels are canonical virtual paths",
+      "limits": ["max_pattern_bytes", "max_entries", "max_scan_bytes", "max_recursion_depth", "max_output_bytes"],
+      "deviations": ["regex syntax, long options, clusters, repeated -r, shell actions, and host PATH lookup are rejected"]
+    },
+    {
+      "name": "sed",
+      "options": ["-n", "--"],
+      "effects": "streams stdin or one virtual file through p/d or literal s/old/new/[g]",
+      "binary": "bounded byte-oriented line processing without locale or Unicode conversion",
+      "limits": ["max_argument_bytes", "max_scan_bytes", "max_output_bytes", "max_line_bytes"],
+      "deviations": ["only p, d, and literal substitution are supported; scripts, regexes, writes, and multiple operands are rejected"]
+    }
+  ],
+  "excluded_from_profile": [
+    {
+      "name": "command",
+      "reason": "registry lookup helper requiring caller-provided registry context"
+    },
+    {
+      "name": "env",
+      "reason": "caller-environment inspection helper; not part of the FFI request contract"
+    },
+    {
+      "name": "type",
+      "reason": "registry lookup helper requiring caller-provided registry context"
+    },
+    {
+      "name": "which",
+      "reason": "registry lookup helper; no host PATH semantics"
+    }
+  ],
+  "unsupported_option_contract": {
+    "exit_code": 2,
+    "diagnostic": "fixed command-scoped text only",
+    "disclosure": "never echo the rejected option, operand, host path, backend error, or environment value"
+  }
+}

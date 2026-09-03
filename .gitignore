@@ -55,7 +55,14 @@ secrets.json
 # Local upstream MSP design/conformance reference (separate Git repository)
 /MSP/
 
-# OS files
-Thumbs.db
+# Android Gradle/NDK outputs
+.gradle/
+native/msp-command-runtime-ffi/android/**/build/
+native/msp-command-runtime-ffi/android/**/*.aar
+native/msp-command-runtime-ffi/android/local.properties
+native/msp-command-runtime-ffi/android/**/.cxx/
+native/msp-command-runtime-ffi/android/**/.kotlin/
+native/msp-command-runtime-ffi/android/**/externalNativeBuild/
+
 Desktop.ini
 .DS_Store

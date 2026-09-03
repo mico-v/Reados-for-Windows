@@ -7,7 +7,7 @@ description = "ReadOS-owned, platform-neutral Windows MSP protocol boundary."
 repository = "https://github.com/mico-v/reados"
 
 [dependencies]
-msp-kernel = { path = "../msp-kernel", version = "0.1.0" }
+msp-kernel = { path = "../msp-kernel", version = "0.1.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"

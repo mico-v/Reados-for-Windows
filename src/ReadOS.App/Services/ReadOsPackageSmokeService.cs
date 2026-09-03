@@ -221,6 +221,8 @@ internal static class ReadOsPackageSmokeComposition
 
         var services = new ServiceCollection();
         services.AddSingleton(options);
+        services.AddSingleton(new ReadOsPackagedRuntimeFfiRegistration(
+            ReadOsPackagedRuntimeFfiLoader.TryLoad()));
         services.AddSingleton<IPdfDocumentService, PdfDocumentService>();
         services.AddSingleton<IProviderCredentialStore>(_ =>
             new WindowsDpapiProviderCredentialStore(
@@ -263,6 +265,7 @@ internal sealed class ReadOsPackageSmokeService
     private readonly IProviderCredentialStore credentialStore;
     private readonly IAiChatService aiChatService;
     private readonly IMspNativeAdapter nativeAdapter;
+    private readonly ReadOsPackagedRuntimeFfiRegistration runtimeFfiRegistration;
     private readonly ReadOsMspHostingReadinessService readinessService;
 
     public ReadOsPackageSmokeService(
@@ -272,6 +275,7 @@ internal sealed class ReadOsPackageSmokeService
         IProviderCredentialStore credentialStore,
         IAiChatService aiChatService,
         IMspNativeAdapter nativeAdapter,
+        ReadOsPackagedRuntimeFfiRegistration runtimeFfiRegistration,
         ReadOsMspHostingReadinessService readinessService)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
@@ -280,6 +284,8 @@ internal sealed class ReadOsPackageSmokeService
         this.credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
         this.aiChatService = aiChatService ?? throw new ArgumentNullException(nameof(aiChatService));
         this.nativeAdapter = nativeAdapter ?? throw new ArgumentNullException(nameof(nativeAdapter));
+        this.runtimeFfiRegistration = runtimeFfiRegistration ??
+            throw new ArgumentNullException(nameof(runtimeFfiRegistration));
         this.readinessService = readinessService ?? throw new ArgumentNullException(nameof(readinessService));
     }
 
@@ -356,7 +362,16 @@ internal sealed class ReadOsPackageSmokeService
                 CreateHostDependencies(workspace),
                 ReadOsMspHost.DefaultSessionId,
                 "package-smoke",
-                hostNativeAdapterProvider);
+                hostNativeAdapterProvider,
+                runtimeFfiEchoCommandAdapter: runtimeFfiRegistration.Adapter,
+                ownsRuntimeFfiEchoCommandAdapter: runtimeFfiRegistration.Adapter is not null);
+            if (runtimeFfiRegistration.Adapter is not null &&
+                (!hostRuntime.Composition.Registry.TryGet("echo", out var packagedEcho) ||
+                 !ReferenceEquals(packagedEcho, runtimeFfiRegistration.Adapter)))
+            {
+                throw new InvalidOperationException(
+                    "The package smoke MSP host did not register the packaged runtime FFI echo route.");
+            }
             if (!hostRuntime.Diagnostics.HostCommandNames.Contains(
                 "workspace",
                 StringComparer.OrdinalIgnoreCase))
@@ -611,7 +626,8 @@ internal sealed class ReadOsPackageSmokeService
             _ => Task.FromResult(string.Empty),
             _ => { },
             () => { },
-            (_, _) => { });
+            (_, _) => { },
+            runtimeFfiRegistration.Adapter);
     }
 
     private async Task VerifyCredentialRoundTripAsync(CancellationToken cancellationToken)

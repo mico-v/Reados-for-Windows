@@ -1,49 +1,74 @@
 # ReadOS
 
-ReadOS is an MSP-first vertical application service and Windows workbench. Its purpose is to prove how an AI agent can operate inside real product software through an app-owned command runtime, virtual workspace, domain command packs, policy, audit, and durable artifacts.
+ReadOS is an MSP-first Windows workbench and reference vertical host for agent-native applications. It combines a real document/PDF product with a controlled command runtime, virtual workspace, policy and approval, terminal audit, sessions, transcripts, and durable artifacts.
 
-The existing document/PDF reading experience is now the first vertical domain for MSP rather than the final product boundary. It gives the runtime rich materials, conversations, page evidence, search, attachments, and user-visible workflows to operate on.
+The current direction is a hybrid MSP architecture:
 
-The product direction is maintained in [PRODUCT_GOAL.md](PRODUCT_GOAL.md), and the implementation path is maintained in [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).
+- the product host owns authority and domain behavior;
+- a modular Rust runtime owns portable deterministic command semantics;
+- platform backends own safe workspace, process, PTY, storage, and sandbox integration;
+- small virtual-workspace builtins run in-process;
+- complex mature tools run through verified external runtime providers rather than being rewritten or exposed through arbitrary shell access.
 
-## Current Status
+Read [PRODUCT_GOAL.md](PRODUCT_GOAL.md), [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md), and [docs/MSP_HYBRID_ARCHITECTURE.md](docs/MSP_HYBRID_ARCHITECTURE.md) before changing architecture or runtime ownership. Active work is tracked in [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md).
 
-- WinUI 3 Windows workbench under `src/ReadOS.App`.
-- Portable .NET MSP runtime under `src/ReadOS.Msp`.
-- Host-neutral service/session/policy/artifact composition under `src/ReadOS.Msp.Hosting`.
-- MSP parser, command registry, runtime context, workspace abstraction, policy, terminal audit, structured diagnostics, streaming events, and core commands.
-- ReadOS host adapter and document command pack under `src/ReadOS.App/Services/Msp`.
-- ReadOS virtual workspace exposing settings, projects, library, documents, artifacts, sessions, and transcripts.
-- Domain commands and named workflows for PDF inspection/extraction/search, chat, evidence extraction/review/synthesis, artifact refinement, and failure review.
-- Document services for PDF rendering, text extraction, search, page labels, outlines, attachments, and per-document conversations.
-- OpenAI-compatible chat service and offline fallback.
-- Typed thread timeline, approval surfaces, artifact lineage, compact sidebar/Review Dock flyouts with remembered wide-layout widths, and a bottom Runtime Drawer for command supervision.
-- Artifact/session/transcript namespace confinement, complete terminal audit coverage, fail-fast verification/package scripts, and Windows CI.
-- Provider API keys stored outside workspace JSON and exports with Windows DPAPI (`CurrentUser`), including legacy plaintext migration.
-- Upstream-aligned Rust/Windows MSP core under `native/msp-core`, including byte-safe internal results, shell AST, selected fixture parity, a validated deterministic command registry/pack composition layer, handle-based read-only NTFS WorkspaceFS, path sanitization, static CRT, and a negotiated, length-delimited ABI v2 alongside the temporary internal-v1 compatibility exports.
-- Stable `reados-msp-native/1` Hosting adapter with strict operation-specific limits, host-path disclosure protection, fail-closed ABI negotiation, real release-DLL tests, and bounded product adoption: only canonical lowercase `pwd` and `echo` execute through a shared lazy Rust proxy while managed `MspRuntime` retains parse, policy/approval, dry-run, streaming, terminal-result, and exactly-once product-audit authority.
-- Separate optional public `native/msp-ffi` C ABI release: 29 verified exports, versioned `msp_ffi.h`, reproducible static-MSVC-CRT DLL, recorded release hashes, and no app/runtime dependency. It is included only with `-IncludePublicMspFfi`; the default package and current `msp_core.dll` smoke are unchanged.
-- Three managed test projects under `tests/`.
+## Repository Structure
 
-Verified baseline on 2026-08-12: 69 `ReadOS.Msp.Tests`, 348 `ReadOS.Msp.Hosting.Tests` (including real release-DLL adapter operations; the native-DLL tests skip only when run standalone without `READOS_MSP_NATIVE_DLL`), 411 `ReadOS.App.Tests` (828 managed tests total under the full verifier), plus 181 Rust tests, native binary/FFI verification, and a zero-warning/zero-error solution build. The candidate release DLL has SHA256 `2CFD14246FA963AC284B158903ADC910A782AFEDFEA4EC5F247692BF4613E49A`, exposes all seven required exports, and uses the static MSVC CRT. ABI v2 reports a 32-byte `2.0` layout, contract `0x324D534F44414552`, capabilities `0x3F` (required `0xF`), and length-delimited request/response buffers that preserve embedded NUL bytes; partial v2 availability or handshake drift fails closed, while complete absence of all three v2 exports alone permits the isolated v1 fallback.
+- `src/ReadOS.App`: WinUI workbench, PDF/document services, chat/provider integration, workspace persistence, app command packs, operator policy, and UI state.
+- `src/ReadOS.Msp`: managed runtime contracts, parser, registry, policy, audit, results, and virtual workspace abstraction.
+- `src/ReadOS.Msp.Hosting`: host-neutral command host, sessions, artifacts, approval grants, cancellation, runtime composition, and native adapters.
+- `native/msp-kernel`, `native/msp-backend`, `native/msp-shell-*`, `native/msp-command-pack`, `native/msp-command-runtime`, `native/msp-command-runtime-ffi`: target modular portable runtime.
+- `native/msp-backend-linux`, `native/msp-backend-windows*`: platform backend work.
+- `native/msp-command-runtime-ffi/android`: Android arm64 Kotlin/JNI/AAR binding.
+- `native/msp-core`, `native/msp-ffi`: retained legacy runtime and compatibility/release inputs pending migration and retirement.
+- `tests`: managed Core, Hosting, and App xUnit suites.
+- `conformance`: versioned upstream/reference capability and fixture evidence.
+- `artifacts`: generated builds, smoke evidence, and release packages.
 
-The service-level flagship integration path proves PDF import, outline-driven evidence extraction, approval across restart, synthesis, persistence, denial without partial output, lineage back to a source PDF page, cancellation with no partial artifact, invalid-page failure, and secret-safe provider failure/restart/retry. `native_abi_v2_handshake_v1` remains implementation-, verifier-, and package-complete. `native_command_core_registry_v1` is implementation-, verifier-, and package-complete: validated `Command`, `Invocation`, `Context`, `Registry`, and `CommandPack` contracts replace the hard-coded list/dispatch, and the 12-case baseline/candidate ABI v1/v2 differential passes without changing command bytes, exit codes, diagnostics, audit, fixtures, ABI behavior, or product routing. The latest completed no-skip release is `artifacts/releases/ReadOS-0.1.0-native-command-registry-verified-win-x64.zip`; staged FFI and packaged-process smoke pass with `LengthDelimitedV2` 2.0, 532 ZIP entries, `RawMSP`/PDB/`.git` counts of zero, five `nativeCommands` all exiting 0, and an audit count of 1 for each of the three product proxies. T93 still needs visible WinUI, real provider/network, and packaged-process flagship restart evidence; T94 (Runtime Drawer resize/pin/persistence, latest-request-wins loading, deprecated presenter removal) is complete; T95 has verified `native_mixed_workspace_read_v1` (ABI v2 operation 4 — a lifetime-safe callback bridge that lets a managed `IMspNativeReadOnlyWorkspace` serve the Rust composite, proven by real release-DLL differential reads without migrating product `ls`/`cat`), `native_stream_core_v1` (bounded byte-stream primitives with backpressure/close semantics), the mutable WorkspaceFS/trash slice (TOCTOU-safe writes + a recoverable hidden `.msp/trash`), and pipelines/redirection execution, and model-facing exec sessions (`exec_command`/`write_stdin` with unique session ids, bounded one-time terminal-text reads, and `MSPExecCommandYieldPolicy` timing), and the Windows ConPTY/Job Object process backend + UTF-16LE sanitizer, and ConPTY session integration (external processes now run through `exec_command`/`write_stdin` with stdin continuation and kill-on-expiry); next needs broader product adoption and wider conformance.
+## Current Product Capability
 
-## Architecture Direction
+The Windows workbench currently includes:
 
-ReadOS follows this vertical MSP service-host architecture; current work strengthens its product proof and upstream runtime compatibility rather than introducing a different layer model:
+- local project/workspace persistence;
+- PDF, Markdown, and text import;
+- PDF rendering, thumbnails, text extraction, search, outlines, and page labels;
+- document conversations, evidence attachments, and OpenAI-compatible chat with offline fallback;
+- domain commands for workspace, library, PDF, document metadata, attachments, chat, artifacts, and workflows;
+- evidence extraction, review, synthesis, refinement, provenance, and lineage workflows;
+- typed command timeline, approvals, cancellation, diagnostics, artifacts, and Runtime Drawer supervision;
+- provider credentials protected outside workspace JSON/exports with Windows DPAPI.
 
-1. Operator workbench: WinUI surface for workspace, evidence, command transcript, and approval.
-2. MSP service host: sessions, command execution, policy checks, audit records, and artifact lifecycle.
-3. Command runtime: parser, command registry, exit codes, stdout/stderr, and future composition features.
-4. Virtual workspace: app-owned file model projected as stable MSP paths.
-5. Domain command packs: document, PDF, chat, artifact, workflow, and future app-specific commands.
-6. Agent bridge: a small model-facing boundary such as `exec_command({ "cmd": "pdf search current \"policy\"" })`.
-7. Native core and adapter: a Windows-compatible Rust runtime-neutral core in `native/msp-core`, behavior-aligned with upstream MSP and connected to ReadOS through a stable .NET adapter.
+The virtual workspace exposes product state through paths such as:
 
-The root `MSP/` directory is a nested, local-only Apache-2.0 source-package/reference input, not a ReadOS source tree, CI dependency, runtime, Git payload, or package payload. T95 uses the available `Spec/`, `Conformance/`, committed ReadOS snapshots, and the Windows source package only as review/drift inputs. The 2026-08-18 package contains a Windows Cargo workspace with 24 crates and two examples; its `SOURCE-PACKAGE-README.md` excludes Mac/Swift implementation source, and this checkout contains only `Implementations/Swift/Sources/Tools`. The documented Windows parity inventory runner/report and required release-gate Python dependencies are absent, so the versioned [Windows capability manifest](conformance/msp-upstream/windows-capability-manifest.json) records source inventory and full upstream release evidence as `blocked`, not passed. Any copied or derived upstream material must retain the applicable license, NOTICE, modification, and source-provenance records, while the raw `MSP/` reference tree remains excluded from ReadOS packages.
+```text
+/projects
+/library
+/documents
+/artifacts
+/sessions
+/transcripts
+/settings.json
+```
 
-## Build, Test, And Run
+The product host remains authoritative for policy, approval, terminal results, exactly-once audit, sessions, artifacts, PDF/chat/provider behavior, and persistence.
+
+## Native Runtime Status
+
+The modular Rust workspace already provides portable contracts for virtual paths, capabilities, shell parsing, expansion, command registration, a bounded builtin command pack, stateless command execution, protocol projection, FFI, Linux workspace binding, and Android packaging.
+
+Capability coverage is intentionally uneven:
+
+- Linux has a real `openat2`-anchored host workspace backend; process and PTY remain unsupported.
+- Android packages the portable runtime in an arm64 AAR; the canonical portable
+  fixture runs through a test-only x86_64 emulator variant, while device
+  storage and process providers remain future work.
+- The modular Windows host workspace now has a retained-handle stat/list/range-read and bounded whole-file write slice; process/PTY and broader write/trash behavior remain separate work.
+- `native/msp-core` contains working Windows functionality used as compatibility and migration evidence, but it is not the permanent architecture.
+- Modular product adoption is bounded and must preserve managed host policy/audit authority.
+
+Do not infer platform support from compilation, stubs, feature flags, or package assembly alone. See [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md) for current claimed evidence and gaps.
+
+## Build and Test
 
 Build only:
 
@@ -51,13 +76,19 @@ Build only:
 .\scripts\run.ps1 -BuildOnly
 ```
 
-Build and run the workbench:
+Build and launch:
 
 ```powershell
 .\scripts\run.ps1
 ```
 
-Run the managed test projects:
+Build the full solution:
+
+```powershell
+dotnet build .\ReadOS.sln
+```
+
+Run managed tests:
 
 ```powershell
 dotnet test .\tests\ReadOS.Msp.Tests\ReadOS.Msp.Tests.csproj
@@ -65,44 +96,75 @@ dotnet test .\tests\ReadOS.Msp.Hosting.Tests\ReadOS.Msp.Hosting.Tests.csproj
 dotnet test .\tests\ReadOS.App.Tests\ReadOS.App.Tests.csproj
 ```
 
-Run the full MSP verification path:
+Run the full Windows MSP verification path:
 
 ```powershell
 .\scripts\verify-msp.ps1
 ```
 
-The verifier fails immediately when any Rust, native smoke, managed test, restore, or solution-build command fails. The same path runs in `.github/workflows/windows-ci.yml` with the SDK pinned by `global.json`.
+Run the modular Rust workspace:
 
-Create a Windows x64 release package:
+```powershell
+cargo test --workspace
+```
+
+Check the legacy-runtime migration boundary:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-msp-legacy-boundary.ps1
+```
+
+Create a Windows x64 package:
 
 ```powershell
 .\scripts\package-windows.ps1 -StopExisting
 ```
 
-Include the optional public FFI artifact only when it is explicitly requested:
+## Architecture Rules
 
-```powershell
-.\scripts\package-windows.ps1 -StopExisting -IncludePublicMspFfi
-```
+- Commands operate on the virtual workspace, not arbitrary host paths.
+- Normalize paths before namespace membership checks.
+- Mutating or external effects pass product policy and approval before execution.
+- Every command attempt produces a terminal result and product audit record.
+- Portable crates do not access host filesystem, process, environment, `PATH`, product services, policy, or audit.
+- Platform backends provide capabilities but do not authorize them.
+- App/domain code never owns raw FFI or native handles.
+- Do not expose `bash -c`, `sh -c`, `cmd /c`, PowerShell command strings, unrestricted Termux sessions, or host `PATH` resolution to the model.
+- Add portable builtins only for safe virtual-workspace semantics; integrate Git, Python, Node, Toybox, BusyBox, or Termux packages through verified runtime providers.
+- Do not add new general-purpose features to legacy `native/msp-core` except security or migration-enabling work.
 
-The focused package/verifier contract tests can be run with:
+## Documentation
 
-```powershell
-.\scripts\test-package-verification.ps1
-```
+Authoritative documents:
 
-Packaging runs an isolated hidden-start smoke before creating the ZIP. Its app evidence remains under `artifacts`, while direct native WorkspaceFS `ls`/`cat` uses a separate fixed-local-NTFS temporary root that is removed in `finally`. The same smoke also exercises the staged product host proxy with canonical lowercase `pwd`, `echo ''`, and `echo -n reados-native-proxy`, requiring one managed audit for each result. Use `-SkipSmoke` only when that gate is intentionally deferred.
+- [PRODUCT_GOAL.md](PRODUCT_GOAL.md): product mission, scope, and non-goals.
+- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): dependency-ordered hybrid-runtime development plan.
+- [docs/MSP_HYBRID_ARCHITECTURE.md](docs/MSP_HYBRID_ARCHITECTURE.md): layer ownership, command strategy, platform profiles, Termux rules, security invariants, and legacy convergence.
+- [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md): active milestone and work-item status.
+- [docs/GOAL_PROMPT.md](docs/GOAL_PROMPT.md): short prompt for continuous development.
 
-## Development Documents
+Current component and evidence documents:
 
-- [PRODUCT_GOAL.md](PRODUCT_GOAL.md): MSP vertical service product direction.
-- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): practical implementation roadmap.
-- [docs/DEVELOPMENT_TRACKER.md](docs/DEVELOPMENT_TRACKER.md): current T92-T95 status, acceptance criteria, and verification evidence; T1-T91 are retained as history.
-- [docs/MSP_PLAN.md](docs/MSP_PLAN.md): service architecture and runtime model.
-- [docs/MSP_SDK_DEVELOPMENT_PLAN.md](docs/MSP_SDK_DEVELOPMENT_PLAN.md): upstream-aligned Windows Rust core, .NET adapter, compatibility, conformance, and provenance plan.
-- [docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md](docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md): feature-by-feature upstream evidence, Rust/.NET status, Windows deviations, and the next acceptance gate.
-- [conformance/msp-upstream/windows-capability-manifest.json](conformance/msp-upstream/windows-capability-manifest.json): selected Windows MSP profile inventory, provenance, drift, and blocked-evidence status.
-- [docs/CONTINUOUS_DEVELOPMENT_TARGET_PROMPT.md](docs/CONTINUOUS_DEVELOPMENT_TARGET_PROMPT.md): reusable autonomous-development target for the Rust/Windows MSP migration and remaining product gates.
-- [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md): desktop conversation workbench UI/UX design and implementation status.
-- [docs/MSP_AGENT_COMMAND_LOOP.md](docs/MSP_AGENT_COMMAND_LOOP.md): prompt-injected MSP command loop.
-- [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md): Windows, WinUI, and CLI setup.
+- [docs/MSP_KERNEL_FACADE.md](docs/MSP_KERNEL_FACADE.md)
+- [docs/MSP_COMMAND_RUNTIME.md](docs/MSP_COMMAND_RUNTIME.md)
+- [docs/MSP_COMMAND_PACK.md](docs/MSP_COMMAND_PACK.md)
+- [docs/MSP_COMMAND_RUNTIME_FFI.md](docs/MSP_COMMAND_RUNTIME_FFI.md)
+- [docs/MSP_BACKEND_LINUX.md](docs/MSP_BACKEND_LINUX.md)
+- [docs/MSP_BACKEND_WINDOWS_CORE_BRIDGE.md](docs/MSP_BACKEND_WINDOWS_CORE_BRIDGE.md)
+- [docs/ANDROID_RUNTIME_BINDING.md](docs/ANDROID_RUNTIME_BINDING.md)
+- [docs/PORTABLE_RUST_CI.md](docs/PORTABLE_RUST_CI.md)
+- [docs/MSP_NATIVE_RUNTIME_REGISTRATION.md](docs/MSP_NATIVE_RUNTIME_REGISTRATION.md)
+- [docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md](docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md)
+- [conformance/msp-upstream/windows-capability-manifest.json](conformance/msp-upstream/windows-capability-manifest.json)
+- [docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md)
+- [docs/OPERATOR_RUNBOOK.md](docs/OPERATOR_RUNBOOK.md)
+- [docs/ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md)
+
+The local `MSP/` reference checkout is an upstream/reference input only. It must not become a runtime dependency, Git payload, package payload, or source of unrecorded copied implementation code.
+
+The product-owned browser UI lives under `src/ReadOS.Web/MSPChatUI`. The
+loopback Rust browser host serves that directory by default; `MSP/` is not
+required to run the Web UI.
+
+Run `cargo run -p msp-web-host --offline` and open
+`http://127.0.0.1:8787/` for the local session-based Web workbench.

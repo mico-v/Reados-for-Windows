@@ -1,0 +1,13 @@
+[package]
+name = "msp-backend"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned, neutral virtual workspace backend contracts."
+repository = "https://github.com/mico-v/reados"
+
+[lib]
+name = "msp_backend"
+path = "src/lib.rs"
+
+[dependencies]

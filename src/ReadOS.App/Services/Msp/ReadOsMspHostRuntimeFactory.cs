@@ -1,3 +1,4 @@
+using ReadOS.Msp.Hosting.Native.RuntimeFfi;
 using ReadOS.Msp.Hosting.Policy;
 using ReadOS.Msp.Hosting.Native;
 using ReadOS.Msp.Hosting.Runtime;
@@ -7,7 +8,8 @@ namespace ReadOS.App.Services.Msp;
 internal sealed class ReadOsMspHostRuntime : IDisposable
 {
     private readonly IMspNativeAdapterProvider? ownedNativeAdapterProvider;
-    private bool disposed;
+    private readonly IDisposable? ownedRuntimeFfiEchoCommandAdapter;
+    private int disposed;
 
     public ReadOsMspHostRuntime(
         IMspCommandHost commandHost,
@@ -15,14 +17,18 @@ internal sealed class ReadOsMspHostRuntime : IDisposable
         IMspApprovalGrantStore approvalGrants,
         MspCommandHostComposition composition,
         MspCommandHostDiagnostics diagnostics,
-        IMspNativeAdapterProvider? ownedNativeAdapterProvider)
+        MspVerifiedRuntimeProviderCatalog runtimeProviderCatalog,
+        IMspNativeAdapterProvider? ownedNativeAdapterProvider,
+        IDisposable? ownedRuntimeFfiEchoCommandAdapter)
     {
         CommandHost = commandHost;
         RequestFactory = requestFactory;
         ApprovalGrants = approvalGrants;
         Composition = composition;
         Diagnostics = diagnostics;
+        RuntimeProviderCatalog = runtimeProviderCatalog;
         this.ownedNativeAdapterProvider = ownedNativeAdapterProvider;
+        this.ownedRuntimeFfiEchoCommandAdapter = ownedRuntimeFfiEchoCommandAdapter;
     }
 
     public IMspCommandHost CommandHost { get; }
@@ -35,15 +41,23 @@ internal sealed class ReadOsMspHostRuntime : IDisposable
 
     public MspCommandHostDiagnostics Diagnostics { get; }
 
+    public MspVerifiedRuntimeProviderCatalog RuntimeProviderCatalog { get; }
+
     public void Dispose()
     {
-        if (disposed)
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
         {
             return;
         }
 
-        disposed = true;
-        ownedNativeAdapterProvider?.Dispose();
+        try
+        {
+            ownedRuntimeFfiEchoCommandAdapter?.Dispose();
+        }
+        finally
+        {
+            ownedNativeAdapterProvider?.Dispose();
+        }
     }
 }
 
@@ -54,7 +68,9 @@ internal sealed class ReadOsMspHostRuntimeFactory
         string defaultSessionId,
         string defaultActor,
         IMspNativeAdapterProvider? nativeAdapterProvider = null,
-        bool ownsNativeAdapterProvider = false)
+        bool ownsNativeAdapterProvider = false,
+        MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter = null,
+        bool ownsRuntimeFfiEchoCommandAdapter = false)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
@@ -80,7 +96,8 @@ internal sealed class ReadOsMspHostRuntimeFactory
             dependencies.ClearAttachments,
             dependencies.ChatResultSink).CreateCommandPack();
         var nativeCoreRegistryFactory = new ReadOsNativeCoreRegistryFactory(
-            resolvedNativeAdapterProvider);
+            resolvedNativeAdapterProvider,
+            runtimeFfiEchoCommandAdapter ?? dependencies.RuntimeFfiEchoCommandAdapter);
         ReadOsNativeCoreRegistryFactory.ValidateHostCommandPack(commandPack);
         var composition = new MspCommandHostCompositionBuilder(
             nativeCoreRegistryFactory.Create).Build(commandPack);
@@ -94,6 +111,8 @@ internal sealed class ReadOsMspHostRuntimeFactory
         var diagnostics = new MspCommandHostDiagnosticsService().Build(
             composition,
             requestFactory);
+        var runtimeProviderCatalog = dependencies.RuntimeProviderCatalog ??
+            new MspVerifiedRuntimeProviderCatalog();
 
         return new ReadOsMspHostRuntime(
             runtimeHost.CommandHost,
@@ -101,8 +120,12 @@ internal sealed class ReadOsMspHostRuntimeFactory
             approvalGrants,
             composition,
             diagnostics,
+            runtimeProviderCatalog,
             createdNativeAdapterProvider || ownsNativeAdapterProvider
                 ? resolvedNativeAdapterProvider
+                : null,
+            ownsRuntimeFfiEchoCommandAdapter
+                ? runtimeFfiEchoCommandAdapter ?? dependencies.RuntimeFfiEchoCommandAdapter
                 : null);
     }
 }

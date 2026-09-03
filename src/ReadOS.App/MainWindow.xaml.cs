@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window
         RootShell.DataContext = ViewModel;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         RootShell.Loaded += MainWindow_Loaded;
+        Closed += MainWindow_Closed;
         ConfigureTitleBar();
         ApplyTheme();
     }
@@ -35,6 +36,11 @@ public sealed partial class MainWindow : Window
     {
         await ViewModel.InitializeAsync();
         ApplyTheme();
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    {
+        ViewModel.Dispose();
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -291,12 +291,12 @@ catch {
     throw "Windows package smoke diagnostic log is not valid JSON: $logPath`n$($_.Exception.Message)"
 }
 
-if ($logJson.Contains(
+if ($logJson.IndexOf(
         "providerApiKey",
-        [System.StringComparison]::OrdinalIgnoreCase) -or
-    $logJson.Contains(
+        [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+    $logJson.IndexOf(
         $nativeWorkspaceRoot,
-        [System.StringComparison]::OrdinalIgnoreCase)) {
+        [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
     throw "Windows package smoke diagnostic log exposed a credential field or native temporary path: $logPath"
 }
 

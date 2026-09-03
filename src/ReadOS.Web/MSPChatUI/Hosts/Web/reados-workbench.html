@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReadOS Web</title>
+    <script
+      src="../../Renderers/Default/runtime/loader/default-web-loader.js"
+      data-manifest="../../Renderers/Default/renderer.manifest.json"
+      data-autostart="true"></script>
+    <link rel="stylesheet" href="/Hosts/Web/reados-workbench.css" />
+  </head>
+  <body class="reados-workbench-body">
+    <div id="workbench-shell">
+      <aside id="session-sidebar" aria-label="会话">
+        <div class="brand-row">
+          <span class="brand-mark">R</span>
+          <div><strong>ReadOS</strong><small>MSP Web Workbench</small></div>
+        </div>
+        <button id="new-session" class="primary-button" type="button">＋ 新建会话</button>
+        <nav id="session-list" aria-label="会话列表"></nav>
+        <div class="sidebar-footer">
+          <button id="theme-toggle" class="ghost-button" type="button">切换主题</button>
+          <span id="runtime-badge" class="status-badge">正在连接…</span>
+        </div>
+      </aside>
+
+      <main id="conversation-pane">
+        <header id="conversation-header">
+          <button id="sidebar-toggle" class="icon-button" type="button" aria-label="切换会话栏">☰</button>
+          <div class="conversation-heading">
+            <strong id="conversation-title">新对话</strong>
+            <span id="conversation-subtitle">安全的虚拟工作区命令会话</span>
+          </div>
+          <button id="delete-session" class="ghost-button danger" type="button">删除</button>
+        </header>
+
+        <div id="conversation-scroll">
+          <div id="page">
+            <section id="empty-state">
+              <span class="hero-mark">R</span>
+              <h1>我能帮你操作 ReadOS 工作区</h1>
+              <p>输入受支持的 MSP 命令。所有操作都限制在虚拟工作区，不会暴露宿主路径或任意 shell。</p>
+              <div id="prompt-suggestions">
+                <button type="button" data-command="pwd">显示当前虚拟目录 <code>pwd</code></button>
+                <button type="button" data-command="ls /workspace">查看工作区 <code>ls /workspace</code></button>
+                <button type="button" data-command="cat /workspace/README.txt">读取说明文件 <code>cat</code></button>
+                <button type="button" data-command="find /workspace">查找工作区内容 <code>find</code></button>
+              </div>
+            </section>
+            <section id="messages" aria-live="polite"></section>
+          </div>
+        </div>
+
+        <footer id="composer-area">
+          <div id="composer-card">
+            <textarea id="composer-input" rows="1" maxlength="131072" placeholder="输入 MSP 命令，Enter 发送，Shift+Enter 换行"></textarea>
+            <div class="composer-toolbar">
+              <div class="composer-context">
+                <div id="turn-mode" class="turn-mode" aria-label="输入模式">
+                  <button type="button" data-mode="chat">对话</button>
+                  <button type="button" data-mode="command" class="active">MSP</button>
+                </div>
+                <label class="cwd-control">虚拟目录 <input id="composer-cwd" value="/workspace" spellcheck="false" /></label>
+              </div>
+              <div class="composer-actions">
+                <span id="composer-hint">仅 portable MSP v1</span>
+                <button id="send-turn" class="send-button" type="button" aria-label="发送">↑</button>
+              </div>
+            </div>
+          </div>
+          <p id="turn-status">ReadOS 可能会出错，请检查重要输出。</p>
+        </footer>
+      </main>
+
+      <aside id="runtime-inspector" aria-label="运行时信息">
+        <header><strong>运行环境</strong><button id="inspector-toggle" class="icon-button" type="button">×</button></header>
+        <dl>
+          <div><dt>Runtime</dt><dd id="runtime-name">—</dd></div>
+          <div><dt>Workspace</dt><dd id="workspace-kind">—</dd></div>
+          <div><dt>Policy</dt><dd id="policy-kind">—</dd></div>
+          <div><dt>Audit</dt><dd id="audit-kind">—</dd></div>
+          <div><dt>AI Chat</dt><dd id="chat-kind">—</dd></div>
+        </dl>
+        <h2>可用命令</h2>
+        <div id="capability-list" class="capability-list"></div>
+        <div class="inspector-note">复杂工具将通过经过验证的 Provider 接入；浏览器不能调用宿主 PATH 或任意进程。</div>
+      </aside>
+    </div>
+    <script src="/Hosts/Web/workbench-api.js"></script>
+    <script src="/Hosts/Web/workbench-state.js"></script>
+    <script src="/Hosts/Web/reados-workbench.js"></script>
+  </body>
+</html>

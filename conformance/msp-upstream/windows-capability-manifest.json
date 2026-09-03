@@ -3,8 +3,22 @@
   "manifest_kind": "reados-windows-msp-capability-status",
   "profile": "ReadOS-Windows-MSP-Full-1",
   "status": "blocked",
-  "reviewed_on": "2026-08-19",
+  "reviewed_on": "2026-08-26",
   "scope": "Inventory the local MSP Windows source package and map its major crates and capabilities to ReadOS targets without copying or depending on raw MSP source.",
+  "reados_security_boundary": {
+    "windows_host_backends": "partial",
+    "workspace_read": {
+      "status": "partial",
+      "reason": "The modular Windows backend now binds a fixed local NTFS root and performs open-first target-handle containment and hidden/reparse checks for bounded stat/list/range-read and whole-file replace-or-create writes. Common cross-platform and product adoption evidence remain incomplete.",
+      "implementation": "native/msp-backend-windows"
+    },
+    "process": {
+      "status": "deferred",
+      "reason": "The pathname-based adapter is disabled pending host-owned launch binding plus immutable trusted identity/content evidence.",
+      "implementation": "native/msp-backend-windows"
+    },
+    "capability_report": "WorkspaceRead and WorkspaceWrite are Supported only after successful Windows retained-handle binding; Process and PTY remain Unsupported. Non-Windows builds remain fail-closed."
+  },
   "status_vocabulary": {
     "conformant": "The selected evidence passes for the stated scope.",
     "partial": "A ReadOS-compatible slice exists, but the upstream capability or evidence is broader.",
@@ -634,6 +648,243 @@
   ],
   "capabilities": [
     {
+      "id": "bounded-command-pack",
+      "upstream_crates": [],
+      "upstream_paths": ["MSP/Spec/Commands", "MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.direct-parity-cases.json", "MSP/Conformance/Fixtures/MSPV1LinuxCommandLayer.edge-parity-cases.json"],
+      "reados_targets": ["native/msp-command-pack/Cargo.toml", "native/msp-command-pack/src/lib.rs", "native/msp-command-pack/src/du.rs", "native/msp-command-pack/src/find.rs", "native/msp-command-pack/src/grep.rs", "native/msp-command-pack/src/safe_subset.rs", "native/msp-command-pack/README.md", "native/msp-command-pack/NOTICE", "native/msp-command-pack/LICENSE-APACHE-2.0", "docs/MSP_COMMAND_PACK.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["neutral-backend-contract", "bounded-command-output", "virtual-path-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo fmt --all -- --check", "cargo test --manifest-path native/msp-command-pack/Cargo.toml --locked", "cargo clippy --manifest-path native/msp-command-pack/Cargo.toml --all-targets --locked -- -D warnings", "cargo package --workspace --list --allow-dirty --locked", "pwsh -NoProfile -File scripts/verify-msp-crate-packages.ps1"],
+        "paths": ["native/msp-command-pack/Cargo.toml", "native/msp-command-pack/src/lib.rs", "native/msp-command-pack/src/du.rs", "native/msp-command-pack/src/find.rs", "native/msp-command-pack/src/grep.rs", "native/msp-command-pack/src/safe_subset.rs", "native/msp-command-pack/README.md", "native/msp-command-pack/NOTICE", "native/msp-command-pack/LICENSE-APACHE-2.0", "docs/MSP_COMMAND_PACK.md"]
+      },
+      "notes": "ReadOS owns a narrow, backend-only virtual POSIX pwd/echo/cat/ls/du/find slice plus safe virtual-workspace subsets of printf/head/tail/wc and a bounded literal-byte grep. Find is metadata-only with virtual start paths, -name/-iname glob predicates, -type f/d predicates, deterministic traversal, .msp exclusion, and bounded depth/entries/pattern/scan/output/cancellation policies; it never follows symlink/reparse/special entries. All commands use bounded binary output, explicit stdin, validated virtual paths, deterministic registry composition, 32 KiB-or-backend range reads where applicable, and aggregate scan/recursion/entry policies. Grep supports only -n, -i, -v, -c, -l, -q, and one -r with linear-time literal matching; .msp components are excluded. It is an authored adaptation informed by public MSP descriptions, not raw MSP source or full command parity; broader native/msp-core command inventory and upstream parity are not evidence for this pack."
+    },
+    {
+      "id": "neutral-backend-contract",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-backend/Cargo.toml", "native/msp-backend/src/lib.rs", "native/msp-backend/LICENSE-APACHE-2.0", "native/msp-backend/NOTICE"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": [],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test --manifest-path native/msp-backend/Cargo.toml --locked", "cargo clippy --manifest-path native/msp-backend/Cargo.toml --all-targets --locked -- -D warnings", "cargo package --workspace --list --allow-dirty --locked"],
+        "paths": ["native/msp-backend/Cargo.toml", "native/msp-backend/src/lib.rs", "native/msp-backend/LICENSE-APACHE-2.0", "native/msp-backend/NOTICE"]
+      },
+      "notes": "ReadOS owns a neutral, host-free WorkspaceBackend contract with bounded in-memory WorkspaceFS behavior, including virtual WorkspaceRead and WorkspaceWrite. Process, PTY, event-streaming, and cancellation capabilities remain explicit unsupported contract states; this local virtual slice is distinct from Windows host-backed capability status and does not establish upstream MSP parity."
+    },
+    {
+      "id": "windows-backend-fail-closed",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-backend-windows/Cargo.toml", "native/msp-backend-windows/README.md", "native/msp-backend-windows/src/lib.rs", "native/msp-backend-windows/src/platform.rs", "native/msp-backend-windows/src/unsupported_read.rs", "native/msp-backend-windows/src/unsupported_process.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["neutral-backend-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-backend-windows --all-features --locked", "cargo clippy -p msp-backend-windows --all-features --all-targets --locked -- -D warnings", "cargo check -p msp-backend-windows --all-features --target x86_64-pc-windows-msvc --locked"],
+        "paths": ["native/msp-backend-windows/Cargo.toml", "native/msp-backend-windows/README.md", "native/msp-backend-windows/src/lib.rs", "native/msp-backend-windows/src/platform.rs", "native/msp-backend-windows/src/unsupported_read.rs", "native/msp-backend-windows/src/unsupported_process.rs"]
+      },
+      "notes": "The modular Windows adapter now binds a fixed local NTFS root and uses open-first final-handle containment for bounded stat/list/range-read and whole-file replace-or-create writes. Focused Windows tests cover binary data, deterministic listing, hidden paths, ADS/device/UNC syntax, outward reparse escape, bounds, and path-free diagnostics. The public API contains no legacy types. Process and PTY remain Unsupported; common cross-platform fixtures, product policy/write-trash integration, and full upstream parity are not claimed."
+    },
+    {
+      "id": "windows-backend-core-bridge",
+      "upstream_crates": ["msp-core", "msp-windows"],
+      "upstream_paths": ["MSP/Spec/WorkspaceFS/WorkspaceFSProfile.md"],
+      "reados_targets": ["native/msp-backend-windows-core-bridge/Cargo.toml", "native/msp-backend-windows-core-bridge/README.md", "native/msp-backend-windows-core-bridge/src/lib.rs", "native/msp-backend-windows-core-bridge/LICENSE-APACHE-2.0", "native/msp-backend-windows-core-bridge/NOTICE", "docs/MSP_BACKEND_WINDOWS_CORE_BRIDGE.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["msp-core", "windows-ntfs-retained-root", "bridge-owned-read-only-dto"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-backend-windows-core-bridge --all-features --target x86_64-pc-windows-msvc --locked", "cargo clippy -p msp-backend-windows-core-bridge --all-features --all-targets --locked -- -D warnings", "cargo check -p msp-backend-windows-core-bridge --features windows-bridge --target x86_64-pc-windows-msvc --locked", "cargo package --workspace --list --allow-dirty --locked"],
+        "paths": ["native/msp-backend-windows-core-bridge/Cargo.toml", "native/msp-backend-windows-core-bridge/src/lib.rs", "native/msp-backend-windows-core-bridge/LICENSE-APACHE-2.0", "native/msp-backend-windows-core-bridge/NOTICE", "docs/MSP_BACKEND_WINDOWS_CORE_BRIDGE.md"]
+      },
+      "notes": "Migration oracle only: this explicit-feature bridge exposes bridge-owned /workspace DTOs over the excluded legacy retained-root implementation. The supported H3.1 implementation is now native/msp-backend-windows; this bridge has no mutable or process surface and must not receive new product features."
+    },
+    {
+      "id": "linux-backend-openat2",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-backend-linux/Cargo.toml", "native/msp-backend-linux/README.md", "native/msp-backend-linux/src/lib.rs", "native/msp-backend-linux/LICENSE-APACHE-2.0", "native/msp-backend-linux/NOTICE", "docs/MSP_BACKEND_LINUX.md", "docs/PORTABLE_RUST_CI.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["neutral-backend-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-backend-linux --locked", "cargo clippy -p msp-backend-linux --all-targets --locked -- -D warnings", "cargo package --workspace --list --allow-dirty --locked", "cargo test -p msp-backend-linux --target x86_64-unknown-linux-gnu --locked"],
+        "paths": ["native/msp-backend-linux/Cargo.toml", "native/msp-backend-linux/README.md", "native/msp-backend-linux/src/lib.rs", "docs/MSP_BACKEND_LINUX.md", "docs/PORTABLE_RUST_CI.md"]
+      },
+      "notes": "ReadOS owns a narrow Linux host workspace adapter. It binds a trusted root only in the platform constructor, probes openat2, then resolves below an owned root descriptor with RESOLVE_BENEATH, RESOLVE_NO_MAGICLINKS, and RESOLVE_NO_SYMLINKS. It exposes /workspace rather than virtual root, rejects symlinks, special files, hidden .msp, traversal, and host syntax, redacts host errors, and reports process/PTY unsupported. Bounded file/directory rename uses descriptor-relative renameat2 and bounded file/empty-directory delete uses unlinkat; recursive delete, trash, directory creation, and unsafe fallback remain unsupported. Ubuntu 24.04.4 LTS container image sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 passes the focused 9-test suite, workspace tests, Linux target check, Clippy, and package-content checks; the hosted ubuntu-latest workflow remains the reproducible CI gate but is not claimed as run here. This does not establish upstream MSP parity."
+    },
+    {
+      "id": "command-planner",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-kernel/src/command_plan.rs", "native/msp-kernel/tests/command_plan.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["reados-kernel-facade", "shell-ast-and-execution", "shell-expansion"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-kernel --locked"],
+        "paths": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/command_plan.rs", "native/msp-kernel/tests/command_plan.rs"]
+      },
+      "notes": "ReadOS's non-executing CommandPlanner enforces bounded input, parses supported simple commands, and expands only caller-supplied context into a sanitized plan. It does not resolve PATH, inspect a filesystem or environment, or execute; the local planner slice does not establish upstream shell or command parity."
+    },
+    {
+      "id": "command-runtime",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-command-runtime/Cargo.toml", "native/msp-command-runtime/README.md", "native/msp-command-runtime/src/lib.rs", "native/msp-command-runtime/tests/runtime.rs"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["command-planner", "bounded-command-pack", "neutral-backend-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-command-runtime --locked", "cargo clippy -p msp-command-runtime --all-targets --locked -- -D warnings"],
+        "paths": ["native/msp-command-runtime/Cargo.toml", "native/msp-command-runtime/README.md", "native/msp-command-runtime/src/lib.rs", "native/msp-command-runtime/tests/runtime.rs"]
+      },
+      "notes": "ReadOS owns a stateless virtual command runtime that connects the caller-owned planner to the registered virtual command pack and neutral backend. It preserves bounded binary results and leaves policy, approval, terminal routing, and product audit above the boundary; it performs no process or host-environment work and does not claim full upstream runtime parity."
+    },
+    {
+      "id": "command-runtime-ffi",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-command-runtime-ffi/Cargo.toml", "native/msp-command-runtime-ffi/Cargo.lock", "native/msp-command-runtime-ffi/README.md", "native/msp-command-runtime-ffi/NOTICE", "native/msp-command-runtime-ffi/LICENSE-APACHE-2.0", "native/msp-command-runtime-ffi/include/msp_command_runtime_ffi.h", "native/msp-command-runtime-ffi/exports/msp_command_runtime_ffi.def", "native/msp-command-runtime-ffi/src/lib.rs", "native/msp-command-runtime-ffi/tests/c_contract.c", "native/msp-command-runtime-ffi/tests/ffi_contract.rs", "scripts/verify-msp-command-runtime-ffi.ps1", "docs/MSP_COMMAND_RUNTIME_FFI.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["command-runtime", "bounded-command-pack", "neutral-backend-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo fmt --all -- --check", "cargo test -p msp-command-runtime-ffi --locked", "cargo clippy -p msp-command-runtime-ffi --all-targets --locked -- -D warnings", "cargo package --workspace --list --allow-dirty --locked", "pwsh -NoProfile -File scripts/verify-msp-command-runtime-ffi.ps1"],
+        "paths": ["native/msp-command-runtime-ffi/Cargo.toml", "native/msp-command-runtime-ffi/Cargo.lock", "native/msp-command-runtime-ffi/README.md", "native/msp-command-runtime-ffi/NOTICE", "native/msp-command-runtime-ffi/LICENSE-APACHE-2.0", "native/msp-command-runtime-ffi/include/msp_command_runtime_ffi.h", "native/msp-command-runtime-ffi/exports/msp_command_runtime_ffi.def", "native/msp-command-runtime-ffi/src/lib.rs", "native/msp-command-runtime-ffi/tests/c_contract.c", "native/msp-command-runtime-ffi/tests/ffi_contract.rs", "scripts/verify-msp-command-runtime-ffi.ps1", "docs/MSP_COMMAND_RUNTIME_FFI.md"]
+      },
+      "notes": "ReadOS owns a separate Windows-local release-verified 13-export C ABI over the deterministic virtual command runtime. The release script checks the PE export count and runs the C11 header plus C++ consumer smokes; the managed adapter is separately focused below. Linux and Android release artifacts are not claimed by this Windows evidence. It is not the legacy msp-ffi ABI or the managed reados-msp-native/1 transport."
+    },
+    {
+      "id": "command-runtime-ffi-managed-adapter",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiAdapter.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiContracts.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiHandles.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiNative.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/RuntimeFfi/MspCommandRuntimeFfiAdapterTests.cs", "docs/MSP_COMMAND_RUNTIME_FFI.md"],
+      "status": "partial",
+      "owner": "ReadOS.Hosting.NativeAdapter",
+      "dependencies": ["command-runtime-ffi", "managed-contract-validation"],
+      "evidence": {
+        "state": "available",
+        "commands": ["dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore --filter FullyQualifiedName~MspCommandRuntimeFfiAdapterTests"],
+        "paths": ["src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiAdapter.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiContracts.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiHandles.cs", "src/ReadOS.Msp.Hosting/Native/RuntimeFfi/MspCommandRuntimeFfiNative.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/RuntimeFfi/MspCommandRuntimeFfiAdapterTests.cs", "docs/MSP_COMMAND_RUNTIME_FFI.md"]
+      },
+      "notes": "Focused managed contract tests always run. The single real-DLL fact is explicitly skipped when READOS_MSP_COMMAND_RUNTIME_FFI_DLL is absent or not Windows; setting that variable to a fully qualified release DLL enables it. The adapter is opt-in and does not alter product routing."
+    },
+    {
+      "id": "command-runtime-ffi-linux-target",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-command-runtime-ffi/Cargo.toml", "native/msp-command-runtime-ffi/include/msp_command_runtime_ffi.h", "scripts/verify-msp-command-runtime-ffi.ps1", "docs/MSP_COMMAND_RUNTIME_FFI.md"],
+      "status": "blocked",
+      "owner": "ReadOS.ReleaseAndSdk",
+      "dependencies": ["command-runtime-ffi"],
+      "evidence": {
+        "state": "blocked",
+        "commands": ["rustup target list --installed", "rustup target add x86_64-unknown-linux-gnu", "cargo build --release --locked --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target x86_64-unknown-linux-gnu"],
+        "paths": ["native/msp-command-runtime-ffi/Cargo.toml", "native/msp-command-runtime-ffi/include/msp_command_runtime_ffi.h", "scripts/verify-msp-command-runtime-ffi.ps1", "docs/MSP_COMMAND_RUNTIME_FFI.md"],
+        "missing_paths": ["target/x86_64-unknown-linux-gnu/release/libmsp_command_runtime_ffi.so"],
+        "missing_commands": ["rustup target add x86_64-unknown-linux-gnu"]
+      },
+      "notes": "The reviewed Windows checkout does not claim a Linux target build or runtime execution. Android is tracked separately by command-runtime-ffi-android-aar; no Linux or non-arm64 Android availability is inferred from that compile/package evidence. The top-level upstream status remains blocked."
+    },
+    {
+      "id": "command-runtime-ffi-android-aar",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-command-runtime-ffi/android/settings.gradle.kts", "native/msp-command-runtime-ffi/android/build.gradle.kts", "native/msp-command-runtime-ffi/android/gradle.properties", "native/msp-command-runtime-ffi/android/gradle/wrapper/gradle-wrapper.properties", "native/msp-command-runtime-ffi/android/gradlew", "native/msp-command-runtime-ffi/android/README.md", "native/msp-command-runtime-ffi/android/LICENSE-APACHE-2.0", "native/msp-command-runtime-ffi/android/NOTICE", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/build.gradle.kts", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/consumer-rules.pro", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/AndroidManifest.xml", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/cpp/CMakeLists.txt", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/cpp/msp_command_runtime_ffi_jni.cpp", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiAbi.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiBridge.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiClient.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiHandles.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiNative.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualPath.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualRequest.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualResult.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspAndroidWorkspace.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiAndroidTest.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiContractFixture.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspAndroidWorkspaceProjectionTest.kt", "native/msp-command-runtime-ffi/android/src/androidTest/AndroidManifest.xml", "native/msp-command-runtime-ffi/android/src/androidTest/kotlin/com/reados/msp/commandruntime/MspTestDocumentsProvider.kt", "native/msp-command-runtime-ffi/android/src/androidTest/kotlin/com/reados/msp/commandruntime/MspAndroidWorkspaceInstrumentationTest.kt", "docs/ANDROID_RUNTIME_BINDING.md", "docs/PORTABLE_RUST_CI.md", ".github/workflows/portable-rust-ci.yml"],
+      "status": "partial",
+      "owner": "ReadOS.ReleaseAndSdk",
+      "dependencies": ["command-runtime-ffi"],
+      "evidence": {
+        "state": "available",
+        "commands": ["rustup target add aarch64-linux-android", "cargo build --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target aarch64-linux-android --release --locked", "cargo build --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target x86_64-linux-android --release --locked", "native/msp-command-runtime-ffi/android/gradlew --no-daemon :msp-command-runtime-ffi:test :msp-command-runtime-ffi:assembleRelease :msp-command-runtime-ffi:verifyReleaseAar -PrustFfiArtifact=<target/aarch64-linux-android/release/libmsp_command_runtime_ffi.so>", "native/msp-command-runtime-ffi/android/gradlew --no-daemon :msp-command-runtime-ffi:connectedDebugAndroidTest -PandroidAbi=x86_64 -PrustTarget=x86_64-linux-android -PrustFfiArtifact=<target/x86_64-linux-android/release/libmsp_command_runtime_ffi.so>"],
+        "paths": ["native/msp-command-runtime-ffi/android/settings.gradle.kts", "native/msp-command-runtime-ffi/android/build.gradle.kts", "native/msp-command-runtime-ffi/android/gradle.properties", "native/msp-command-runtime-ffi/android/gradle/wrapper/gradle-wrapper.properties", "native/msp-command-runtime-ffi/android/gradlew", "native/msp-command-runtime-ffi/android/README.md", "native/msp-command-runtime-ffi/android/LICENSE-APACHE-2.0", "native/msp-command-runtime-ffi/android/NOTICE", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/build.gradle.kts", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/consumer-rules.pro", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/AndroidManifest.xml", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/cpp/CMakeLists.txt", "native/msp-command-runtime-ffi/android/msp-command-runtime-ffi/src/main/cpp/msp_command_runtime_ffi_jni.cpp", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiAbi.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiBridge.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiClient.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiHandles.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiNative.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualPath.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualRequest.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspVirtualResult.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiAndroidTest.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspCommandRuntimeFfiContractFixture.kt", "docs/ANDROID_RUNTIME_BINDING.md", "docs/PORTABLE_RUST_CI.md", ".github/workflows/portable-rust-ci.yml"],
+        "missing_paths": [],
+        "missing_commands": []
+      },
+      "notes": "The Ubuntu portable-rust-ci Android job installs the pinned NDK/CMake toolchain, builds the real Rust cdylib, runs Kotlin/JNI compile and unit smoke tests, verifies all 13 Rust symbols, and checks the release AAR contains both arm64-v8a shared objects and Kotlin classes. Local API 35 x86_64 emulator evidence now also passes the real androidTest suite, including the SAF/ContentResolver projected-workspace tests; the test-only x86_64 artifact does not widen the published arm64-v8a AAR. Arm64 device execution, SAF write-back, and product routing remain separate H3.3/H5 work. Windows/legacy ABI remains unchanged."
+    },
+    {
+      "id": "verified-runtime-provider-contract",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["src/ReadOS.Msp.Hosting/Native/MspNativeRuntimeCapabilityContracts.cs", "src/ReadOS.Msp.Hosting/Native/MspVerifiedRuntimeProviderContracts.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/MspNativeRuntimeCapabilityContractsTests.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/MspVerifiedRuntimeProviderContractTests.cs", "docs/MSP_NATIVE_RUNTIME_REGISTRATION.md", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md"],
+      "status": "partial",
+      "owner": "ReadOS.Hosting.NativeAdapter",
+      "dependencies": ["command-runtime-ffi-managed-adapter", "neutral-backend-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore --filter FullyQualifiedName~MspVerifiedRuntimeProviderContractTests"],
+        "paths": ["src/ReadOS.Msp.Hosting/Native/MspNativeRuntimeCapabilityContracts.cs", "src/ReadOS.Msp.Hosting/Native/MspVerifiedRuntimeProviderContracts.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/MspNativeRuntimeCapabilityContractsTests.cs", "tests/ReadOS.Msp.Hosting.Tests/Native/MspVerifiedRuntimeProviderContractTests.cs", "docs/MSP_NATIVE_RUNTIME_REGISTRATION.md", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md"],
+        "missing_paths": [],
+        "missing_commands": []
+      },
+      "notes": "ReadOS owns a host-neutral H4.1 registration and launch-plan contract. It combines verified platform-neutral bundle evidence with explicit profiles, bundle-relative executable digests, virtual workspace mode, bounded argv/environment/output/time/memory/process/file limits, mandatory cancellation and process-tree cleanup, and license/NOTICE provenance. It rejects PATH/loader keys, shell wrappers, host paths, and arbitrary shell fields; launch-time bundle and executable identity revalidation is pure and path-free. The 13-test focused suite passed on 2026-08-26. No process provider is claimed; H4.2 owns real Windows/non-Windows launch evidence."
+    },
+    {
+      "id": "verified-process-backend",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-process-backend/Cargo.toml", "native/msp-process-backend/src/lib.rs", "native/msp-process-backend/README.md", "native/msp-process-backend/LICENSE-APACHE-2.0", "native/msp-process-backend/NOTICE", "scripts/verify-msp-crate-packages.ps1", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["neutral-backend-contract", "verified-runtime-provider-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-process-backend --locked", "cargo clippy -p msp-process-backend --all-targets --locked -- -D warnings", "cargo check -p msp-process-backend --target x86_64-pc-windows-msvc --locked", "cargo test -p msp-process-backend --target x86_64-unknown-linux-gnu --locked", "cargo package --manifest-path native/msp-process-backend/Cargo.toml --list --allow-dirty --locked", "pwsh -NoProfile -File scripts/verify-msp-crate-packages.ps1"],
+        "paths": ["native/msp-process-backend/Cargo.toml", "native/msp-process-backend/src/lib.rs", "native/msp-process-backend/README.md", "native/msp-process-backend/LICENSE-APACHE-2.0", "native/msp-process-backend/NOTICE", "scripts/verify-msp-crate-packages.ps1", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md"],
+        "missing_paths": [],
+        "missing_commands": []
+      },
+      "notes": "ReadOS owns the platform process lifecycle below the host-neutral provider contract. It accepts only a host-bound executable already resolved and digest-verified by the Host/provider, maps virtual /workspace cwd below a trusted root, clears inherited environment, bounds stdout/stderr and wall time, redacts bound host paths, and kills the child tree through a Windows Job Object or Unix process group. The focused Windows and local WSL Linux tests passed 6 backend tests each on 2026-08-26, including cancellation, timeout, complete virtual-namespace validation, and repository symlink/junction escape tests. This is not a general shell/PTY backend and does not own policy, approval, audit, or provider selection."
+    },
+    {
+      "id": "verified-git-provider",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-git-provider/Cargo.toml", "native/msp-git-provider/src/lib.rs", "native/msp-git-provider/profile/git-provider-v1.json", "native/msp-git-provider/profile/provenance.json", "native/msp-git-provider/README.md", "native/msp-git-provider/LICENSE-APACHE-2.0", "native/msp-git-provider/NOTICE", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"],
+      "status": "partial",
+      "owner": "ReadOS.NativeCore",
+      "dependencies": ["verified-process-backend", "verified-runtime-provider-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["cargo test -p msp-git-provider --locked", "cargo clippy -p msp-git-provider --all-targets --locked -- -D warnings", "cargo package --manifest-path native/msp-git-provider/Cargo.toml --list --allow-dirty --locked", "pwsh -NoProfile -File scripts/verify-msp-crate-packages.ps1"],
+        "paths": ["native/msp-git-provider/Cargo.toml", "native/msp-git-provider/src/lib.rs", "native/msp-git-provider/profile/git-provider-v1.json", "native/msp-git-provider/profile/provenance.json", "native/msp-git-provider/README.md", "native/msp-git-provider/LICENSE-APACHE-2.0", "native/msp-git-provider/NOTICE", "docs/MSP_RUNTIME_PROVIDER_CONTRACT.md", "docs/MSP_UPSTREAM_COMPATIBILITY_MATRIX.md"],
+        "missing_paths": [],
+        "missing_commands": []
+      },
+      "notes": "The H4.2 provider is a fixed, read-only Git profile catalog: status, files, head, and bounded log. It supplies isolated Git configuration, disables hooks, prompts, credential helpers, optional locks, and network protocols, and delegates process/cwd confinement to msp-process-backend. Five provider tests passed on both Windows and local WSL Linux on 2026-08-26. Windows evidence used Git 2.54.0.windows.1 at C:/Program Files/Git/cmd/git.exe (SHA-256 81ef35ae005ca9318018d18e3327578ce939fb99feaad6b2d7c8ab15f3de8db5); local WSL Linux evidence used Git 2.55.0 at /usr/bin/git (SHA-256 93473c28694fd72bd889364107cd2770514de59780885a6a4aafca4d602e30ad). The crate contains provider manifests/provenance but does not redistribute either Git executable; no product routing or Android/Termux support is claimed."
+    },
+    {
+      "id": "android-tool-provider-experiment",
+      "upstream_crates": [],
+      "upstream_paths": [],
+      "reados_targets": ["native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspAndroidToolProvider.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderFactory.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderTest.kt", "native/msp-command-runtime-ffi/android/src/androidTest/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderInstrumentationTest.kt", "native/msp-command-runtime-ffi/android/provider/README.md", "native/msp-command-runtime-ffi/android/provider/NOTICE", "native/msp-command-runtime-ffi/android/provider/android-tool-provider-v1.json", "native/msp-command-runtime-ffi/android/provider/provenance.json", "src/ReadOS.Msp.Hosting/Native/MspAndroidToyboxProviderContract.cs", "src/ReadOS.Msp.Hosting/Native/MspVerifiedRuntimeProviderCatalog.cs", "docs/ANDROID_TOOL_PROVIDER_DECISION.md", "docs/ANDROID_RUNTIME_BINDING.md"],
+      "status": "partial",
+      "owner": "ReadOS.AndroidProvider",
+      "dependencies": ["command-runtime-ffi-android-aar", "verified-runtime-provider-contract"],
+      "evidence": {
+        "state": "available",
+        "commands": ["dotnet test tests/ReadOS.Msp.Hosting.Tests/ReadOS.Msp.Hosting.Tests.csproj --no-restore --filter FullyQualifiedName~MspAndroidToyboxProviderContractTests", "native/msp-command-runtime-ffi/android/gradlew --no-daemon :msp-command-runtime-ffi:test -PandroidAbi=x86_64 -PrustTarget=x86_64-linux-android -PrustFfiArtifact=<target/x86_64-linux-android/release/libmsp_command_runtime_ffi.so>", "native/msp-command-runtime-ffi/android/gradlew --no-daemon :msp-command-runtime-ffi:assembleDebugAndroidTest -PandroidAbi=x86_64 -PrustTarget=x86_64-linux-android -PrustFfiArtifact=<target/x86_64-linux-android/release/libmsp_command_runtime_ffi.so>", "native/msp-command-runtime-ffi/android/gradlew --no-daemon :msp-command-runtime-ffi:connectedDebugAndroidTest -PandroidAbi=x86_64 -PrustTarget=x86_64-linux-android -PrustFfiArtifact=<target/x86_64-linux-android/release/libmsp_command_runtime_ffi.so>"],
+        "paths": ["native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspAndroidToolProvider.kt", "native/msp-command-runtime-ffi/android/src/main/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderFactory.kt", "native/msp-command-runtime-ffi/android/src/test/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderTest.kt", "native/msp-command-runtime-ffi/android/src/androidTest/kotlin/com/reados/msp/commandruntime/MspAndroidToolProviderInstrumentationTest.kt", "native/msp-command-runtime-ffi/android/provider/README.md", "native/msp-command-runtime-ffi/android/provider/NOTICE", "native/msp-command-runtime-ffi/android/provider/android-tool-provider-v1.json", "native/msp-command-runtime-ffi/android/provider/provenance.json", "src/ReadOS.Msp.Hosting/Native/MspAndroidToyboxProviderContract.cs", "src/ReadOS.Msp.Hosting/Native/MspVerifiedRuntimeProviderCatalog.cs", "docs/ANDROID_TOOL_PROVIDER_DECISION.md", "docs/ANDROID_RUNTIME_BINDING.md"],
+        "missing_paths": [],
+        "missing_commands": []
+      },
+      "notes": "H4.3 selects app-owned Toybox as the first Android provider direction, with fixed pwd/cat/ls profiles over an app-private projected workspace. The Kotlin provider is argv-only, digest-bound, environment-cleared, bounded, cancellable, and path-redacting; TermuxOptional fails closed. The app-owned binding now verifies fixed AAR metadata/assets, app-private workspace confinement, and the expected executable digest, while the Host catalog exposes only verified fixed profile launch plans. Hosting and Android focused tests passed; the x86_64 Android instrumentation APK and AAR gates passed against the real Rust artifact, and all 7 connected instrumentation tests passed on reados-api35-x86_64(AVD) - 15. /system/bin/toybox remains an oracle only; no Toybox executable is redistributed. Arm64 execution, reviewed binary packaging, Android Host policy/approval/audit routing, and product adoption remain open."
+    },
+    {
       "id": "workspacefs-read",
       "upstream_crates": ["msp-core", "msp-windows"],
       "upstream_paths": ["MSP/Spec/WorkspaceFS/WorkspaceFSProfile.md"],
@@ -682,16 +933,16 @@
       "id": "reados-kernel-facade",
       "upstream_crates": [],
       "upstream_paths": [],
-      "reados_targets": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"],
+      "reados_targets": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-kernel/src/command_plan.rs", "native/msp-kernel/tests/command_plan.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"],
       "status": "partial",
       "owner": "ReadOS.NativeCore",
       "dependencies": ["owned-kernel-contract", "legacy-adapter-boundary"],
       "evidence": {
         "state": "available",
         "commands": ["cargo test --manifest-path native/msp-kernel/Cargo.toml --locked", "cargo test --manifest-path native/msp-host-adapter/Cargo.toml --locked"],
-        "paths": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"]
+        "paths": ["native/msp-kernel/Cargo.toml", "native/msp-kernel/src/lib.rs", "native/msp-kernel/src/command_plan.rs", "native/msp-kernel/tests/command_plan.rs", "native/msp-host-adapter/Cargo.toml", "native/msp-host-adapter/src/lib.rs", "docs/MSP_KERNEL_FACADE.md"]
       },
-      "notes": "ReadOS-authored kernel values, traits, and the contract-only legacy adapter are locally tested. LegacyKernelAdapter maps owned requests/events and returns execution unavailable; this is not copied MSP implementation or execution/backend parity."
+      "notes": "ReadOS-authored kernel values, traits, and the contract-only legacy adapter are locally tested, including the non-executing CommandPlanner and its command-plan integration tests. LegacyKernelAdapter maps owned requests/events and returns execution unavailable; the planner does not establish copied MSP implementation or execution/backend parity."
     },
     {
       "id": "windows-protocol-contract",

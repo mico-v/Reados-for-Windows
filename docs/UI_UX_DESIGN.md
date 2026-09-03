@@ -1,5 +1,7 @@
 # ReadOS Desktop UI/UX Redesign Plan
 
+Milestone labels such as T93/T94 below are retained as historical UI implementation notes. Active product acceptance is tracked as H6 in `DEVELOPMENT_PLAN.md` and `docs/DEVELOPMENT_TRACKER.md`.
+
 ReadOS should feel like a desktop MSP conversation workbench: a place to supervise long-running agent work, inspect source material, approve risky operations, and review generated evidence. It should not feel like a PDF reader with a chat panel attached.
 
 This plan is based on a local Codex Desktop research extraction plus a review of the current WinUI implementation.
@@ -71,7 +73,7 @@ Implemented interaction baseline:
 - The Runtime Drawer provides persistent transcript rows, output previews, progress/status, approval/deny/cancel actions, and open/close/pin controls.
 - Compact mode preserves the user's non-compact pane widths and opens the sidebar or Review Dock in flyouts from the thread header.
 
-T94 status: the Runtime Drawer is resizable with persisted height and pin state, transcript rows select into full stdout/stderr/diagnostics/effects in the Run inspector, document/page/presenter/thumbnail loads use latest-request-wins cancellation, and the deprecated `PresenterSurfaceView` has been removed. The remaining item is final visual/manual acceptance of responsive and accessibility behavior across compact, medium, wide, light, dark, keyboard, and reduced-motion conditions.
+Current status: the Runtime Drawer is resizable with persisted height and pin state, transcript rows select into full stdout/stderr/diagnostics/effects in the Run inspector, document/page/presenter/thumbnail loads use latest-request-wins cancellation, and the deprecated `PresenterSurfaceView` has been removed. The remaining H6 work is final visual/manual acceptance of responsive and accessibility behavior across compact, medium, wide, light, dark, keyboard, and reduced-motion conditions.
 
 ## Codex-Native Architecture Decision
 

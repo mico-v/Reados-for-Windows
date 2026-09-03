@@ -1,6 +1,6 @@
 # ReadOS 运营手册（旗舰工作流）
 
-本手册面向需要在 ReadOS WinUI 工作台中实际操作旗舰 MSP 工作流的运营人员，覆盖 T93 验收中“无法在 UI 层以下证明的 shell 交互”。服务层与重启/溯源的确定性证明见 `ReadOsFlagshipWorkflowIntegrationTests`；此处只描述可在界面中完成的交互。
+本手册面向需要在 ReadOS WinUI 工作台中实际操作旗舰 MSP 工作流的运营人员，覆盖 H6 产品级验收中无法在 UI 层以下证明的交互。服务层与重启/溯源的确定性证明见 `ReadOsFlagshipWorkflowIntegrationTests`；此处只描述可在界面中完成的交互。
 
 ## 旗舰场景
 

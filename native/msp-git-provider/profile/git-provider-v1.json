@@ -1,0 +1,12 @@
+{
+  "schema": "reados.verified-git-provider.v1",
+  "providerId": "reados-git-provider",
+  "bundleId": "reados-git-provider-1",
+  "profiles": ["status", "files", "head", "log"],
+  "workspace": "/workspace projection, read-only",
+  "network": "disabled",
+  "hooks": "disabled",
+  "argv": "provider-owned fixed argv only",
+  "licenseId": "GPL-2.0-only",
+  "noticeId": "reados-git-provider-notice-1"
+}

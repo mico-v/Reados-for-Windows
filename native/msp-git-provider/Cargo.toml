@@ -1,0 +1,17 @@
+[package]
+name = "msp-git-provider"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned verified, read-only Git runtime provider."
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "NOTICE", "LICENSE-APACHE-2.0", "profile/**", "src/**", "tests/**"]
+
+[dependencies]
+msp-backend = { path = "../msp-backend", version = "0.1.0" }
+msp-process-backend = { path = "../msp-process-backend", version = "0.1.0" }
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"

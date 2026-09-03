@@ -1,0 +1,223 @@
+name: Portable Rust CI
+
+on:
+  push:
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "native/**"
+      - "docs/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "native/**"
+      - "docs/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  rust-workspace:
+    name: Linux host Rust workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test the workspace
+        run: cargo test --workspace --locked
+
+      - name: Test the Linux anchored backend
+        run: cargo test -p msp-backend-linux --locked
+
+      - name: Lint the workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: List workspace package contents
+        run: cargo package --workspace --list --allow-dirty --locked
+
+      - name: Check target-neutral crates for Linux
+        run: cargo check --workspace --target x86_64-unknown-linux-gnu --locked --exclude msp-backend-windows
+
+      - name: Build target-neutral crates for Linux
+        run: cargo build --workspace --target x86_64-unknown-linux-gnu --locked --exclude msp-backend-windows
+
+  android-check:
+    name: Android target compile check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_NDK_VERSION: 27.2.12479018
+      ANDROID_API_LEVEL: 24
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: yes | sdkmanager --licenses >/dev/null
+
+      - name: Install Android NDK
+        shell: bash
+        run: sdkmanager --install "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1"
+
+      - name: Set up stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+
+      - name: Verify NDK clang and linker
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root"
+          ndk_root="$sdk_root/ndk/${ANDROID_NDK_VERSION}"
+          toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64"
+          clang="$toolchain/bin/clang"
+          linker="$toolchain/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
+          x86_linker="$toolchain/bin/x86_64-linux-android${ANDROID_API_LEVEL}-clang"
+          ar="$toolchain/bin/llvm-ar"
+          ranlib="$toolchain/bin/llvm-ranlib"
+          test -d "$ndk_root"
+          test -x "$clang"
+          test -x "$linker"
+          test -x "$x86_linker"
+          test -x "$ar"
+          test -x "$ranlib"
+          "$clang" --version
+          "$linker" --version
+          "$x86_linker" --version
+          printf 'Verified NDK toolchain: %s\n' "$toolchain"
+          printf 'Verified Android linker: %s\n' "$linker"
+          printf 'Verified Android x86_64 linker: %s\n' "$x86_linker"
+
+      - name: Configure Rust Android linker and archiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          ndk_root="$sdk_root/ndk/${ANDROID_NDK_VERSION}"
+          toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64"
+          linker="$toolchain/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
+          x86_linker="$toolchain/bin/x86_64-linux-android${ANDROID_API_LEVEL}-clang"
+          ar="$toolchain/bin/llvm-ar"
+          cc="$linker"
+          ranlib="$toolchain/bin/llvm-ranlib"
+          {
+            printf 'ANDROID_NDK_HOME=%s\n' "$ndk_root"
+            printf 'CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=%s\n' "$linker"
+            printf 'AR_aarch64_linux_android=%s\n' "$ar"
+            printf 'CC_aarch64_linux_android=%s\n' "$cc"
+            printf 'RANLIB_aarch64_linux_android=%s\n' "$ranlib"
+            printf 'CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=%s\n' "$x86_linker"
+            printf 'AR_x86_64_linux_android=%s\n' "$ar"
+            printf 'CC_x86_64_linux_android=%s\n' "$x86_linker"
+            printf 'RANLIB_x86_64_linux_android=%s\n' "$ranlib"
+            printf 'AR=%s\n' "$ar"
+            printf 'CC=%s\n' "$cc"
+            printf 'RANLIB=%s\n' "$ranlib"
+          } >> "$GITHUB_ENV"
+
+      - name: Compile the command runtime FFI for Android
+        run: cargo check --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target aarch64-linux-android --locked
+
+      - name: Build the command runtime FFI Android shared object
+        run: cargo build --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target aarch64-linux-android --release --locked
+
+      - name: Build the x86_64 Android emulator test artifact
+        run: cargo build --manifest-path native/msp-command-runtime-ffi/Cargo.toml --target x86_64-linux-android --release --locked
+
+      - name: Run the shared portable profile on an Android emulator
+        working-directory: native/msp-command-runtime-ffi/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          avdmanager="$sdk_root/cmdline-tools/latest/bin/avdmanager"
+          emulator="$sdk_root/emulator/emulator"
+          adb="$sdk_root/platform-tools/adb"
+          test -x "$avdmanager"
+          test -x "$emulator"
+          test -x "$adb"
+          echo no | "$avdmanager" create avd \
+            -n reados-api35-x86_64 \
+            -k "system-images;android-35;google_apis;x86_64" \
+            --device pixel_2 \
+            --force
+          "$emulator" -avd reados-api35-x86_64 \
+            -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect \
+            -no-snapshot -no-metrics > "$RUNNER_TEMP/reados-emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap '"$adb" emu kill >/dev/null 2>&1 || true; kill "$emulator_pid" >/dev/null 2>&1 || true' EXIT
+          "$adb" wait-for-device
+          for attempt in $(seq 1 90); do
+            if [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              break
+            fi
+            if [ "$attempt" = "90" ]; then
+              cat "$RUNNER_TEMP/reados-emulator.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          ./gradlew --no-daemon --stacktrace \
+            :msp-command-runtime-ffi:connectedDebugAndroidTest \
+            -PandroidAbi=x86_64 \
+            -PrustTarget=x86_64-linux-android \
+            -PrustFfiArtifact="$GITHUB_WORKSPACE/target/x86_64-linux-android/release/libmsp_command_runtime_ffi.so"
+
+      - name: Compile and package the Android AAR
+        working-directory: native/msp-command-runtime-ffi/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace \
+            :msp-command-runtime-ffi:test \
+            :msp-command-runtime-ffi:compileDebugAndroidTestKotlin \
+            :msp-command-runtime-ffi:assembleRelease \
+            :msp-command-runtime-ffi:verifyReleaseAar \
+            -PrustFfiArtifact="$GITHUB_WORKSPACE/target/aarch64-linux-android/release/libmsp_command_runtime_ffi.so"
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          aar = Path("msp-command-runtime-ffi/build/outputs/aar/msp-command-runtime-ffi-release.aar")
+          if not aar.is_file():
+              raise SystemExit(f"AAR was not produced: {aar}")
+          with ZipFile(aar) as archive:
+              names = set(archive.namelist())
+          required = {
+              "jni/arm64-v8a/libmsp_command_runtime_ffi.so",
+              "jni/arm64-v8a/libmsp_command_runtime_ffi_jni.so",
+          }
+          missing = required - names
+          if missing:
+              raise SystemExit(f"AAR is missing native libraries: {sorted(missing)}")
+          print(f"Verified AAR native payload: {sorted(required)}")
+          PY

@@ -1,0 +1,16 @@
+{
+  "schema": "reados.android-tool-provider.v1",
+  "providerId": "reados-android-tool-provider",
+  "bundleId": "reados-android-tool-provider-1",
+  "sourcePolicy": "app-owned-bundle-required; system-toybox-oracle-test-only",
+  "profiles": ["pwd", "cat", "ls"],
+  "entrypoints": ["toybox"],
+  "workspace": "/workspace projection to an app-private temporary directory",
+  "network": "disabled",
+  "shell": "disabled",
+  "termux": "optional-not-supported",
+  "maxOutputBytes": 2097152,
+  "timeoutMillis": 30000,
+  "licenseId": "0BSD",
+  "noticeId": "reados-android-tool-provider-notice-1"
+}

@@ -42,6 +42,11 @@ $solutionPath = Join-Path $repoRoot "ReadOS.sln"
 $projectPath = Join-Path $repoRoot "src\ReadOS.App\ReadOS.App.csproj"
 $nativeRoot = Join-Path $repoRoot "native\msp-core"
 $nativeDllPath = Join-Path $nativeRoot "target\release\msp_core.dll"
+$runtimeFfiRoot = Join-Path $repoRoot "native\msp-command-runtime-ffi"
+$runtimeFfiDllPath = Join-Path $repoRoot "target\release\msp_command_runtime_ffi.dll"
+$runtimeFfiVerifierPath = Join-Path $repoRoot "scripts\verify-msp-command-runtime-ffi.ps1"
+$runtimeFfiLicensePath = Join-Path $runtimeFfiRoot "LICENSE-APACHE-2.0"
+$runtimeFfiNoticePath = Join-Path $runtimeFfiRoot "NOTICE"
 $publicMspFfiRoot = Join-Path $repoRoot "native\msp-ffi"
 $publicMspFfiManifestPath = Join-Path $publicMspFfiRoot "Cargo.toml"
 $publicMspFfiDllPath = Join-Path $publicMspFfiRoot "target\release\msp_ffi.dll"
@@ -171,6 +176,19 @@ try {
     & (Join-Path $repoRoot "scripts\verify-msp-native-binary.ps1") `
         -DllPath $nativeDllPath
 
+    $env:CARGO_INCREMENTAL = "0"
+    Write-Host "Verifying the command runtime FFI crate..."
+    & $runtimeFfiVerifierPath -DllPath $runtimeFfiDllPath
+
+    if (-not (Test-Path -LiteralPath $runtimeFfiDllPath -PathType Leaf)) {
+        throw "Command runtime FFI release DLL was not produced: $runtimeFfiDllPath"
+    }
+    foreach ($runtimeFfiFile in @($runtimeFfiLicensePath, $runtimeFfiNoticePath)) {
+        if (-not (Test-Path -LiteralPath $runtimeFfiFile -PathType Leaf)) {
+            throw "Command runtime FFI package notice/license was not found: $runtimeFfiFile"
+        }
+    }
+
     if ($IncludePublicMspFfi) {
         $previousRustFlags = $env:RUSTFLAGS
         try {
@@ -267,6 +285,19 @@ finally {
     }
 }
 
+New-Item -ItemType Directory -Force -Path $publishRoot | Out-Null
+Copy-Item -LiteralPath $runtimeFfiDllPath `
+    -Destination (Join-Path $publishRoot "msp_command_runtime_ffi.dll") `
+    -Force
+$publishRuntimeFfiLicenseRoot = Join-Path $publishRoot "licenses\msp-command-runtime-ffi"
+New-Item -ItemType Directory -Force -Path $publishRuntimeFfiLicenseRoot | Out-Null
+Copy-Item -LiteralPath $runtimeFfiLicensePath `
+    -Destination (Join-Path $publishRuntimeFfiLicenseRoot "LICENSE-APACHE-2.0") `
+    -Force
+Copy-Item -LiteralPath $runtimeFfiNoticePath `
+    -Destination (Join-Path $publishRuntimeFfiLicenseRoot "NOTICE") `
+    -Force
+
 New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
 Copy-Item -Path (Join-Path $publishRoot "*") -Destination $packageRoot -Recurse -Force
 Copy-Item -LiteralPath $nativeDllPath -Destination (Join-Path $packageRoot "msp_core.dll") -Force
@@ -307,6 +338,8 @@ Runtime: $Runtime
 Configuration: $Configuration
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")
 Native MSP: msp_core.dll (ABI 2.0, JSON reados-msp-native/1, static MSVC CRT)
+Command runtime FFI: msp_command_runtime_ffi.dll (ABI 1, header 0.1.0, exact 13 exports, x64, static MSVC CRT)
+Command runtime FFI notices: licenses\msp-command-runtime-ffi\LICENSE-APACHE-2.0 and NOTICE
 $publicMspFfiReleaseNote
 Start:
   Run ReadOS.App.exe
@@ -326,6 +359,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination (Join-Path
     -PackageRoot $packageRoot `
     -ArtifactsRoot $artifactsRoot `
     -RequireNativeMsp `
+    -RequireCommandRuntimeFfi `
     -RequirePublicMspFfi:$IncludePublicMspFfi
 
 if (-not $SkipSmoke) {

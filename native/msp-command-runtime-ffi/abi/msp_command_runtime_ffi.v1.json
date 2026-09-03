@@ -1,0 +1,82 @@
+{
+  "contract": "reados.msp.command-runtime-ffi",
+  "abiVersion": 1,
+  "version": "0.1.0",
+  "requestSchemaVersion": 1,
+  "exports": [
+    "msp_command_runtime_ffi_abi_version",
+    "msp_command_runtime_ffi_version_data",
+    "msp_command_runtime_ffi_runtime_create",
+    "msp_command_runtime_ffi_runtime_free",
+    "msp_command_runtime_ffi_workspace_create",
+    "msp_command_runtime_ffi_workspace_free",
+    "msp_command_runtime_ffi_workspace_put_file",
+    "msp_command_runtime_ffi_execute_json",
+    "msp_command_runtime_ffi_result_exit_code",
+    "msp_command_runtime_ffi_result_stdout_data",
+    "msp_command_runtime_ffi_result_stderr_data",
+    "msp_command_runtime_ffi_result_diagnostic_data",
+    "msp_command_runtime_ffi_result_free"
+  ],
+  "limits": {
+    "MAX_JSON_REQUEST_BYTES": 4194304,
+    "MAX_COMMAND_BYTES": 131072,
+    "MAX_CWD_BYTES": 4096,
+    "MAX_FILE_BYTES": 8388608,
+    "MAX_WORKSPACE_BYTES": 67108864,
+    "MAX_WORKSPACE_FILES": 65536,
+    "MAX_LIST_ENTRIES": 65536,
+    "MAX_STDIN_BYTES": 2097152,
+    "MAX_OUTPUT_BYTES": 2097152,
+    "MAX_DIAGNOSTIC_BYTES": 4096,
+    "MAX_VARIABLES": 256,
+    "MAX_VARIABLE_NAME_BYTES": 64,
+    "MAX_VARIABLE_VALUE_BYTES": 65536,
+    "MAX_VARIABLE_TOTAL_BYTES": 262144
+  },
+  "statusCodes": {
+    "OK": 0,
+    "INVALID_ARGUMENT": 1,
+    "LIMIT_EXCEEDED": 2,
+    "INTERNAL_ERROR": 3,
+    "PANIC": 4
+  },
+  "diagnostics": {
+    "encoding": "compact UTF-8 JSON with exactly one code property",
+    "maxBytes": 4096,
+    "codes": [
+      "msp.ok",
+      "msp.command.exit",
+      "msp.output.limit",
+      "msp.ffi.request.invalid",
+      "msp.ffi.internal",
+      "msp.ffi.panic"
+    ],
+    "compatibility": "unknown native codes remain valid UTF-8 code strings; adapters must not expose request values"
+  },
+  "request": {
+    "required": ["version", "command", "cwd"],
+    "optional": ["stdinBase64", "variables", "errorOnUnbound"],
+    "forbidden": [
+      "environment",
+      "policy",
+      "approval",
+      "audit",
+      "actor",
+      "provider",
+      "hostPath",
+      "process",
+      "pty",
+      "cancellation"
+    ],
+    "cwd": "non-root canonical virtual UTF-8 path",
+    "stdin": "optional canonical RFC 4648 base64; decoded bytes are binary-safe",
+    "workspaceData": "binary-safe caller-owned bytes copied before return"
+  },
+  "ownership": {
+    "handles": "caller owns runtime/workspace/result handles and frees each exactly once",
+    "result": "result buffers are independent of runtime/workspace and borrowed until result_free",
+    "metadata": "version_data points to static storage and is never freed",
+    "authority": "no policy, approval, audit, actor, provider, host path, process, PTY, or cancellation authority crosses the ABI"
+  }
+}

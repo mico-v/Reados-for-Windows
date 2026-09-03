@@ -1,5 +1,7 @@
 # ReadOS Native Runtime Capability Records
 
+Architecture authority: [MSP_HYBRID_ARCHITECTURE.md](MSP_HYBRID_ARCHITECTURE.md). These records are the identity/evidence input to the H4.1 verified provider contract; they are not launch authority. See [MSP_RUNTIME_PROVIDER_CONTRACT.md](MSP_RUNTIME_PROVIDER_CONTRACT.md) for profile, argv, limits, lifecycle, and provenance rules.
+
 `ReadOS.Msp.Hosting.Native` now defines an evidence-only registration contract for
 three future runtime families: Python, Node, and Git. This contract is a
 pre-launch gate, not a launcher, process API, command registration, provider

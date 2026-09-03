@@ -1,0 +1,9 @@
+Copyright 2026 ReadOS contributors
+
+This package contains ReadOS-authored neutral backend contracts and an in-memory
+virtual workspace implementation. It contains no copied MSP implementation and
+has no dependency on the legacy MSP source, native core, FFI, managed runtime,
+or platform process/filesystem APIs.
+
+The authored code is provided under the Apache License, Version 2.0. See
+LICENSE-APACHE for the complete license text.

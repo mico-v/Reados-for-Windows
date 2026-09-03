@@ -1,0 +1,9 @@
+Copyright 2026 ReadOS contributors
+
+This package contains ReadOS-authored stateless orchestration over the neutral
+msp-kernel, msp-command-pack, and msp-backend contracts. It contains no raw MSP
+source and does not depend on managed code, process APIs, environment APIs, a
+host filesystem, PATH resolution, or a product service.
+
+The package is licensed under the Apache License, Version 2.0. See
+LICENSE-APACHE-2.0 for the complete license text.

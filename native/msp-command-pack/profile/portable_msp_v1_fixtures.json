@@ -1,0 +1,116 @@
+{
+  "profile": "reados-portable-msp-v1",
+  "workspace": {
+    "/work/input.txt": "alpha\nbeta\nalpha\n",
+    "/work/sub/nested.txt": "needle\n"
+  },
+  "cases": [
+    {
+      "id": "pwd-default",
+      "command": "pwd",
+      "args": [],
+      "expected": {"stdout": "/work\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "echo-literals",
+      "command": "echo",
+      "args": ["hello", "world"],
+      "expected": {"stdout": "hello world\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "printf-string",
+      "command": "printf",
+      "args": ["%s\\n", "hello"],
+      "expected": {"stdout": "hello\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "cat-binary-stdin",
+      "command": "cat",
+      "stdinBytes": [0, 255, 10],
+      "expected": {"stdoutBytes": [0, 255, 10], "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "ls-virtual-directory",
+      "command": "ls",
+      "args": ["/work"],
+      "expected": {"stdout": "input.txt\nsub\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "find-name",
+      "command": "find",
+      "args": ["/work", "-name", "*.txt"],
+      "expected": {"stdout": "/work/input.txt\n/work/sub/nested.txt\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "du-file-metadata",
+      "command": "du",
+      "args": ["-b", "/work/input.txt"],
+      "expected": {"stdout": "17\t/work/input.txt\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "head-bytes",
+      "command": "head",
+      "args": ["-c", "5"],
+      "stdin": "abcdef",
+      "expected": {"stdout": "abcde", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "tail-lines",
+      "command": "tail",
+      "args": ["-n", "1"],
+      "stdin": "a\nb\n",
+      "expected": {"stdout": "b\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "wc-bytes",
+      "command": "wc",
+      "args": ["-c"],
+      "stdinBytes": [0, 255, 10],
+      "expected": {"stdout": "3\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "grep-line-number",
+      "command": "grep",
+      "args": ["-n", "needle"],
+      "stdin": "one\nneedle\n",
+      "expected": {"stdout": "2:needle\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "sed-literal-substitution",
+      "command": "sed",
+      "args": ["s/a/A/g"],
+      "stdin": "a\nba\n",
+      "expected": {"stdout": "A\nbA\n", "stderr": "", "exitCode": 0}
+    },
+    {
+      "id": "unsupported-pwd-physical",
+      "command": "pwd",
+      "args": ["-P"],
+      "expected": {"stdout": "", "stderr": "pwd: physical mode is unsupported for this virtual workspace\n", "exitCode": 2}
+    },
+    {
+      "id": "unsupported-find-action",
+      "command": "find",
+      "args": ["-exec", "tool"],
+      "expected": {"stdout": "", "stderr": "find: unsupported option\n", "exitCode": 2}
+    },
+    {
+      "id": "unsupported-grep-regex",
+      "command": "grep",
+      "args": ["-E", "needle"],
+      "expected": {"stdout": "", "stderr": "grep: invalid option\n", "exitCode": 2}
+    },
+    {
+      "id": "unsupported-sed-option",
+      "command": "sed",
+      "args": ["-e", "p"],
+      "expected": {"stdout": "", "stderr": "sed: unsupported option\nsed: usage: sed [-n] [--] script [file]\nsed: grammar: s/old/new/[g] | p | d; stdin or one virtual file operand\n", "exitCode": 2}
+    },
+    {
+      "id": "excluded-command-helper",
+      "command": "command",
+      "args": [],
+      "expected": {"stdout": "", "stderr": "command: command not found\n", "exitCode": 127}
+    }
+  ]
+}

@@ -8,6 +8,8 @@ param(
 
     [switch] $RequireNativeMsp,
 
+    [switch] $RequireCommandRuntimeFfi,
+
     [switch] $RequirePublicMspFfi
 )
 
@@ -20,6 +22,34 @@ function Get-FullPath {
     )
 
     return [System.IO.Path]::GetFullPath($Path)
+}
+
+function Get-RelativePath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $BasePath,
+
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    $fullBasePath = (Get-FullPath -Path $BasePath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar)
+    $fullPath = Get-FullPath -Path $Path
+    $prefix = $fullBasePath + [System.IO.Path]::DirectorySeparatorChar
+    if ($fullPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $fullPath.Substring($prefix.Length)
+    }
+
+    if ([string]::Equals(
+        $fullPath,
+        $fullBasePath,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [string]::Empty
+    }
+
+    return $fullPath
 }
 
 function Assert-UnderDirectory {
@@ -157,13 +187,15 @@ $ffiRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\native\msp
 $ffiManifestPath = Join-Path $ffiRoot "Cargo.toml"
 $ffiExportDefinitionPath = Join-Path $ffiRoot "exports\msp_ffi.def"
 $ffiMetadataPath = Join-Path $ffiRoot "release-metadata.json"
+$runtimeFfiVerifierPath = Join-Path $PSScriptRoot "verify-msp-command-runtime-ffi.ps1"
+$runtimeFfiDllPath = Join-Path $PackageRoot "msp_command_runtime_ffi.dll"
 
 $forbiddenEntries = Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Where-Object {
     if ($_.PSIsContainer) {
         return $forbiddenDirectoryNames -contains $_.Name
     }
 
-    $relativePath = [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+    $relativePath = Get-RelativePath -BasePath $PackageRoot -Path $_.FullName
     $normalizedRelativePath = $relativePath.Replace('/', '\\')
     if ($RequirePublicMspFfi -and
         [string]::Equals($normalizedRelativePath, $allowedPublicFfiHeader, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -179,7 +211,7 @@ $forbiddenEntries = Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Wh
 
 if ($forbiddenEntries) {
     $relativePaths = $forbiddenEntries | ForEach-Object {
-        [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+        Get-RelativePath -BasePath $PackageRoot -Path $_.FullName
     }
     throw "Windows package contains private, source-only, or generated entries: $($relativePaths -join ', ')"
 }
@@ -195,17 +227,47 @@ $publicMspFfiEntries = @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force
         [string]::Equals($_.Name, "msp_ffi.h", [System.StringComparison]::OrdinalIgnoreCase)
 })
 $unexpectedPublicMspFfiEntries = @($publicMspFfiEntries | Where-Object {
-    $relativePath = [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName).Replace('/', '\\')
+    $relativePath = (Get-RelativePath -BasePath $PackageRoot -Path $_.FullName).Replace('/', '\\')
     -not ([string]::Equals($relativePath, "msp_ffi.dll", [System.StringComparison]::OrdinalIgnoreCase) -or
         [string]::Equals($relativePath, $allowedPublicFfiHeader, [System.StringComparison]::OrdinalIgnoreCase))
 })
 if ($unexpectedPublicMspFfiEntries) {
     $relativePaths = $unexpectedPublicMspFfiEntries | ForEach-Object {
-        [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+        Get-RelativePath -BasePath $PackageRoot -Path $_.FullName
     }
     throw "Windows package contains a public MSP FFI file at an unapproved path: $($relativePaths -join ', ')"
 }
 
+$runtimeFfiEntries = @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -Force | Where-Object {
+    if ($_.PSIsContainer) {
+        return $false
+    }
+
+    return [string]::Equals($_.Name, "msp_command_runtime_ffi.dll", [System.StringComparison]::OrdinalIgnoreCase)
+})
+$unexpectedRuntimeFfiEntries = @($runtimeFfiEntries | Where-Object {
+    $relativePath = (Get-RelativePath -BasePath $PackageRoot -Path $_.FullName).Replace('/', '\\')
+    -not [string]::Equals($relativePath, "msp_command_runtime_ffi.dll", [System.StringComparison]::OrdinalIgnoreCase)
+})
+if ($unexpectedRuntimeFfiEntries) {
+    $relativePaths = $unexpectedRuntimeFfiEntries | ForEach-Object {
+        Get-RelativePath -BasePath $PackageRoot -Path $_.FullName
+    }
+    throw "Windows package contains the command runtime FFI DLL at an unapproved path: $($relativePaths -join ', ')"
+}
+
+if ($RequireCommandRuntimeFfi) {
+    Assert-RequiredFile -RelativePath "msp_command_runtime_ffi.dll"
+    Assert-RequiredFile -RelativePath "licenses\msp-command-runtime-ffi\LICENSE-APACHE-2.0"
+    Assert-RequiredFile -RelativePath "licenses\msp-command-runtime-ffi\NOTICE"
+    & $runtimeFfiVerifierPath `
+        -DllPath $runtimeFfiDllPath `
+        -SkipBuild `
+        -SkipContractSmoke
+}
+elseif ($runtimeFfiEntries.Count -gt 0) {
+    throw "Windows package contains the optional command runtime FFI without -RequireCommandRuntimeFfi."
+}
 if ($RequirePublicMspFfi) {
     Assert-RequiredFile -RelativePath "msp_ffi.dll"
     Assert-RequiredFile -RelativePath $allowedPublicFfiHeader

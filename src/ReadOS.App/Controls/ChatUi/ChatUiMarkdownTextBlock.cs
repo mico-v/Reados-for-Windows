@@ -20,7 +20,7 @@ namespace ReadOS.App.Controls.ChatUi;
 //
 // The parser is intentionally small and forgiving. It is not CommonMark — it
 // covers the subset the ReadOS projection service emits plus the conformance
-// fixtures under MSP/Implementations/UI/MSPChatUI/Conformance/fixtures.
+// fixtures under src/ReadOS.Web/MSPChatUI/Conformance/fixtures.
 
 public sealed class ChatUiMarkdownTextBlock : UserControl
 {

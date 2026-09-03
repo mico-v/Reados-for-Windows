@@ -1,0 +1,21 @@
+[package]
+name = "msp-backend-windows-core-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ReadOS-owned Windows read-only bridge over the retained-root MSP core workspace."
+publish = false
+repository = "https://github.com/mico-v/reados"
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "NOTICE", "LICENSE-APACHE-2.0", "src/**"]
+
+[features]
+default = []
+# Deliberately opt-in: the root workspace excludes native/msp-core. This feature is the only
+# bridge that may resolve that package, and is intended for a Windows handle-backed build.
+windows-bridge = ["dep:msp-core"]
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+msp-core = { package = "msp-core", path = "../msp-core", version = "0.1.0", optional = true }

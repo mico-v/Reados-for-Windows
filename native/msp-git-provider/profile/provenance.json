@@ -1,0 +1,9 @@
+{
+  "provider": "reados-git-provider",
+  "schema": "reados.provider.provenance.v1",
+  "runtime": "Git",
+  "licenseSpdx": "GPL-2.0-only",
+  "licenseSource": "https://github.com/git/git/blob/master/COPYING",
+  "distribution": "provider code only; target Git executable is host-bound and digest-verified, not redistributed by this crate",
+  "notice": "../NOTICE"
+}

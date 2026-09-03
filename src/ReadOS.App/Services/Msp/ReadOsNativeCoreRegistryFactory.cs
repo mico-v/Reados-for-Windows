@@ -1,4 +1,5 @@
 using ReadOS.Msp.Hosting.Native;
+using ReadOS.Msp.Hosting.Native.RuntimeFfi;
 using ReadOS.Msp.Hosting.Runtime;
 using ReadOS.Msp.Runtime;
 
@@ -9,11 +10,15 @@ internal sealed class ReadOsNativeCoreRegistryFactory
     private static readonly string[] NativeCommandNames = ["pwd", "echo", "ls", "cat"];
 
     private readonly IMspNativeAdapterProvider nativeAdapterProvider;
+    private readonly MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter;
 
-    public ReadOsNativeCoreRegistryFactory(IMspNativeAdapterProvider nativeAdapterProvider)
+    public ReadOsNativeCoreRegistryFactory(
+        IMspNativeAdapterProvider nativeAdapterProvider,
+        MspCommandRuntimeFfiEchoCommandAdapter? runtimeFfiEchoCommandAdapter = null)
     {
         this.nativeAdapterProvider = nativeAdapterProvider ??
             throw new ArgumentNullException(nameof(nativeAdapterProvider));
+        this.runtimeFfiEchoCommandAdapter = runtimeFfiEchoCommandAdapter;
     }
 
     public MspCommandRegistry Create()
@@ -25,6 +30,15 @@ internal sealed class ReadOsNativeCoreRegistryFactory
             {
                 throw new InvalidOperationException(
                     $"The managed MSP registry is missing the required {commandName} command.");
+            }
+
+            if (commandName == "echo" && runtimeFfiEchoCommandAdapter is not null)
+            {
+                // The optional adapter is the complete canonical echo definition.
+                // Do not wrap it in the legacy native route; MspRuntime still owns
+                // parsing, policy, terminal result, and exactly-once audit.
+                registry.Register(runtimeFfiEchoCommandAdapter);
+                continue;
             }
 
             registry.Register(new MspNativeBackedCommand(

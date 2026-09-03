@@ -99,17 +99,29 @@ impl SessionId {
     }
 
     /// Generate a fresh session identifier using the operating system RNG.
+    ///
+    /// This operation requires the `session-generation` feature. Without that
+    /// feature it returns [`KernelError::ExecutionUnavailable`] rather than
+    /// fabricating a deterministic identifier.
     pub fn generate() -> Result<Self, KernelError> {
-        let mut bytes = [0_u8; 16];
-        getrandom::getrandom(&mut bytes).map_err(|error| {
-            KernelError::InvalidRequest(format!("could not generate session id: {error}"))
-        })?;
-        let mut value = String::with_capacity(32);
-        for byte in bytes {
-            use std::fmt::Write as _;
-            write!(&mut value, "{byte:02x}").expect("writing to String cannot fail");
+        #[cfg(feature = "session-generation")]
+        {
+            let mut bytes = [0_u8; 16];
+            getrandom::getrandom(&mut bytes).map_err(|error| {
+                KernelError::InvalidRequest(format!("could not generate session id: {error}"))
+            })?;
+            let mut value = String::with_capacity(32);
+            for byte in bytes {
+                use std::fmt::Write as _;
+                write!(&mut value, "{byte:02x}").expect("writing to String cannot fail");
+            }
+            Ok(Self(value))
         }
-        Ok(Self(value))
+
+        #[cfg(not(feature = "session-generation"))]
+        {
+            Err(KernelError::ExecutionUnavailable)
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -627,6 +639,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "session-generation")]
     #[test]
     fn session_ids_are_validated_and_generated() {
         assert_eq!(
@@ -645,6 +658,15 @@ mod tests {
         let second = SessionId::generate().unwrap();
         assert_ne!(first, second);
         assert!(first.is_valid());
+    }
+
+    #[cfg(not(feature = "session-generation"))]
+    #[test]
+    fn session_generation_is_explicitly_unavailable_without_feature() {
+        assert_eq!(
+            SessionId::generate(),
+            Err(KernelError::ExecutionUnavailable)
+        );
     }
 
     #[test]

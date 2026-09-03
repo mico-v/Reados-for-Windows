@@ -1,0 +1,8 @@
+Copyright 2026 ReadOS contributors
+
+This package contains the ReadOS-authored Linux openat2-anchored backend for the neutral MSP
+workspace contract. It contains no copied MSP implementation and has no dependency on the legacy
+MSP source, native core, FFI, managed runtime, or process APIs.
+
+The authored code is provided under the Apache License, Version 2.0. See LICENSE-APACHE-2.0 for
+the complete license text.

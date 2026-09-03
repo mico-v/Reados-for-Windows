@@ -1,0 +1,14 @@
+Copyright 2026 ReadOS contributors
+
+This Android library is ReadOS-authored glue around the adjacent
+`native/msp-command-runtime-ffi` C ABI. It contains a real Android Gradle
+library, Kotlin API, JNI C++ shim, and packaging integration for the Rust
+`aarch64-linux-android` shared object. It does not contain raw MSP source.
+
+The adjacent native crate and this Android module are licensed under the
+Apache License, Version 2.0. See LICENSE-APACHE-2.0 for the complete license.
+
+The release module is intentionally arm64-v8a-only at this stage. An
+x86_64 emulator instrumentation fixture now runs in the portable workflow.
+Arm64 device/emulator execution remains a separate backend gate; Gradle
+compile/AAR packaging and JNI/Rust ABI checks are also real build gates.

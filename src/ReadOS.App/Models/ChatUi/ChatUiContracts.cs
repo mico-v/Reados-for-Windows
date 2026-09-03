@@ -2,7 +2,7 @@ namespace ReadOS.App.Models.ChatUi;
 
 // MSP Chat UI canonical contract types.
 //
-// These mirror the upstream MSP/Implementations/UI/MSPChatUI schemas
+// These mirror the product Web package schemas under src/ReadOS.Web/MSPChatUI.
 // (msp.chat-ui.timeline.v1 and msp.chat-ui.event.v1). They are platform-neutral
 // payload models: they must not reference WinUI, DOM, WebView, or any specific
 // renderer. Renderers consume Timeline objects; hosts forward RuntimeEvents.

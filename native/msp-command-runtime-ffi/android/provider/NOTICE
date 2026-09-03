@@ -1,0 +1,7 @@
+ReadOS Android tool-provider experiment
+
+This package contains the ReadOS-owned fixed-profile provider contract and
+provenance only. It does not redistribute Toybox, BusyBox, or Termux files.
+An app-owned Toybox artifact, when added, must carry its upstream license and
+notice evidence separately. The provider glue is covered by the adjacent
+ReadOS Apache-2.0 notice.

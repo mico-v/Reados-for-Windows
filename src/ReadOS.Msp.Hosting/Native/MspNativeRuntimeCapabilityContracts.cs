@@ -3,14 +3,17 @@ namespace ReadOS.Msp.Hosting.Native;
 /// <summary>
 /// Runtime families that may be described by a Hosting capability record.
 /// These records are declarations only; they do not add commands or launch a
-/// runtime.
+/// runtime. Toybox is reserved for the Android fixed-profile provider
+/// contract; the legacy PE capability evaluator below intentionally does not
+/// promote it as a generic Windows runtime.
 /// </summary>
 public enum MspNativeRuntimeKind
 {
     Unknown = 0,
     Python,
     Node,
-    Git
+    Git,
+    Toybox
 }
 
 /// <summary>Verification state supplied by the bundle verifier.</summary>

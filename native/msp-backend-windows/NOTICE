@@ -1,0 +1,9 @@
+Copyright 2026 ReadOS contributors
+
+This package contains ReadOS-authored Windows adapters for the neutral `msp-backend`
+contract. It contains no copied MSP implementation and no dependency on the legacy
+`native/msp-core` package, the public FFI, managed code, or the local `MSP/` review
+checkout.
+
+The authored code is provided under the Apache License, Version 2.0. See
+LICENSE-APACHE-2.0 for the complete license text.

@@ -1,0 +1,10 @@
+{
+  "provider": "reados-android-tool-provider",
+  "schema": "reados.provider.provenance.v1",
+  "runtime": "Toybox",
+  "licenseSpdx": "0BSD",
+  "distribution": "provider contract only; app-owned executable must be separately bundled and digest-verified",
+  "systemOracle": "Android /system/bin/toybox is instrumentation evidence only and is not redistributed",
+  "termux": "not a dependency and no unrestricted shell session is supported",
+  "notice": "../NOTICE"
+}
